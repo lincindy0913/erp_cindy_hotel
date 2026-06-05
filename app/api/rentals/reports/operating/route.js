@@ -131,14 +131,19 @@ export async function GET(request) {
         .map(a => [a.rentalPropertyId, Number(a.areaSqm)])
     );
 
-    const rentByProp = new Map();
+    const rentOnlyByProp = new Map();
+    const utilityByProp  = new Map();
     for (const i of incomes) {
       const amt = (i.status === 'completed' || i.status === 'partial') ? Number(i.actualAmount ?? 0) : 0;
-      rentByProp.set(i.propertyId, (rentByProp.get(i.propertyId) || 0) + amt);
+      rentOnlyByProp.set(i.propertyId, (rentOnlyByProp.get(i.propertyId) || 0) + amt);
     }
     for (const u of utilityIncomes) {
       const amt = (u.status === 'completed' || u.status === 'partial') ? Number(u.actualAmount ?? 0) : 0;
-      rentByProp.set(u.propertyId, (rentByProp.get(u.propertyId) || 0) + amt);
+      utilityByProp.set(u.propertyId, (utilityByProp.get(u.propertyId) || 0) + amt);
+    }
+    const rentByProp = new Map();
+    for (const pid of new Set([...rentOnlyByProp.keys(), ...utilityByProp.keys()])) {
+      rentByProp.set(pid, (rentOnlyByProp.get(pid) || 0) + (utilityByProp.get(pid) || 0));
     }
     const maintByProp = new Map();
     for (const m of maintenances) {
@@ -160,6 +165,8 @@ export async function GET(request) {
     const rows = Array.from(propertyIds).map(pid => {
       const prop = propMap.get(pid);
       const label = prop ? (prop.name || [prop.buildingName, prop.unitNo].filter(Boolean).join(' ') || prop.address || `物業#${pid}`) : `物業#${pid}`;
+      const rentOnly    = rentOnlyByProp.get(pid) || 0;
+      const utility     = utilityByProp.get(pid) || 0;
       const rent        = rentByProp.get(pid) || 0;
       const maintenance = maintByProp.get(pid) || 0;
       const houseTax    = houseTaxByProp.get(pid) || 0;
@@ -175,6 +182,8 @@ export async function GET(request) {
         propertyLabel: label,
         sortOrder: prop?.asset?.sortOrder ?? prop?.sortOrder ?? null,
         category: prop?.category ?? null,
+        rentOnly,
+        utilityIncome: utility,
         rentIncome: rent,
         maintenanceAmount: maintenance,
         houseTaxAmount: houseTax,

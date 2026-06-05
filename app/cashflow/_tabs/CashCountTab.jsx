@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useToast } from '@/context/ToastContext';
 import { todayStr } from '@/lib/localDate';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 
 const statusColors = {
   draft: 'bg-gray-100 text-gray-800',
@@ -19,6 +20,7 @@ export default function CashCountTab({ accounts, warehouses }) {
   const { showToast } = useToast();
   const [cashCounts, setCashCounts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [countsError, setCountsError] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState('');
   const [countDate, setCountDate] = useState(todayStr());
@@ -42,6 +44,7 @@ export default function CashCountTab({ accounts, warehouses }) {
 
   async function fetchCashCounts() {
     setLoading(true);
+    setCountsError(null);
     try {
       const params = new URLSearchParams();
       if (filter.accountId) params.set('accountId', filter.accountId);
@@ -50,9 +53,12 @@ export default function CashCountTab({ accounts, warehouses }) {
       if (res.ok) {
         const data = await res.json();
         setCashCounts(data);
+      } else {
+        const body = await res.json().catch(() => ({}));
+        setCountsError(body.error?.message || '取得現金盤點失敗');
       }
     } catch (err) {
-      console.error('取得現金盤點失敗:', err);
+      setCountsError('取得現金盤點失敗，請重新整理後再試。');
     }
     setLoading(false);
   }
@@ -196,6 +202,8 @@ export default function CashCountTab({ accounts, warehouses }) {
           </div>
         </form>
       )}
+
+      {countsError && <FetchErrorBanner message={countsError} onRetry={fetchCashCounts} />}
 
       {loading ? (
         <div className="bg-white rounded-lg shadow-sm p-8 text-center text-gray-500">載入中...</div>

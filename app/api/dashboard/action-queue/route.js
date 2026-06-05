@@ -47,16 +47,20 @@ export async function GET(request) {
 
     // ── 採購 ────────────────────────────────────────────────────────
     if (hasPerm(PERMISSIONS.PURCHASING_VIEW)) {
+      // 待入庫（獨立 task，避免 lowStock 失敗時一起吃掉）
       tasks.push((async () => {
         try {
-          const [pendingWh, lowStock] = await Promise.all([
-            prisma.purchaseMaster.count({ where: { status: '待入庫' } }),
-            prisma.$queryRaw`SELECT COUNT(*) as cnt FROM inventory_low_stock_caches WHERE current_qty < threshold AND threshold > 0`,
-          ]);
+          const pendingWh = await prisma.purchaseMaster.count({ where: { status: '待入庫' } });
           if (pendingWh > 0) items.push({ key: 'pending_warehouse', category: '採購', label: '待入庫進貨', count: pendingWh, href: '/inventory?tab=inbound', urgency: 'high' });
-          const low = Number(lowStock[0]?.cnt || 0);
+        } catch (e) { console.error('[action-queue] 採購待入庫:', e.message); }
+      })());
+      // 低庫存（Prisma 不支援欄位對欄位比較，直接用 raw）
+      tasks.push((async () => {
+        try {
+          const [r] = await prisma.$queryRaw`SELECT COUNT(*)::int AS cnt FROM inventory_low_stock_caches WHERE current_qty < threshold AND threshold > 0`;
+          const low = Number(r?.cnt ?? 0);
           if (low > 0) items.push({ key: 'low_inventory', category: '採購', label: '庫存偏低品項', count: low, href: '/inventory?lowstock=1', urgency: 'normal' });
-        } catch (e) { console.error('[action-queue] 採購:', e.message); }
+        } catch (e) { console.error('[action-queue] 低庫存:', e.message); }
       })());
 
       // 已入庫待辦：未建付款單 + 未核銷發票
@@ -175,10 +179,31 @@ export async function GET(request) {
             }),
             prisma.paymentOrder.count({ where: { status: '草稿', sourceType: 'engineering' } }),
           ]);
+          const engPendingCashier = await prisma.paymentOrder.count({
+            where: { status: '待出納', sourceType: 'engineering' },
+          });
           if (overdueTerms > 0) items.push({ key: 'overdue_eng', category: '工程', label: '逾期工程期數', count: overdueTerms, href: '/engineering?tab=contracts', urgency: 'urgent' });
           if (dueTerms > 0) items.push({ key: 'due_eng', category: '工程', label: '本週到期工程期數', count: dueTerms, href: '/engineering?tab=contracts', urgency: 'high' });
           if (draftEngPOs > 0) items.push({ key: 'draft_eng_po', category: '工程', label: '待送出工程付款單', count: draftEngPOs, href: '/engineering?tab=payments', urgency: 'normal' });
+          if (engPendingCashier > 0) items.push({ key: 'eng_pending_cashier', category: '工程', label: '工程付款待出納', count: engPendingCashier, href: '/cashier', urgency: 'high' });
         } catch (e) { console.error('[action-queue] 工程:', e.message); }
+      })());
+    }
+
+    // ── 民宿 ─────────────────────────────────────────────────────────
+    if (hasPerm(PERMISSIONS.BNB_VIEW)) {
+      tasks.push((async () => {
+        try {
+          const syncFailures = await prisma.bnbSyncFailure.count({ where: { resolved: false } });
+          if (syncFailures > 0) {
+            items.push({
+              key: 'bnb_sync_failures', category: '民宿',
+              label: '出納同步失敗', count: syncFailures,
+              href: '/bnb', urgency: 'urgent',
+              detail: '請至民宿帳頁面逐筆重試',
+            });
+          }
+        } catch (e) { console.error('[action-queue] 民宿同步失敗:', e.message); }
       })());
     }
 

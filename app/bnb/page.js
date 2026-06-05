@@ -14,13 +14,16 @@ import ExportButtons from '@/components/ExportButtons';
 import PaymentModal from './_components/PaymentModal';
 import BookingFormModal from './_components/BookingFormModal';
 import BnbBatchLockModal from './_components/BnbBatchLockModal';
+import WhQuickBtns from './_components/WhQuickBtns';
 import { todayStr } from '@/lib/localDate';
 import { openPrintWindow } from '@/lib/printWindow';
 import { useDepositMatch } from './_hooks/useDepositMatch';
 import { useBnbRecords } from './_hooks/useBnbRecords';
 import { useBnbAnalytics } from './_hooks/useBnbAnalytics';
+import { useBnbCalendar } from './_hooks/useBnbCalendar';
 import { useOtaReconcile } from './_hooks/useOtaReconcile';
 import { BNB_SOURCES, BNB_SOURCE_COLORS } from './_constants';
+import RecordsTab       from './_tabs/RecordsTab';
 import CalendarTab      from './_tabs/CalendarTab';
 import OccupancyTab     from './_tabs/OccupancyTab';
 import PayAuditTab      from './_tabs/PayAuditTab';
@@ -31,6 +34,13 @@ import GuestHistoryTab  from './_tabs/GuestHistoryTab';
 import OtaReconTab      from './_tabs/OtaReconTab';
 import OtaCommissionTab from './_tabs/OtaCommissionTab';
 import BossWithdrawTab  from './_tabs/BossWithdrawTab';
+import DailyRevTab      from './_tabs/DailyRevTab';
+import MonthlySummaryTab from './_tabs/MonthlySummaryTab';
+import PnlTab           from './_tabs/PnlTab';
+import DeclarationTab   from './_tabs/DeclarationTab';
+import AnnualDeclListTab from './_tabs/AnnualDeclListTab';
+import DepositMatchTab  from './_tabs/DepositMatchTab';
+import OtherIncomeTab  from './_tabs/OtherIncomeTab';
 
 const NT = (v) => `NT$ ${Number(v || 0).toLocaleString()}`;
 const DEFAULT_WAREHOUSE = '民宿';
@@ -90,29 +100,29 @@ const PNL_EXPORT_COLS = [
 ];
 
 const TABS = [
-  { key: 'records',      label: '訂房明細' },
-  { key: 'otherIncome',  label: '其他收入' },
-  { key: 'analytics',    label: '分析' },
-  { key: 'declaration',label: '旅宿網申報' },
-  { key: 'deposit',    label: '訂金核對' },
-  { key: 'otaRecon',   label: 'OTA比對' },
-  { key: 'otaCommission', label: 'OTA傭金' },
-  { key: 'bossWithdraw', label: '老闆收取' },
-  { key: 'payAudit',       label: '付款稽核' },
-  { key: 'guestHistory',   label: '房客歷史' },
+  { key: 'records',       label: '訂房明細',  group: '日常' },
+  { key: 'otherIncome',   label: '其他收入',  group: '日常' },
+  { key: 'deposit',       label: '訂金核對',  group: '日常' },
+  { key: 'otaRecon',      label: 'OTA比對',   group: 'OTA' },
+  { key: 'otaCommission', label: 'OTA傭金',   group: 'OTA' },
+  { key: 'analytics',     label: '分析',      group: '分析申報' },
+  { key: 'declaration',   label: '旅宿網申報', group: '分析申報' },
+  { key: 'bossWithdraw',  label: '老闆收取',  group: '稽核' },
+  { key: 'payAudit',      label: '付款稽核',  group: '稽核' },
+  { key: 'guestHistory',  label: '房客歷史',  group: '稽核' },
 ];
 
 /** 分析分頁內子分頁（每日收入、報表與統計） */
 const ANALYTICS_SUB_TABS = [
-  { key: 'dailyRev',       label: '每日收入' },
-  { key: 'monthly',        label: '月收入總表' },
-  { key: 'pnl',            label: '月收支總表' },
-  { key: 'declList',       label: '年度申報總表' },
-  { key: 'sourceAnalysis', label: '來源分析' },
-  { key: 'otaAnalytics',  label: 'OTA收益分析' },
-  { key: 'paymentSplit',  label: '收款分流' },
-  { key: 'occupancy',      label: '入住率統計' },
-  { key: 'calendar',       label: '訂房日曆' },
+  { key: 'dailyRev',       label: '每日收入',    group: '報表' },
+  { key: 'monthly',        label: '月收入總表',  group: '報表' },
+  { key: 'pnl',            label: '月收支總表',  group: '報表' },
+  { key: 'declList',       label: '年度申報總表', group: '報表' },
+  { key: 'sourceAnalysis', label: '來源分析',    group: '統計圖表' },
+  { key: 'otaAnalytics',   label: 'OTA收益分析', group: '統計圖表' },
+  { key: 'paymentSplit',   label: '收款分流',    group: '統計圖表' },
+  { key: 'occupancy',      label: '入住率統計',  group: '統計圖表' },
+  { key: 'calendar',       label: '訂房日曆',    group: '統計圖表' },
 ];
 
 const STATUS_COLORS = {
@@ -126,17 +136,6 @@ const STATUS_COLORS = {
 function getStatusColor(s) { return STATUS_COLORS[s] ?? 'bg-gray-100 text-gray-600'; }
 const SOURCE_COLORS = BNB_SOURCE_COLORS;
 
-// 民宿快速館別按鈕（點同館別再次點擊可取消選取回到全部）
-function WhQuickBtns({ list = [], value, onChange }) {
-  return list.map(wh => (
-    <button key={wh} type="button"
-      onClick={() => onChange(value === wh ? '' : wh)}
-      className={`text-xs px-2 py-1 rounded border transition-colors whitespace-nowrap ${value === wh ? 'bg-indigo-600 border-indigo-600 text-white font-medium' : 'bg-white border-gray-200 text-gray-600 hover:border-indigo-300 hover:text-indigo-700'}`}>
-      {wh}
-    </button>
-  ));
-}
-
 // ── 主頁面 ────────────────────────────────────────────────────────
 // ── 付款欄位順序（Excel Tab 跳格用）────────────────────────────
 const PAY_FIELDS = ['payDeposit', 'depositDate', 'depositLast5', 'payTransfer', 'transferDate', 'transferLast5', 'payCard', 'payCash', 'payVoucher'];
@@ -148,7 +147,7 @@ function BnbPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const doPrint = useCallback((title, headers, rows) => {
-    if (!doPrint(title, headers, rows)) showToast('請允許彈出視窗以進行列印', 'error');
+    if (!openPrintWindow(title, headers, rows)) showToast('請允許彈出視窗以進行列印', 'error');
   }, [showToast]);
   const [activeTab, setActiveTab] = useState(() => searchParams.get('tab') || 'records');
   /** 分析分頁內子分頁 */
@@ -212,14 +211,14 @@ function BnbPage() {
 
   // ── 分析資料 hook ─────────────────────────────────────────────
   const {
-    occYear, setOccYear, occWarehouse, setOccWarehouse, occData, occLoading, fetchOccupancy,
-    saYear, setSaYear, saWarehouse, setSaWarehouse, saData, saLoading, fetchSourceAnalysis,
-    oaYear, setOaYear, oaWarehouse, setOaWarehouse, oaData, oaPrevData, oaCompare, setOaCompare, oaLoading, fetchOtaAnalytics,
-    psYear, setPsYear, psWarehouse, setPsWarehouse, psData, psLoading, fetchPaymentSplit,
-    auditMonth, setAuditMonth, auditWarehouse, setAuditWarehouse, auditData, auditLoading, auditOverflow, fetchAudit,
-    ghSearch, setGhSearch, ghData, ghLoading, ghSearched, fetchGuestHistory,
+    occYear, setOccYear, occWarehouse, setOccWarehouse, occData, occLoading, occError, fetchOccupancy,
+    saYear, setSaYear, saWarehouse, setSaWarehouse, saData, saLoading, saError, fetchSourceAnalysis,
+    oaYear, setOaYear, oaWarehouse, setOaWarehouse, oaData, oaPrevData, oaCompare, setOaCompare, oaLoading, oaError, fetchOtaAnalytics,
+    psYear, setPsYear, psWarehouse, setPsWarehouse, psData, psLoading, psError, fetchPaymentSplit,
+    auditMonth, setAuditMonth, auditWarehouse, setAuditWarehouse, auditData, auditLoading, auditOverflow, auditError, fetchAudit,
+    ghSearch, setGhSearch, ghData, ghLoading, ghSearched, ghError, fetchGuestHistory,
     summaryYear, setSummaryYear, summaryWarehouse, setSummaryWarehouse, summaryMode, setSummaryMode,
-    summaryRows, summaryLoading, summaryFixedHelp, fetchSummary,
+    summaryRows, summaryLoading, summaryFixedHelp, summaryError, fetchSummary,
   } = useBnbAnalytics({ showToast });
 
   // ── 館別清單 state ────────────────────────────────────────────
@@ -229,11 +228,23 @@ function BnbPage() {
   const {
     dmMonth, setDmMonth, dmWarehouse, setDmWarehouse,
     dmAccountId, setDmAccountId, dmData, setDmData,
-    dmLoading, dmAccounts, dmSelBnb, setDmSelBnb,
+    dmLoading, dmError, dmAccounts, dmSelBnb, setDmSelBnb,
     dmSelLine, setDmSelLine, dmMatching, dmPayType, setDmPayType,
     dmMarkModal, setDmMarkModal, dmMarkNote, setDmMarkNote,
     fetchDepositMatch, handleMatch, handleUnmatch,
     handleMark, handleClearMark, handleAutoMatch,
+    ledgerMonthFrom, setLedgerMonthFrom,
+    ledgerMonthTo,   setLedgerMonthTo,
+    ledgerWarehouse, setLedgerWarehouse,
+    ledgerRows,      ledgerLoading,
+    fetchLedger,
+    showBankImport,      setShowBankImport,
+    bankImportLines,     setBankImportLines,
+    bankImportParsing,
+    bankImportSubmitting,
+    bankImportError,     setBankImportError,
+    handleBankFileUpload,
+    submitBankImport,
   } = useDepositMatch();
 
   // ── 老闆收取 state ───────────────────────────────────────────
@@ -243,17 +254,20 @@ function BnbPage() {
   const [bwYear,        setBwYear]        = useState(() => String(new Date().getFullYear()));
   const [bwData,        setBwData]        = useState(null);
   const [bwLoading,     setBwLoading]     = useState(false);
+  const [bwError,       setBwError]       = useState(null);
   const [bwSummary,     setBwSummary]     = useState(null);
   const [bwSummaryLoad, setBwSummaryLoad] = useState(false);
 
   const fetchBossWithdraw = useCallback(async () => {
     setBwLoading(true);
+    setBwError(null);
     try {
       const q = new URLSearchParams({ month: bwMonth });
       if (bwWarehouse) q.set('warehouse', bwWarehouse);
       const res = await fetch(`/api/bnb/boss-withdraw?${q}`);
-      if (res.ok) setBwData(await res.json());
-    } catch { /* ignore */ } finally { setBwLoading(false); }
+      if (!res.ok) { setBwError('載入老闆收取失敗，請稍後再試'); return; }
+      setBwData(await res.json());
+    } catch { setBwError('載入老闆收取失敗'); } finally { setBwLoading(false); }
   }, [bwMonth, bwWarehouse]);
 
   const fetchBossWithdrawSummary = useCallback(async () => {
@@ -266,21 +280,8 @@ function BnbPage() {
     } catch { /* ignore */ } finally { setBwSummaryLoad(false); }
   }, [bwYear, bwWarehouse]);
 
-  // ── 存簿匯入 modal state ──────────────────────────────────────
-  const [showBankImport, setShowBankImport] = useState(false);
-  const [bankImportLines, setBankImportLines] = useState([]);
-  const [bankImportFileName, setBankImportFileName] = useState('');
-  const [bankImportParsing, setBankImportParsing] = useState(false);
-  const [bankImportSubmitting, setBankImportSubmitting] = useState(false);
-  const [bankImportError, setBankImportError] = useState('');
-
-  // ── 收款流水帳 state ─────────────────────────────────────────
+  // ── 月固定費用 thisMonth helper ───────────────────────────────
   const thisMonth = todayStr().slice(0, 7);
-  const [ledgerMonthFrom, setLedgerMonthFrom] = useState(thisMonth);
-  const [ledgerMonthTo,   setLedgerMonthTo]   = useState(thisMonth);
-  const [ledgerWarehouse, setLedgerWarehouse] = useState('');
-  const [ledgerRows,      setLedgerRows]      = useState([]);
-  const [ledgerLoading,   setLedgerLoading]   = useState(false);
 
   // ── 月固定費用模板 state ─────────────────────────────────────
   const [recurringTemplates, setRecurringTemplates] = useState([]);
@@ -435,24 +436,26 @@ function BnbPage() {
   const [declSaving, setDeclSaving] = useState(false);
   const [declLoading, setDeclLoading] = useState(false);
   const [declSearched, setDeclSearched] = useState(false);
+  const [declError,   setDeclError]   = useState(null);
 
   // ── 年度申報總覽 state ─────────────────────────────────────
   const [dlYear,    setDlYear]    = useState(() => new Date().getFullYear().toString());
   const [dlWarehouse, setDlWarehouse] = useState(DEFAULT_WAREHOUSE);
   const [dlRows,    setDlRows]    = useState([]);
   const [dlLoading, setDlLoading] = useState(false);
+  const [dlError,   setDlError]   = useState(null);
 
   // ── OTA 比對 + 傭金 hook ────────────────────────────────────
   const {
     otaSource, setOtaSource, otaDateFrom, setOtaDateFrom, otaDateTo, setOtaDateTo,
     otaWarehouse, setOtaWarehouse, otaFile, setOtaFile, otaPreview, otaPreviewLoading,
-    otaResult, otaLoading, otaMonth, setOtaMonth, otaViewTab, setOtaViewTab,
+    otaResult, otaLoading, otaError, otaMonth, setOtaMonth, otaViewTab, setOtaViewTab,
     previewOta, runOtaReconcile, confirmReconcile, reconcileConfirmed, reconcileConfirming,
     openOtaEdit, deleteOtaBnb, openOtaAdd,
-    reconLogs, reconLogsLoading, fetchReconLogs,
+    reconLogs, reconLogsLoading, reconLogsError, fetchReconLogs,
     commAmt, setCommAmt, commMethod, setCommMethod, commNote, setCommNote,
     commSubmitting, commExisting, commSource, setCommSource,
-    commHistRows, commHistLoading, commEditId, setCommEditId, commEditData, setCommEditData, commEditSaving,
+    commHistRows, commHistLoading, commHistError, commEditId, setCommEditId, commEditData, setCommEditData, commEditSaving,
     submitCommission, fetchCommHistory, confirmCommission, cancelCommission,
     startEditComm, saveEditComm,
   } = useOtaReconcile({ showToast, confirm, setEditBooking, DEFAULT_WAREHOUSE });
@@ -483,15 +486,16 @@ function BnbPage() {
   const [drWarehouse, setDrWarehouse] = useState(DEFAULT_WAREHOUSE);
   const [drLoading,   setDrLoading]   = useState(false);
   const [drData,      setDrData]      = useState(null);
+  const [drError,     setDrError]     = useState(null);
   const [drExpandDay, setDrExpandDay] = useState(null);
 
-  // ── 訂房日曆 state ────────────────────────────────────────────
-  const [calYear,      setCalYear]      = useState(() => new Date().getFullYear());
-  const [calMonth,     setCalMonth]     = useState(() => new Date().getMonth() + 1);
-  const [calWarehouse, setCalWarehouse] = useState('');
-  const [calData,      setCalData]      = useState([]);
-  const [calLoading,   setCalLoading]   = useState(false);
-  const [calOverflow,  setCalOverflow]  = useState(false);
+  // ── 訂房日曆 hook ─────────────────────────────────────────────
+  const {
+    calYear, setCalYear, calMonth, setCalMonth,
+    calWarehouse, setCalWarehouse,
+    calData, calLoading, calError, calOverflow,
+    fetchCalendar,
+  } = useBnbCalendar();
 
   // ── 館別清單（session 載入後才 fetch，否則會 401）────────────
   useEffect(() => {
@@ -582,34 +586,19 @@ function BnbPage() {
 
   // ── 月彙整 fetch ──────────────────────────────────────────────
 
-  // ── 訂房日曆 fetch ────────────────────────────────────────────
-  const fetchCalendar = useCallback(async () => {
-    setCalLoading(true);
-    try {
-      const ym = `${calYear}-${String(calMonth).padStart(2, '0')}`;
-      const p = new URLSearchParams({ month: ym, pageSize: '500' });
-      if (calWarehouse) p.set('warehouse', calWarehouse);
-      const res = await fetch(`/api/bnb?${p}`);
-      if (!res.ok) return;
-      const json = await res.json();
-      const rows = json.data ?? json;
-      setCalData(rows);
-      setCalOverflow(rows.length >= 500);
-    } catch { showToast('載入日曆失敗', 'error'); }
-    finally { setCalLoading(false); }
-  }, [calYear, calMonth, calWarehouse]);
 
 
   const fetchDailyRevenue = useCallback(async () => {
     setDrLoading(true);
     setDrExpandDay(null);
+    setDrError(null);
     try {
       const p = new URLSearchParams({ month: drMonth });
       if (drWarehouse) p.set('warehouse', drWarehouse);
       const res = await fetch(`/api/bnb/daily-revenue?${p}`);
-      if (!res.ok) { showToast('載入每日收入失敗', 'error'); return; }
+      if (!res.ok) { const msg = '載入每日收入失敗，請稍後再試'; setDrError(msg); showToast(msg, 'error'); return; }
       setDrData(await res.json());
-    } catch { showToast('載入每日收入失敗', 'error'); }
+    } catch { const msg = '載入每日收入失敗'; setDrError(msg); showToast(msg, 'error'); }
     finally { setDrLoading(false); }
   }, [drMonth, drWarehouse]);
 
@@ -617,6 +606,7 @@ function BnbPage() {
   const fetchDecl = useCallback(async () => {
     setDeclLoading(true);
     setDeclSearched(true);
+    setDeclError(null);
     try {
       const wh = encodeURIComponent(declWarehouse);
       const [actualRes, reportRes] = await Promise.all([
@@ -664,18 +654,19 @@ function BnbPage() {
           note:             '',
         });
       }
-    } finally { setDeclLoading(false); }
+    } catch { setDeclError('載入旅宿網申報資料失敗，請稍後再試'); }
+    finally { setDeclLoading(false); }
   }, [declMonth, declWarehouse]);
 
   const fetchDeclList = useCallback(async () => {
     setDlLoading(true);
+    setDlError(null);
     try {
       const res = await fetch(`/api/bnb/declaration-list?year=${dlYear}&warehouse=${encodeURIComponent(dlWarehouse)}`);
-      if (res.ok) {
-        const data = await res.json();
-        setDlRows(data.rows || []);
-      }
-    } catch { /* ignore */ }
+      if (!res.ok) { setDlError('載入年度申報總覽失敗，請稍後再試'); return; }
+      const data = await res.json();
+      setDlRows(data.rows || []);
+    } catch { setDlError('載入年度申報總覽失敗'); }
     finally { setDlLoading(false); }
   }, [dlYear, dlWarehouse]);
 
@@ -870,6 +861,7 @@ function BnbPage() {
   }
 
   // ── 統計摘要 ──────────────────────────────────────────────────
+  const _today = todayStr();
   const recStats = records.reduce((acc, r) => {
     if (r.status === '已刪除') return acc;
     acc.rooms++;
@@ -883,11 +875,13 @@ function BnbPage() {
     acc.unfilled      += (!r.paymentFilled && !r.isComplimentary) ? 1 : 0;
     acc.complimentary += r.isComplimentary ? 1 : 0;
     acc.locked        += r.paymentLocked ? 1 : 0;
+    if (r.status === '已退房' && !r.paymentFilled && !r.isComplimentary && r.checkOutDate && r.checkOutDate < _today) acc.overdueUnpaid++;
+    if (Number(r.payCard) > 0 && !r.cardSettlementDate) acc.cardDateMissing++;
     const pt = Number(r.payDeposit) + Number(r.payTransfer) + Number(r.payCard) + Number(r.payCash) + Number(r.payVoucher);
     const ct = Number(r.roomCharge) + Number(r.otherCharge);
     if (r.paymentFilled && !r.isComplimentary && Math.abs(pt - ct) > 0.01) acc.mismatch++;
     return acc;
-  }, { rooms: 0, revenue: 0, deposit: 0, transfer: 0, card: 0, cash: 0, voucher: 0, cardFee: 0, unfilled: 0, complimentary: 0, locked: 0, mismatch: 0 });
+  }, { rooms: 0, revenue: 0, deposit: 0, transfer: 0, card: 0, cash: 0, voucher: 0, cardFee: 0, unfilled: 0, complimentary: 0, locked: 0, mismatch: 0, overdueUnpaid: 0, cardDateMissing: 0 });
 
   // ── 房號分析（依目前 records 頁面資料計算）────────────────────
   const roomStats = (() => {
@@ -933,7 +927,7 @@ function BnbPage() {
             },
             {
               label: 'OTA 比對',
-              desc: '上傳 Booking.com／Agoda 等對帳單 → 系統自動比對差異 → 確認佣金金額並標記已入帳',
+              desc: '上傳 Booking.com 對帳單（Agoda／Expedia 開發中）→ 系統自動比對差異 → 確認後至「OTA傭金」分頁送出佣金',
             },
             {
               label: '付款稽核',
@@ -972,18 +966,26 @@ function BnbPage() {
 
         {/* Tab bar */}
         <div className="flex flex-wrap gap-1 mb-6 bg-white rounded-xl shadow-sm border border-gray-100 p-1">
-          {TABS.map(t => (
-            <button key={t.key} onClick={() => {
-              setActiveTab(t.key);
-              const url = t.key === 'analytics' ? `?tab=analytics&sub=${analyticsSub}` : `?tab=${t.key}`;
-              router.replace(url, { scroll: false });
-            }}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-                activeTab === t.key ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
-              }`}>
-              {t.label}
-            </button>
-          ))}
+          {TABS.map((t, i) => {
+            const prevGroup = i > 0 ? TABS[i - 1].group : null;
+            const showDivider = prevGroup && t.group !== prevGroup;
+            return (
+              <span key={t.key} className="flex items-center">
+                {showDivider && <span className="w-px h-6 bg-gray-200 mx-1 self-center" aria-hidden />}
+                <button onClick={() => {
+                  setActiveTab(t.key);
+                  const url = t.key === 'analytics' ? `?tab=analytics&sub=${analyticsSub}` : `?tab=${t.key}`;
+                  router.replace(url, { scroll: false });
+                }}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
+                    activeTab === t.key ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                  title={t.group}>
+                  {t.label}
+                </button>
+              </span>
+            );
+          })}
           {/* 鎖帳狀態指示 + 按鈕 */}
           <div className="ml-auto flex items-center gap-2">
             {isLocked && (
@@ -1013,2239 +1015,193 @@ function BnbPage() {
         </div>
 
         {activeTab === 'analytics' && (
-          <div className="flex flex-wrap gap-1 mb-6 bg-indigo-50/80 rounded-xl border border-indigo-100 p-1.5">
-            {ANALYTICS_SUB_TABS.map(st => (
-              <button
-                key={st.key}
-                type="button"
-                onClick={() => { setAnalyticsSub(st.key); router.replace(`?tab=analytics&sub=${st.key}`, { scroll: false }); }}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-                  analyticsSub === st.key ? 'bg-indigo-700 text-white shadow-sm' : 'text-indigo-900/80 hover:bg-white/80'
-                }`}
-              >
-                {st.label}
-              </button>
+          <div className="mb-6 bg-indigo-50/80 rounded-xl border border-indigo-100 p-1.5 space-y-1">
+            {['報表', '統計圖表'].map(grp => (
+              <div key={grp} className="flex flex-wrap items-center gap-1">
+                <span className="text-[10px] text-indigo-400 font-medium w-14 shrink-0 pl-1">{grp}</span>
+                {ANALYTICS_SUB_TABS.filter(st => st.group === grp).map(st => (
+                  <button
+                    key={st.key}
+                    type="button"
+                    onClick={() => { setAnalyticsSub(st.key); router.replace(`?tab=analytics&sub=${st.key}`, { scroll: false }); }}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
+                      analyticsSub === st.key ? 'bg-indigo-700 text-white shadow-sm' : 'text-indigo-900/80 hover:bg-white/80'
+                    }`}
+                  >
+                    {st.label}
+                  </button>
+                ))}
+              </div>
             ))}
           </div>
         )}
 
         {/* ══ Tab: 訂房明細 ══ */}
         {activeTab === 'records' && (
-          <div>
-            {recError && <div className="mb-4"><FetchErrorBanner message={recError} onRetry={() => fetchRecords(1)} /></div>}
-            {/* 篩選列 */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4 flex flex-wrap gap-3 items-end">
-              <div>
-                <label htmlFor="f" className="block text-xs text-gray-500 mb-1">月份</label>
-                <input id="f" type="month" value={filterMonth} onChange={e => setFilterMonth(e.target.value)} className={inputCls} />
-              </div>
-              <div>
-                <label htmlFor="f-2" className="block text-xs text-gray-500 mb-1">來源</label>
-                <select id="f-2" value={filterSource} onChange={e => setFilterSource(e.target.value)} className={inputCls}>
-                  <option value="">全部</option>
-                  {BNB_SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
-              <div>
-                <label htmlFor="f-3" className="block text-xs text-gray-500 mb-1">狀態</label>
-                <select id="f-3" value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className={inputCls}>
-                  <option value="">全部</option>
-                  {Object.keys(STATUS_COLORS).map(s => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label htmlFor="f-39" className="block text-xs text-gray-500 mb-1">館別</label>
-                <select id="f-39" value={filterWarehouse} onChange={e => setFilterWarehouse(e.target.value)} className={inputCls}>
-                  <option value="">全部</option>
-                  {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
-                </select>
-                <WhQuickBtns list={warehouseList} value={filterWarehouse} onChange={setFilterWarehouse} />
-              </div>
-              <button onClick={fetchRecords} className={`${btnCls} bg-indigo-50 text-indigo-700`}>查詢</button>
-              <button onClick={() => setAddBookingOpen(true)}
-                className="px-3 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 flex items-center gap-1">
-                + 新增訂房
-              </button>
-              <button
-                onClick={() => { setShowImportPanel(v => !v); setImportResult(null); }}
-                className={`px-3 py-1.5 text-sm rounded-lg border flex items-center gap-1 transition-colors font-medium ${showImportPanel ? 'bg-violet-600 text-white border-violet-600' : 'bg-violet-50 text-violet-700 border-violet-300 hover:bg-violet-100'}`}>
-                ↑ 雲掌櫃匯入
-              </button>
-              <div className="ml-auto flex items-end gap-2">
-                {canLock && !editMode && (
-                  <button onClick={lockAllFilled} disabled={locking}
-                    title="鎖定本月全部已填付款記錄"
-                    className="px-3 py-1.5 text-sm rounded-lg bg-slate-700 text-white hover:bg-slate-800 disabled:opacity-50 flex items-center gap-1">
-                    🔒 全部鎖帳
-                  </button>
-                )}
-                {!editMode ? (
-                  <button onClick={enterEditMode}
-                    className="px-4 py-1.5 text-sm rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 font-medium">
-                    修改付款
-                  </button>
-                ) : (
-                  <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-300 rounded-lg px-3 py-1.5">
-                    <span className="text-xs text-emerald-700 font-medium">
-                      Excel 模式{dirtyIds.size > 0 ? ` (已修改 ${dirtyIds.size} 筆)` : ''}
-                    </span>
-                    <button onClick={saveAllEdits} disabled={batchSaving}
-                      className="px-3 py-1 text-xs rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50">
-                      {batchSaving ? '儲存中…' : '儲存全部'}
-                    </button>
-                    <button onClick={cancelEditMode}
-                      className="px-3 py-1 text-xs rounded-lg border border-gray-300 hover:bg-gray-50 text-gray-600">
-                      取消
-                    </button>
-                  </div>
-                )}
-                <ExportButtons
-                  data={records}
-                  columns={BOOKING_EXPORT_COLS}
-                  filename={`訂房明細_${filterMonth}`}
-                  title={`訂房明細 ${filterMonth}`}
-                />
-                <button
-                  onClick={() => doPrint(
-                    `訂房明細 ${filterMonth}`,
-                    BOOKING_EXPORT_COLS.map(c => c.header),
-                    records.map(r => BOOKING_EXPORT_COLS.map(c => r[c.key] ?? ''))
-                  )}
-                  className={`${btnCls} text-gray-600`}
-                >列印</button>
-              </div>
-            </div>
-
-            {/* 雲掌櫃匯入面板 */}
-            {showImportPanel && (
-              <div className="mb-4 bg-white rounded-xl shadow-sm border border-violet-100 p-4 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-semibold text-gray-800 text-sm">上傳雲掌櫃匯出檔</h3>
-                  <p className="text-xs text-gray-400">支援 .xlsx / .xls / .csv　欄位：A來源 B姓名 C房費 D消費 E房間 F入住 G離店 H狀態</p>
-                </div>
-
-                {/* 設定列 */}
-                <div className="flex flex-wrap gap-3 items-end">
-                  <div>
-                    <label htmlFor="f-4" className="block text-xs text-gray-500 mb-1">匯入月份</label>
-                    <input id="f-4" type="month" value={importMonth} onChange={e => setImportMonth(e.target.value)} className={inputCls} />
-                  </div>
-                  <div>
-                    <label htmlFor="f-5" className="block text-xs text-gray-500 mb-1">館別</label>
-                    <select id="f-5" value={importWarehouse} onChange={e => setImportWarehouse(e.target.value)} className={inputCls}>
-                      {(warehouseList.length ? warehouseList : [importWarehouse]).map(w => <option key={w} value={w}>{w}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label htmlFor="span" className="block text-xs text-gray-500 mb-1">
-                      選擇檔案
-                      {importPreview && <span className="ml-2 text-violet-600 font-semibold">（解析到 {importPreview.totalRows} 筆）</span>}
-                    </label>
-                    <input id="span" type="file" accept=".xlsx,.xls,.csv"
-                      onChange={e => handleFileSelect(e.target.files?.[0] || null)}
-                      className="block text-sm text-gray-600 file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border file:border-indigo-300 file:text-indigo-600 file:bg-indigo-50 hover:file:bg-indigo-100" />
-                  </div>
-                  <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
-                    <input type="checkbox" checked={importReplace} onChange={e => setImportReplace(e.target.checked)} className="rounded" />
-                    取代同月舊資料
-                  </label>
-                  {isLocked ? (
-                    <span className="text-xs text-red-500 px-2 py-1.5 bg-red-50 border border-red-200 rounded-lg">
-                      {filterMonth} 已鎖帳，無法匯入
-                    </span>
-                  ) : (
-                    <button onClick={handleImport} disabled={importing || !importFile}
-                      className="px-4 py-1.5 text-sm rounded-lg bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50 transition-colors font-medium">
-                      {importing ? '匯入中…' : '開始匯入'}
-                    </button>
-                  )}
-                  {importResult && (
-                    <span className="text-xs text-green-700 px-2 py-1.5 bg-green-50 border border-green-200 rounded-lg">
-                      ✓ {importResult.imported} 筆
-                      {importResult.deleted > 0 && `，刪除 ${importResult.deleted} 筆`}
-                      {importResult.skipped > 0 && `，略過重複 ${importResult.skipped} 筆`}
-                      　{importResult.importMonth}／{importResult.warehouse}
-                    </span>
-                  )}
-                </div>
-
-                {/* 欄位對應預覽表 */}
-                {importPreview && importPreview.rows.length > 0 && (
-                  <div className="border border-violet-100 rounded-lg overflow-hidden">
-                    <div className="bg-violet-50 px-3 py-2 flex items-center justify-between flex-wrap gap-2">
-                      <span className="text-xs font-medium text-violet-700">
-                        預覽（前 {importPreview.rows.length} 筆，共 {importPreview.totalRows} 筆）
-                      </span>
-                      {importPreview.detectedMonth !== importMonth && (
-                        <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
-                          偵測到月份 {importPreview.detectedMonth}，已自動更新匯入月份
-                        </span>
-                      )}
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs">
-                        <thead className="bg-gray-50 text-gray-500 sticky top-0 z-10">
-                          <tr>
-                            {['來源','姓名','房間','入住日','離店日','房費','狀態'].map(h => (
-                              <th key={h} className="px-3 py-1.5 text-left font-medium">{h}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100">
-                          {importPreview.rows.map((r, i) => (
-                            <tr key={i} className="hover:bg-gray-50">
-                              <td className="px-3 py-1.5">{r.source}</td>
-                              <td className="px-3 py-1.5 font-medium">{r.guestName}</td>
-                              <td className="px-3 py-1.5">{r.roomNo || '—'}</td>
-                              <td className="px-3 py-1.5">{r.checkInDate}</td>
-                              <td className="px-3 py-1.5">{r.checkOutDate}</td>
-                              <td className="px-3 py-1.5 text-right">{(r.roomCharge || 0).toLocaleString('zh-TW')}</td>
-                              <td className="px-3 py-1.5">{r.status}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-
-                {/* 覆蓋確認對話框 */}
-                {importConfirm && (
-                  <div className="border border-red-200 bg-red-50 rounded-lg px-4 py-3">
-                    <p className="text-sm text-red-800 font-medium mb-3">
-                      確定覆蓋？將刪除 <strong>{importWarehouse} / {importMonth}</strong> 現有 <strong>{importConfirm.existingCount} 筆</strong> 資料，再匯入 <strong>{importPreview?.totalRows ?? '？'} 筆</strong>新資料，此操作無法還原。
-                    </p>
-                    <div className="flex gap-2">
-                      <button onClick={doImport} disabled={importing}
-                        className="px-4 py-1.5 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50">
-                        {importing ? '匯入中…' : `確定刪除 ${importConfirm.existingCount} 筆並匯入`}
-                      </button>
-                      <button onClick={() => setImportConfirm(null)} className="px-4 py-1.5 text-sm border border-gray-300 bg-white rounded-lg hover:bg-gray-50">
-                        取消
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* 本次 session 上傳歷史 */}
-                {importHistory.length > 0 && (
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-xs text-gray-400 font-medium">本次工作階段上傳記錄</span>
-                      <button type="button" onClick={() => {
-                        setImportHistory([]);
-                        try { localStorage.removeItem('bnb_import_history'); } catch {}
-                      }} className="text-xs text-gray-300 hover:text-red-500">清除</button>
-                    </div>
-                    <div className="space-y-1">
-                      {importHistory.map((h, i) => (
-                        <div key={i} className="flex flex-wrap items-center gap-3 text-xs text-gray-500 bg-gray-50 px-3 py-1.5 rounded-lg">
-                          <span className="text-gray-400">{h.at}</span>
-                          <span className="font-medium text-gray-700">{h.importMonth} / {h.warehouse}</span>
-                          <span className="text-green-600">匯入 {h.imported} 筆</span>
-                          {h.deleted > 0 && <span className="text-red-500">刪除 {h.deleted} 筆</span>}
-                          {h.skipped > 0 && <span className="text-amber-500">略過重複 {h.skipped} 筆</span>}
-                          <span className="text-gray-300 ml-auto">{h.replace ? '覆蓋' : '追加'}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* 摘要卡 */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 mb-4">
-              {[
-                { label: '筆數', val: recStats.rooms },
-                { label: '房費+消費', val: NT(recStats.revenue) },
-                { label: '訂金匯款', val: NT(recStats.deposit) },
-                { label: '當天匯款', val: NT(recStats.transfer) },
-                { label: '刷卡', val: NT(recStats.card) },
-                { label: '現金', val: NT(recStats.cash) },
-                { label: '住宿卷', val: NT(recStats.voucher) },
-                { label: '刷卡手續費', val: NT(recStats.cardFee) },
-              ].map(c => (
-                <div key={c.label} className="bg-white rounded-xl border border-gray-100 shadow-sm p-3">
-                  <p className="text-xs text-gray-500">{c.label}</p>
-                  <p className="font-bold text-gray-800 text-sm mt-0.5">{c.val}</p>
-                </div>
-              ))}
-            </div>
-
-            {/* 付款完成度橫幅 */}
-            <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 bg-white rounded-xl shadow-sm border border-gray-100 text-sm">
-              <span className="text-gray-500">本月共</span>
-              <span className="font-semibold text-gray-800">{recStats.rooms} 筆</span>
-              <span className="text-gray-300">|</span>
-              <button
-                onClick={() => setFilterPayment(filterPayment === 'filled' ? '' : 'filled')}
-                className={`rounded px-2 py-0.5 transition-colors ${filterPayment === 'filled' ? 'bg-green-100 text-green-800 font-semibold' : 'text-green-600 hover:bg-green-50'}`}>
-                已填付款 {recStats.rooms - recStats.unfilled}
-              </button>
-              <span className="text-gray-300">|</span>
-              <button
-                onClick={() => setFilterPayment(filterPayment === 'unfilled' ? '' : 'unfilled')}
-                className={`rounded px-2 py-0.5 transition-colors ${filterPayment === 'unfilled' ? 'bg-amber-100 text-amber-800 font-semibold' : recStats.unfilled > 0 ? 'text-amber-600 hover:bg-amber-50' : 'text-gray-400 cursor-default'}`}
-                disabled={recStats.unfilled === 0}>
-                未填 {recStats.unfilled} 筆
-              </button>
-              {recStats.complimentary > 0 && (
-                <>
-                  <span className="text-gray-300">|</span>
-                  <span className="text-rose-500">招待 {recStats.complimentary} 筆</span>
-                </>
-              )}
-              <span className="text-gray-300">|</span>
-              <span className="text-slate-500">已鎖帳 <span className={recStats.locked === recStats.rooms && recStats.rooms > 0 ? 'text-green-600 font-semibold' : 'text-slate-700'}>{recStats.locked}</span></span>
-              {recStats.mismatch > 0 && (
-                <>
-                  <span className="text-gray-300">|</span>
-                  <span className="text-red-500 font-medium">金額不符 {recStats.mismatch} 筆</span>
-                </>
-              )}
-              {filterPayment && (
-                <button onClick={() => setFilterPayment('')}
-                  className="ml-auto text-xs text-gray-400 hover:text-gray-600 underline">
-                  清除篩選
-                </button>
-              )}
-            </div>
-
-            {/* 房號分析面板（僅有房號資料時顯示） */}
-            {roomStats.length > 1 && (
-              <div className="mb-3 bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-                <div className="text-xs font-semibold text-gray-500 mb-2">房號統計（本頁資料）</div>
-                <div className="flex flex-wrap gap-2">
-                  {roomStats.map(r => (
-                    <div key={r.roomNo} className="text-xs bg-gray-50 rounded-lg px-3 py-1.5 border border-gray-100">
-                      <span className="font-medium text-gray-700">{r.roomNo}</span>
-                      <span className="ml-1.5 text-indigo-500">{r.bookings}筆</span>
-                      <span className="ml-1 text-teal-500">{r.nights}晚</span>
-                      <span className="ml-1 text-emerald-500">NT${r.revenue.toLocaleString()}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* 批次行動列 */}
-            {selectedIds.size > 0 && (
-              <div className="mb-3 flex flex-wrap items-center gap-3 p-3 bg-amber-50 rounded-xl border border-amber-200">
-                <span className="text-sm font-medium text-amber-800">已選 {selectedIds.size} 筆</span>
-                {/* 狀態批次套用 */}
-                {!editMode && (
-                  <>
-                    <select value={batchField} onChange={e => { setBatchField(e.target.value); setBatchValue(''); }}
-                      className="border rounded-lg px-2 py-1 text-sm focus:ring-2 focus:ring-amber-400 outline-none">
-                      <option value="status">狀態</option>
-                    </select>
-                    <select value={batchValue} onChange={e => setBatchValue(e.target.value)}
-                      className="border rounded-lg px-2 py-1 text-sm focus:ring-2 focus:ring-amber-400 outline-none">
-                      <option value="">選擇狀態</option>
-                      <option value="已入住">已入住</option>
-                      <option value="已退房">已退房</option>
-                      <option value="已預訂">已預訂</option>
-                    </select>
-                    <button onClick={handleBatchApply} disabled={batchApplying}
-                      className="px-3 py-1.5 text-sm rounded-lg bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50">
-                      {batchApplying ? '套用中…' : '套用'}
-                    </button>
-                    <span className="text-gray-300 text-xs">|</span>
-                  </>
-                )}
-                {/* 鎖帳 / 解鎖（需有鎖帳權限） */}
-                {canLock && !editMode && (
-                  <>
-                    <button onClick={() => handleLockToggle('lock')} disabled={locking}
-                      className="px-3 py-1.5 text-sm rounded-lg bg-slate-700 text-white hover:bg-slate-800 disabled:opacity-50 flex items-center gap-1">
-                      <span>🔒</span> 鎖帳
-                    </button>
-                    <button onClick={() => handleLockToggle('unlock')} disabled={locking}
-                      className="px-3 py-1.5 text-sm rounded-lg border border-slate-400 text-slate-600 hover:bg-slate-50 disabled:opacity-50 flex items-center gap-1">
-                      <span>🔓</span> 解鎖
-                    </button>
-                  </>
-                )}
-                <button onClick={() => setSelectedIds(new Set())}
-                  className="text-xs text-gray-500 hover:underline ml-auto">清除選取</button>
-              </div>
-            )}
-
-            {/* Excel 模式提示 */}
-            {editMode && (
-              <div className="mb-3 p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-700 flex items-center gap-2">
-                <span className="font-medium">Excel 模式：</span>
-                Tab 跳下一格 ／ Enter 跳下一行同欄 ／ Esc 取消編輯模式。訂金欄位含後五碼輸入。
-                <span className="ml-auto text-emerald-500">🔒 灰色鎖定列不可編輯</span>
-              </div>
-            )}
-
-            {/* 表格 */}
-            {recLoading ? (
-              <div className="text-center py-16 text-gray-400">載入中…</div>
-            ) : (() => {
-              // 可編輯的列（未刪除、未鎖定）供 Tab 跳格使用
-              const editableRecords = records.filter(r => r.status !== '已刪除' && !r.paymentLocked);
-              // 付款篩選（client-side）
-              const visibleRecords  = filterPayment
-                ? records.filter(r => filterPayment === 'filled' ? r.paymentFilled : !r.paymentFilled)
-                : records;
-              // 逾期未填判斷基準日
-              const today = todayStr();
-
-              return (
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 tbl-wrap">
-                <table className="w-full text-sm">
-                  <thead className="sticky top-0 z-10">
-                    <tr className={`text-xs ${editMode ? 'bg-emerald-50 text-emerald-800' : 'bg-indigo-50 text-indigo-800'}`}>
-                      <th className="px-3 py-2">
-                        <input type="checkbox"
-                          checked={selectedIds.size > 0 && selectedIds.size === records.filter(r => r.status !== '已刪除').length}
-                          onChange={toggleSelectAll}
-                          className="rounded cursor-pointer" />
-                      </th>
-                      <th className="px-3 py-2 text-left font-medium whitespace-nowrap">館別</th>
-                      <th className="px-3 py-2 text-left font-medium whitespace-nowrap">來源</th>
-                      <th className="px-3 py-2 text-left font-medium whitespace-nowrap">姓名</th>
-                      <th className="px-3 py-2 text-left font-medium whitespace-nowrap">房間</th>
-                      <th className="px-3 py-2 text-left font-medium whitespace-nowrap">入住</th>
-                      <th className="px-3 py-2 text-left font-medium whitespace-nowrap">退房</th>
-                      <th className="px-3 py-2 text-left font-medium whitespace-nowrap">房費</th>
-                      <th className="px-3 py-2 text-left font-medium whitespace-nowrap">消費</th>
-                      <th className="px-3 py-2 text-left font-medium whitespace-nowrap">
-                        訂金{editMode && <span className="block text-[10px] font-normal opacity-60">後五碼</span>}
-                      </th>
-                      <th className="px-3 py-2 text-left font-medium whitespace-nowrap">
-                        當天匯款{editMode && <span className="block text-[10px] font-normal opacity-60">後五碼</span>}
-                      </th>
-                      <th className="px-3 py-2 text-left font-medium whitespace-nowrap">刷卡</th>
-                      <th className="px-3 py-2 text-left font-medium whitespace-nowrap">手續費</th>
-                      <th className="px-3 py-2 text-left font-medium whitespace-nowrap">現金</th>
-                      <th className="px-3 py-2 text-left font-medium whitespace-nowrap">住宿卷</th>
-                      <th className="px-3 py-2 text-left font-medium whitespace-nowrap">金流</th>
-                      <th className="px-3 py-2 text-left font-medium whitespace-nowrap">狀態</th>
-                      <th className="px-3 py-2 text-left font-medium whitespace-nowrap">備註</th>
-                      {!editMode && <th className="px-3 py-2 text-center font-medium whitespace-nowrap">操作</th>}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {visibleRecords.length === 0 && (
-                      <tr><td colSpan={19} className="text-center py-10 text-gray-400">
-                        {filterPayment ? `無${filterPayment === 'filled' ? '已填付款' : '未填付款'}記錄` : '無資料'}
-                      </td></tr>
-                    )}
-                    {visibleRecords.map(r => {
-                      const isSelected      = selectedIds.has(r.id);
-                      const isDeleted       = r.status === '已刪除';
-                      const isRowLocked     = !!r.paymentLocked;
-                      const isLocked        = isRowLocked || monthLocked;
-                      const inExcelMode     = editMode && !isDeleted && !isLocked;
-                      const isDirty         = dirtyIds.has(r.id);
-                      const hasRowError     = rowErrors[r.id];
-                      const isOverdueUnpaid = !isDeleted && r.status === '已退房' && !r.paymentFilled && !r.isComplimentary && r.checkOutDate && r.checkOutDate < today;
-                      const payTotal        = Number(r.payDeposit) + Number(r.payTransfer) + Number(r.payCard) + Number(r.payCash) + Number(r.payVoucher);
-                      const chargeTotal     = Number(r.roomCharge) + Number(r.otherCharge);
-                      const paymentMismatch = !isDeleted && r.paymentFilled && !r.isComplimentary && Math.abs(payTotal - chargeTotal) > 0.01;
-
-                      // ── 一般模式：點擊式 inline edit ────────────────
-                      const editCell = (field, colorCls) => {
-                        const isEditing = !editMode && inlineEdit?.id === r.id && inlineEdit?.field === field;
-                        const val = Number(r[field]);
-                        if (isEditing) return (
-                          <input autoFocus type="number" min="0" value={inlineValue}
-                            onChange={e => setInlineValue(e.target.value)}
-                            onBlur={() => handleInlineSave(r.id, field, inlineValue)}
-                            onKeyDown={e => {
-                              if (e.key === 'Enter') handleInlineSave(r.id, field, inlineValue);
-                              if (e.key === 'Escape') setInlineEdit(null);
-                            }}
-                            className="w-20 border border-indigo-400 rounded px-1 py-0.5 text-xs text-right outline-none ring-1 ring-indigo-400" />
-                        );
-                        return (
-                          <span
-                            onClick={() => {
-                              if (isLocked) {
-                                showToast(monthLocked ? `${filterMonth} 已鎖帳，如需修改請先解鎖該月` : '此筆記錄已鎖帳，請點擊右側「解鎖」按鈕', 'error');
-                                return;
-                              }
-                              if (!isDeleted && !editMode) { setInlineEdit({ id: r.id, field }); setInlineValue(val || ''); }
-                            }}
-                            className={`${!isLocked && !editMode ? 'cursor-pointer hover:underline hover:text-indigo-600' : 'cursor-not-allowed'} ${colorCls} ${val > 0 ? '' : 'text-gray-300'}`}
-                            title={isLocked ? (monthLocked ? `${filterMonth} 已鎖帳` : '此筆已鎖帳') : editMode ? '' : '點擊編輯'}>
-                            {val > 0 ? Math.round(val).toLocaleString() : '—'}
-                          </span>
-                        );
-                      };
-
-                      // ── Excel 模式：數字 input ───────────────────────
-                      const excelInput = (field, colorBorder) => {
-                        const val = editMap[r.id]?.[field] ?? '';
-                        return (
-                          <input
-                            id={`pc-${r.id}-${field}`}
-                            type="number" min="0"
-                            value={val}
-                            onChange={e => updateCell(r.id, field, e.target.value)}
-                            onFocus={e => e.target.select()}
-                            onKeyDown={e => handlePayKeyDown(e, r.id, field, editableRecords)}
-                            className={`w-20 border rounded px-1.5 py-0.5 text-xs text-right outline-none focus:ring-1 ${colorBorder} ${isDirty ? 'bg-yellow-50' : 'bg-white'}`}
-                          />
-                        );
-                      };
-
-                      const excelTextInput = (field) => {
-                        const val = editMap[r.id]?.[field] ?? '';
-                        return (
-                          <input
-                            id={`pc-${r.id}-${field}`}
-                            type="text" maxLength={5}
-                            value={val}
-                            onChange={e => updateCell(r.id, field, e.target.value)}
-                            onFocus={e => e.target.select()}
-                            onKeyDown={e => handlePayKeyDown(e, r.id, field, editableRecords)}
-                            placeholder="後五碼"
-                            className={`w-16 border rounded px-1.5 py-0.5 text-xs outline-none focus:ring-1 focus:ring-blue-300 border-blue-200 ${isDirty ? 'bg-yellow-50' : 'bg-white'} text-blue-500 font-mono`}
-                          />
-                        );
-                      };
-
-                      // ── 備註 inline edit ─────────────────────────
-                      const noteCell = () => {
-                        const isEditing = !editMode && inlineEdit?.id === r.id && inlineEdit?.field === 'note';
-                        if (isEditing) return (
-                          <input autoFocus type="text" value={inlineValue}
-                            onChange={e => setInlineValue(e.target.value)}
-                            onBlur={() => handleInlineSave(r.id, 'note', inlineValue)}
-                            onKeyDown={e => {
-                              if (e.key === 'Enter') handleInlineSave(r.id, 'note', inlineValue);
-                              if (e.key === 'Escape') setInlineEdit(null);
-                            }}
-                            className="w-28 border border-indigo-400 rounded px-1 py-0.5 text-xs outline-none ring-1 ring-indigo-400"
-                          />
-                        );
-                        return (
-                          <span
-                            onClick={() => { if (!isDeleted && !editMode) { setInlineEdit({ id: r.id, field: 'note' }); setInlineValue(r.note || ''); } }}
-                            className={`block max-w-[112px] truncate text-xs ${r.note ? 'text-gray-500 cursor-pointer hover:text-indigo-600' : 'text-gray-200 cursor-pointer'}`}
-                            title={r.note || '點擊新增備註'}>
-                            {r.note || '—'}
-                          </span>
-                        );
-                      };
-
-                      const isPaymentComplete = !isDeleted && !isLocked && r.paymentFilled && !paymentMismatch;
-
-                      return (
-                        <tr key={r.id}
-                          title={hasRowError || undefined}
-                          className={`
-                          ${isSelected ? 'bg-amber-50' : isLocked ? 'bg-slate-50' : paymentMismatch ? 'bg-orange-50' : isOverdueUnpaid ? 'bg-red-50' : isPaymentComplete ? 'bg-gray-100 text-gray-400' : 'hover:bg-gray-50'}
-                          ${isDeleted ? 'opacity-40' : ''}
-                          ${hasRowError ? 'ring-2 ring-inset ring-red-400' : editMode && isDirty ? 'ring-1 ring-inset ring-emerald-200' : ''}
-                        `}>
-                          <td className="px-3 py-2">
-                            {!isDeleted && (
-                              <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(r.id)}
-                                className="rounded cursor-pointer" />
-                            )}
-                          </td>
-                          <td className="px-3 py-2 text-gray-400 text-xs whitespace-nowrap">{r.warehouse}</td>
-                          <td className="px-3 py-2 whitespace-nowrap">
-                            <span className={`text-xs px-1.5 py-0.5 rounded ${SOURCE_COLORS[r.source] || SOURCE_COLORS['其他']}`}>{r.source}</span>
-                          </td>
-                          <td className="px-3 py-2 whitespace-nowrap max-w-[140px]">
-                            <span className="truncate">{r.guestName}</span>
-                            {r.isComplimentary && <span className="ml-1 text-[10px] bg-rose-100 text-rose-600 px-1 py-0.5 rounded">招待</span>}
-                          </td>
-                          <td className="px-3 py-2 text-gray-500 text-xs">{r.roomNo || '—'}</td>
-                          <td className="px-3 py-2 text-gray-600 text-xs whitespace-nowrap">
-                            {r.checkInDate}
-                            {r.checkOutDate && r.checkOutDate.substring(0, 7) !== r.importMonth && (
-                              <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-orange-100 text-orange-600 font-medium"
-                                title={`退房日 ${r.checkOutDate} 與入住月 ${r.importMonth} 不同月份；此訂單收入整筆計入入住月`}>跨月</span>
-                            )}
-                          </td>
-                          <td className="px-3 py-2 text-gray-600 text-xs whitespace-nowrap">{r.checkOutDate}</td>
-                          <td className={`px-3 py-2 text-right ${paymentMismatch ? 'text-red-600' : ''}`}>
-                            {Math.round(Number(r.roomCharge)).toLocaleString()}
-                            {paymentMismatch && (
-                              <div className="text-[10px] text-red-500 whitespace-nowrap" title={`收款合計 ${Math.round(payTotal).toLocaleString()} ≠ 房費+消費 ${Math.round(chargeTotal).toLocaleString()}`}>
-                                差 {(payTotal - chargeTotal) > 0 ? '+' : ''}{Math.round(payTotal - chargeTotal).toLocaleString()}
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-3 py-2 text-right text-gray-500">{Number(r.otherCharge) > 0 ? Math.round(Number(r.otherCharge)).toLocaleString() : '—'}</td>
-
-                          {/* 訂金 + 後五碼（點擊開啟付款 Modal 以填寫日期+後五碼） */}
-                          <td className="px-3 py-1.5 text-right">
-                            {inExcelMode ? (
-                              <div className="flex flex-col gap-0.5 items-end">
-                                {excelInput('payDeposit', 'border-blue-300 focus:ring-blue-300')}
-                                <input
-                                  id={`pc-${r.id}-depositDate`}
-                                  type="date"
-                                  value={editMap[r.id]?.depositDate ?? (r.depositDate || '')}
-                                  onChange={e => updateCell(r.id, 'depositDate', e.target.value)}
-                                  onKeyDown={e => handlePayKeyDown(e, r.id, 'depositDate', editableRecords)}
-                                  className={`w-32 border rounded px-1.5 py-0.5 text-xs outline-none focus:ring-1 border-blue-200 focus:ring-blue-300 ${(editMap[r.id]?.depositDate !== undefined) ? 'bg-yellow-50' : 'bg-white'} text-blue-500`}
-                                />
-                                {excelTextInput('depositLast5')}
-                              </div>
-                            ) : (() => {
-                              const depVal = Math.round(Number(r.payDeposit));
-                              return (
-                                <div>
-                                  <span
-                                    onClick={() => {
-                                      if (isLocked) { showToast(monthLocked ? `${filterMonth} 已鎖帳，如需修改請先解鎖該月` : '此筆記錄已鎖帳，請點擊右側「解鎖」按鈕', 'error'); return; }
-                                      if (!isDeleted && !editMode) setEditRecord(r);
-                                    }}
-                                    className={`${!isLocked && !editMode ? 'cursor-pointer hover:underline hover:text-indigo-600' : 'cursor-not-allowed'} text-blue-600 ${depVal > 0 ? '' : 'text-gray-300'}`}
-                                    title={isLocked ? (monthLocked ? `${filterMonth} 已鎖帳` : '此筆已鎖帳') : editMode ? '' : '點擊開啟付款明細'}>
-                                    {depVal > 0 ? depVal.toLocaleString() : '—'}
-                                  </span>
-                                  {r.depositLast5 && <div className="text-[10px] text-blue-300 font-mono">{r.depositLast5}</div>}
-                                  {r.depositDate && <div className="text-[10px] text-blue-300">{r.depositDate}</div>}
-                                </div>
-                              );
-                            })()}
-                          </td>
-
-                          {/* 當天匯款 */}
-                          <td className="px-3 py-1.5 text-right">
-                            {inExcelMode ? (
-                              <div className="flex flex-col gap-0.5 items-end">
-                                {excelInput('payTransfer', 'border-teal-300 focus:ring-teal-300')}
-                                <input
-                                  id={`pc-${r.id}-transferDate`}
-                                  type="date"
-                                  value={editMap[r.id]?.transferDate ?? (r.transferDate || '')}
-                                  onChange={e => updateCell(r.id, 'transferDate', e.target.value)}
-                                  onKeyDown={e => handlePayKeyDown(e, r.id, 'transferDate', editableRecords)}
-                                  className={`w-32 border rounded px-1.5 py-0.5 text-xs outline-none focus:ring-1 border-teal-200 focus:ring-teal-300 ${(editMap[r.id]?.transferDate !== undefined) ? 'bg-yellow-50' : 'bg-white'} text-teal-500`}
-                                />
-                                <input
-                                  id={`pc-${r.id}-transferLast5`}
-                                  type="text" maxLength={5}
-                                  value={editMap[r.id]?.transferLast5 ?? (r.transferLast5 || '')}
-                                  onChange={e => updateCell(r.id, 'transferLast5', e.target.value)}
-                                  onKeyDown={e => handlePayKeyDown(e, r.id, 'transferLast5', editableRecords)}
-                                  placeholder="後五碼"
-                                  className={`w-16 border rounded px-1.5 py-0.5 text-xs outline-none focus:ring-1 focus:ring-teal-300 border-teal-200 ${isDirty ? 'bg-yellow-50' : 'bg-white'} text-teal-500 font-mono`}
-                                />
-                              </div>
-                            ) : (() => {
-                              const trnVal = Math.round(Number(r.payTransfer));
-                              return (
-                                <div>
-                                  <span
-                                    onClick={() => {
-                                      if (isLocked) { showToast(monthLocked ? `${filterMonth} 已鎖帳，如需修改請先解鎖該月` : '此筆記錄已鎖帳，請點擊右側「解鎖」按鈕', 'error'); return; }
-                                      if (!isDeleted && !editMode) setEditRecord(r);
-                                    }}
-                                    className={`${!isLocked && !editMode ? 'cursor-pointer hover:underline hover:text-indigo-600' : 'cursor-not-allowed'} text-teal-600 ${trnVal > 0 ? '' : 'text-gray-300'}`}
-                                    title={isLocked ? (monthLocked ? `${filterMonth} 已鎖帳` : '此筆已鎖帳') : editMode ? '' : '點擊開啟付款明細'}>
-                                    {trnVal > 0 ? trnVal.toLocaleString() : '—'}
-                                  </span>
-                                  {r.transferLast5 && <div className="text-[10px] text-teal-300 font-mono">{r.transferLast5}</div>}
-                                  {r.transferDate && <div className="text-[10px] text-teal-300">{r.transferDate}</div>}
-                                </div>
-                              );
-                            })()}
-                          </td>
-
-                          {/* 刷卡 */}
-                          <td className="px-3 py-1.5 text-right">
-                            {inExcelMode ? excelInput('payCard', 'border-purple-300 focus:ring-purple-300') : editCell('payCard', 'text-purple-600')}
-                          </td>
-
-                          {/* 手續費（唯讀） */}
-                          <td className="px-3 py-2 text-right text-red-400 text-xs">
-                            {Number(r.cardFee) > 0 ? Math.round(Number(r.cardFee)).toLocaleString() : '—'}
-                          </td>
-
-                          {/* 現金 */}
-                          <td className="px-3 py-1.5 text-right">
-                            {inExcelMode ? (
-                              <div className="flex flex-col gap-0.5 items-end">
-                                {excelInput('payCash', 'border-green-300 focus:ring-green-300')}
-                                <label className="flex items-center gap-1 text-[10px] cursor-pointer select-none"
-                                  title="勾選表示此現金由老闆直接收取">
-                                  <input type="checkbox"
-                                    checked={(editMap[r.id]?.cashDestination ?? r.cashDestination) === '老闆收取'}
-                                    onChange={e => updateCell(r.id, 'cashDestination', e.target.checked ? '老闆收取' : '')}
-                                    className="w-3 h-3 accent-orange-500 cursor-pointer" />
-                                  <span className={(editMap[r.id]?.cashDestination ?? r.cashDestination) === '老闆收取' ? 'text-orange-600 font-medium' : 'text-gray-400'}>老闆收現</span>
-                                </label>
-                              </div>
-                            ) : editCell('payCash', 'text-green-600')}
-                          </td>
-
-                          {/* 住宿卷 */}
-                          <td className="px-3 py-1.5 text-right">
-                            {inExcelMode ? excelInput('payVoucher', 'border-amber-300 focus:ring-amber-300') : editCell('payVoucher', 'text-amber-600')}
-                          </td>
-
-                          {/* 金流狀態 */}
-                          <td className="px-3 py-1.5">
-                            <div className="flex flex-col gap-0.5 text-[10px] leading-tight">
-                              {/* 訂金 */}
-                              {r.depositCashTxId ? (
-                                <span className={`px-1 py-0.5 rounded ${r.depositMatched ? 'bg-blue-100 text-blue-700' : 'bg-blue-50 text-blue-400'}`}
-                                  title={r.depositMatched ? '訂金已對帳' : '訂金已記帳，待對帳'}>
-                                  匯{r.depositMatched ? '✓' : '…'}
-                                </span>
-                              ) : Number(r.payDeposit) > 0 ? (
-                                <span className="px-1 py-0.5 rounded bg-gray-50 text-gray-300" title="訂金尚未填入匯款日期">匯?</span>
-                              ) : null}
-                              {/* 當天匯款 */}
-                              {r.transferCashTxId ? (
-                                <span className={`px-1 py-0.5 rounded ${r.transferMatched ? 'bg-teal-100 text-teal-700' : 'bg-teal-50 text-teal-400'}`}
-                                  title={r.transferMatched ? '當天匯款已對帳' : '當天匯款已記帳，待對帳'}>
-                                  轉{r.transferMatched ? '✓' : '…'}
-                                </span>
-                              ) : Number(r.payTransfer) > 0 ? (
-                                <span className="px-1 py-0.5 rounded bg-gray-50 text-gray-300" title="當天匯款尚未填入匯款日期">轉?</span>
-                              ) : null}
-                              {/* 刷卡 */}
-                              {r.cardCashTxId ? (
-                                <span className={`px-1 py-0.5 rounded ${r.cardMatched ? 'bg-purple-100 text-purple-700' : 'bg-purple-50 text-purple-400'}`}
-                                  title={r.cardMatched ? `刷卡已對帳 (${r.cardSettlementDate || ''})` : `刷卡已記帳，入帳日 ${r.cardSettlementDate || '未填'}`}>
-                                  卡{r.cardMatched ? '✓' : r.cardSettlementDate ? `${r.cardSettlementDate.slice(5)}` : '…'}
-                                </span>
-                              ) : Number(r.payCard) > 0 ? (
-                                <span className="px-1 py-0.5 rounded bg-gray-50 text-gray-300" title="刷卡尚未填入入帳日">卡?</span>
-                              ) : null}
-                              {/* 現金 */}
-                              {r.cashCashTxId ? (
-                                <span className={`px-1 py-0.5 rounded ${r.cashMatched ? 'bg-green-100 text-green-700' : 'bg-green-50 text-green-400'}`}
-                                  title={r.cashMatched ? '現金存帳已對帳' : '現金存帳已記帳，待對帳'}>
-                                  存{r.cashMatched ? '✓' : '…'}
-                                </span>
-                              ) : r.cashDestination === '老闆收取' && Number(r.payCash) > 0 ? (
-                                <span className="px-1 py-0.5 rounded bg-orange-50 text-orange-500" title="老闆收取">老闆</span>
-                              ) : Number(r.payCash) > 0 ? (
-                                <span className="px-1 py-0.5 rounded bg-gray-50 text-gray-300" title="現金尚未設定去向">現?</span>
-                              ) : null}
-                            </div>
-                          </td>
-
-                          {/* 狀態 + 鎖帳標示 */}
-                          <td className="px-3 py-2">
-                            <span className={`text-xs px-1.5 py-0.5 rounded ${getStatusColor(r.status)}`}>{r.status || '—'}</span>
-                            {isRowLocked && <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-red-100 text-red-600 font-medium" title={r.paymentLockedBy ? `鎖帳人：${r.paymentLockedBy}` : '此筆已鎖帳'}>已鎖帳</span>}
-                            {!isRowLocked && monthLocked && <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-amber-100 text-amber-600 font-medium" title={`${filterMonth} 整月已鎖帳`}>月鎖</span>}
-                            {!r.paymentFilled && !isDeleted && !isLocked && (
-                              <span className="ml-1 text-[10px] text-amber-500">未填</span>
-                            )}
-                            {paymentMismatch && (
-                              <span className="ml-1 text-[10px] text-red-500" title={`收款 ${Math.round(payTotal).toLocaleString()} ≠ 費用 ${Math.round(chargeTotal).toLocaleString()}`}>金額不符</span>
-                            )}
-                          </td>
-
-                          {/* 備註（點擊 inline 編輯） */}
-                          <td className="px-3 py-2">{noteCell()}</td>
-
-                          {/* 操作欄（非 Excel 模式才顯示） */}
-                          {!editMode && (
-                            <td className="px-3 py-2 whitespace-nowrap">
-                              {isDeleted ? (
-                                <button onClick={() => handleRestore(r.id, r.guestName)}
-                                  title="還原此筆訂房記錄"
-                                  className="text-xs px-2 py-1 rounded border border-green-300 text-green-600 hover:bg-green-50">
-                                  還原
-                                </button>
-                              ) : isLocked ? (
-                                <button onClick={() => handleUnlockRow(r.id, r.guestName)}
-                                  title="解除此筆付款鎖定"
-                                  className="text-xs px-2 py-1 rounded border border-amber-300 text-amber-600 hover:bg-amber-50">
-                                  🔓 解鎖
-                                </button>
-                              ) : (
-                                <>
-                                  <button onClick={() => setEditBooking(r)}
-                                    title="編輯訂房資料"
-                                    className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-50 mr-1">
-                                    編輯
-                                  </button>
-                                  <button onClick={() => setEditRecord(r)}
-                                    title="編輯付款明細"
-                                    className="text-xs px-2 py-1 rounded border border-indigo-300 text-indigo-600 hover:bg-indigo-50 mr-1">
-                                    付款
-                                  </button>
-                                  <button onClick={() => handleDelete(r.id, r.guestName)}
-                                    title="刪除此筆訂房（可還原）"
-                                    className="text-xs px-2 py-1 rounded border border-red-200 text-red-400 hover:bg-red-50">
-                                    刪除
-                                  </button>
-                                </>
-                              )}
-                            </td>
-                          )}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              );
-            })()}
-            {/* 分頁控制 */}
-            {recTotal > REC_PAGE_SIZE && (
-              <div className="flex items-center justify-between mt-3 px-1">
-                <span className="text-xs text-gray-400">
-                  顯示第 {(recPage - 1) * REC_PAGE_SIZE + 1}–{Math.min(recPage * REC_PAGE_SIZE, recTotal)} 筆，共 {recTotal} 筆
-                </span>
-                <div className="flex gap-1">
-                  <button onClick={() => fetchRecords(recPage - 1)} disabled={recPage <= 1}
-                    className="px-2 py-1 text-xs rounded border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40">
-                    ← 上一頁
-                  </button>
-                  <button onClick={() => fetchRecords(recPage + 1)} disabled={recPage * REC_PAGE_SIZE >= recTotal}
-                    className="px-2 py-1 text-xs rounded border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40">
-                    下一頁 →
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
+          <RecordsTab
+            records={records}
+            recLoading={recLoading} recError={recError} recPage={recPage} recTotal={recTotal}
+            filterMonth={filterMonth} setFilterMonth={setFilterMonth}
+            filterSource={filterSource} setFilterSource={setFilterSource}
+            filterStatus={filterStatus} setFilterStatus={setFilterStatus}
+            filterWarehouse={filterWarehouse} setFilterWarehouse={setFilterWarehouse}
+            filterPayment={filterPayment} setFilterPayment={setFilterPayment}
+            selectedIds={selectedIds} setSelectedIds={setSelectedIds}
+            batchField={batchField} setBatchField={setBatchField}
+            batchValue={batchValue} setBatchValue={setBatchValue}
+            batchApplying={batchApplying}
+            inlineEdit={inlineEdit} setInlineEdit={setInlineEdit}
+            editMode={editMode} editMap={editMap} dirtyIds={dirtyIds}
+            batchSaving={batchSaving} locking={locking} rowErrors={rowErrors} roomNoList={roomNoList}
+            fetchRecords={fetchRecords}
+            handleBatchApply={handleBatchApply} handleInlineSave={handleInlineSave}
+            enterEditMode={enterEditMode} cancelEditMode={cancelEditMode}
+            updateCell={updateCell} focusPayCell={focusPayCell}
+            handlePayKeyDown={handlePayKeyDown} saveAllEdits={saveAllEdits}
+            handleLockToggle={handleLockToggle} lockAllFilled={lockAllFilled}
+            handleUnlockRow={handleUnlockRow} handleDelete={handleDelete} handleRestore={handleRestore}
+            editRecord={editRecord} setEditRecord={setEditRecord}
+            editBooking={editBooking} setEditBooking={setEditBooking}
+            addBookingOpen={addBookingOpen} setAddBookingOpen={setAddBookingOpen}
+            importMonth={importMonth} setImportMonth={setImportMonth}
+            importWarehouse={importWarehouse} setImportWarehouse={setImportWarehouse}
+            importFile={importFile} setImportFile={setImportFile}
+            importReplace={importReplace} setImportReplace={setImportReplace}
+            importPreview={importPreview} setImportPreview={setImportPreview}
+            importResult={importResult} setImportResult={setImportResult}
+            importConfirm={importConfirm} setImportConfirm={setImportConfirm}
+            showImportPanel={showImportPanel} setShowImportPanel={setShowImportPanel}
+            importing={importing}
+            importHistory={importHistory} setImportHistory={setImportHistory}
+            handleFileSelect={handleFileSelect}
+            handleImport={handleImport}
+            doImport={doImport}
+            canLock={canLock}
+            isLocked={isLocked}
+            monthLocked={monthLocked}
+            warehouseList={warehouseList}
+            recStats={recStats}
+            roomStats={roomStats}
+            setActiveTab={setActiveTab} router={router}
+            doPrint={doPrint}
+            onGoToPayAudit={() => { setActiveTab('payAudit'); router.replace('?tab=payAudit', { scroll: false }); }}
+            onGoToDeposit={() => { setActiveTab('deposit'); router.replace('?tab=deposit', { scroll: false }); }}
+          />
         )}
 
         {/* ══ Tab: 每日收入 ══ */}
         {activeTab === 'analytics' && analyticsSub === 'dailyRev' && (
-          <div>
-            {/* 搜尋列 */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4 flex flex-wrap gap-3 items-end">
-              <div>
-                <label htmlFor="f-6" className="block text-xs text-gray-500 mb-1">月份</label>
-                <input id="f-6" type="month" value={drMonth} onChange={e => setDrMonth(e.target.value)} className={inputCls} />
-              </div>
-              <div>
-                <label htmlFor="f-7" className="block text-xs text-gray-500 mb-1">館別</label>
-                <select id="f-7" value={drWarehouse} onChange={e => setDrWarehouse(e.target.value)} className={inputCls}>
-                  {(warehouseList.length ? warehouseList : [drWarehouse]).map(w => <option key={w} value={w}>{w}</option>)}
-                </select>
-                <WhQuickBtns list={warehouseList} value={drWarehouse} onChange={setDrWarehouse} />
-              </div>
-              <button onClick={fetchDailyRevenue} disabled={drLoading}
-                className={`${btnCls} bg-indigo-50 text-indigo-700 disabled:opacity-40`}>
-                {drLoading ? '查詢中…' : '查詢'}
-              </button>
-              {drData && (
-                <>
-                  <div className="ml-auto flex gap-2">
-                    <ExportButtons
-                      data={(drData?.days || []).map(d => ({
-                        ...d,
-                        revenue: d.roomCharge + d.otherCharge,
-                        netRevenue: d.roomCharge + d.otherCharge - d.cardFee,
-                        dateLabel: `${d.day}日`,
-                      }))}
-                      columns={[
-                        { header: '日期',     key: 'dateLabel' },
-                        { header: '筆數',     key: 'count',       format: 'number' },
-                        { header: '房費',     key: 'roomCharge',  format: 'number' },
-                        { header: '消費',     key: 'otherCharge', format: 'number' },
-                        { header: '營收合計', key: 'revenue',     format: 'number' },
-                        { header: '訂金',     key: 'payDeposit',  format: 'number' },
-                        { header: '當天匯款', key: 'payTransfer', format: 'number' },
-                        { header: '刷卡',     key: 'payCard',     format: 'number' },
-                        { header: '現金',     key: 'payCash',     format: 'number' },
-                        { header: '住宿卷',   key: 'payVoucher',  format: 'number' },
-                        { header: '手續費',   key: 'cardFee',     format: 'number' },
-                      ]}
-                      filename={`每日收入_${drMonth}`}
-                      title={`每日收入 ${drMonth}（${drWarehouse}）`}
-                    />
-                    <button
-                      onClick={() => {
-                        const cols = ['日期','筆數','房費','消費','營收','訂金','當天匯款','刷卡','現金','住宿卷','手續費'];
-                        const rows = (drData?.days || []).filter(d => d.count > 0).map(d => [
-                          `${d.day}日`,
-                          d.count,
-                          d.roomCharge.toLocaleString(),
-                          d.otherCharge > 0 ? d.otherCharge.toLocaleString() : '',
-                          (d.roomCharge + d.otherCharge).toLocaleString(),
-                          d.payDeposit  > 0 ? d.payDeposit.toLocaleString()  : '',
-                          d.payTransfer > 0 ? d.payTransfer.toLocaleString() : '',
-                          d.payCard     > 0 ? d.payCard.toLocaleString()     : '',
-                          d.payCash     > 0 ? d.payCash.toLocaleString()     : '',
-                          d.payVoucher  > 0 ? d.payVoucher.toLocaleString()  : '',
-                          d.cardFee     > 0 ? d.cardFee.toLocaleString()     : '',
-                        ]);
-                        const t = drData.totals;
-                        rows.push(['合計', t.count,
-                          t.roomCharge.toLocaleString(), t.otherCharge.toLocaleString(),
-                          (t.roomCharge + t.otherCharge).toLocaleString(),
-                          t.payDeposit.toLocaleString(), t.payTransfer.toLocaleString(), t.payCard.toLocaleString(),
-                          t.payCash.toLocaleString(), t.payVoucher.toLocaleString(),
-                          t.cardFee.toLocaleString(),
-                        ]);
-                        doPrint(`每日收入 ${drMonth}（${drWarehouse}）`, cols, rows);
-                      }}
-                      className={`${btnCls} text-gray-600`}
-                    >列印</button>
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* 摘要卡 */}
-            {drData && (
-              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 mb-4">
-                {[
-                  { label: '營業天數', val: drData.days.filter(d => d.count > 0).length, color: '' },
-                  { label: '總筆數',   val: drData.totals.count, color: '' },
-                  { label: '房費',     val: NT(drData.totals.roomCharge), color: 'text-indigo-700' },
-                  { label: '消費',     val: NT(drData.totals.otherCharge), color: 'text-gray-600' },
-                  { label: '訂金',     val: NT(drData.totals.payDeposit),  color: 'text-blue-600' },
-                  { label: '當天匯款', val: NT(drData.totals.payTransfer), color: 'text-teal-600' },
-                  { label: '刷卡',     val: NT(drData.totals.payCard),     color: 'text-purple-600' },
-                  { label: '現金',     val: NT(drData.totals.payCash),     color: 'text-green-600' },
-                  { label: '手續費',   val: NT(drData.totals.cardFee),     color: 'text-red-400' },
-                ].map(c => (
-                  <div key={c.label} className="bg-white rounded-xl border border-gray-100 shadow-sm p-3">
-                    <p className="text-xs text-gray-500">{c.label}</p>
-                    <p className={`font-bold text-sm mt-0.5 ${c.color}`}>{c.val}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* 每日收入表格 */}
-            {drLoading ? (
-              <div className="text-center py-16 text-gray-400">載入中…</div>
-            ) : !drData ? (
-              <div className="text-center py-16 text-gray-400">請選擇月份後按「查詢」</div>
-            ) : (
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 tbl-wrap">
-                <table className="w-full text-sm">
-                  <thead className="sticky top-0 z-10 bg-indigo-50">
-                    <tr className="bg-indigo-50 text-indigo-800 text-xs">
-                      {['日期','筆數','房費','消費','營收合計','訂金','當天匯款','刷卡','現金','住宿卷','手續費',''].map(h => (
-                        <th key={h} className="px-3 py-2.5 text-right first:text-left font-medium whitespace-nowrap">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {drData.days.map(d => {
-                      const rev = d.roomCharge + d.otherCharge;
-                      const hasData = d.count > 0;
-                      const isExpanded = drExpandDay === d.day;
-                      return (
-                        <React.Fragment key={d.day}>
-                          <tr className={`${hasData ? 'hover:bg-gray-50 cursor-pointer' : 'text-gray-300'} transition-colors`}
-                            onClick={() => hasData && setDrExpandDay(isExpanded ? null : d.day)}>
-                            <td className="px-3 py-2 font-medium text-gray-700">
-                              <span className={hasData ? '' : 'text-gray-300'}>{d.day}日</span>
-                              {hasData && (
-                                <span className="ml-1.5 text-[10px] text-gray-400">{isExpanded ? '▼' : '▶'}</span>
-                              )}
-                            </td>
-                            <td className="px-3 py-2 text-right">{hasData ? d.count : '—'}</td>
-                            <td className="px-3 py-2 text-right text-indigo-700">{hasData ? d.roomCharge.toLocaleString() : '—'}</td>
-                            <td className="px-3 py-2 text-right text-gray-500">{d.otherCharge > 0 ? d.otherCharge.toLocaleString() : '—'}</td>
-                            <td className="px-3 py-2 text-right font-semibold">{hasData ? rev.toLocaleString() : '—'}</td>
-                            <td className="px-3 py-2 text-right text-blue-600">{d.payDeposit > 0 ? d.payDeposit.toLocaleString() : '—'}</td>
-                            <td className="px-3 py-2 text-right text-teal-600">{d.payTransfer > 0 ? d.payTransfer.toLocaleString() : '—'}</td>
-                            <td className="px-3 py-2 text-right text-purple-600">{d.payCard > 0 ? d.payCard.toLocaleString() : '—'}</td>
-                            <td className="px-3 py-2 text-right text-green-600">{d.payCash > 0 ? d.payCash.toLocaleString() : '—'}</td>
-                            <td className="px-3 py-2 text-right text-amber-600">{d.payVoucher > 0 ? d.payVoucher.toLocaleString() : '—'}</td>
-                            <td className="px-3 py-2 text-right text-red-400">{d.cardFee > 0 ? `(${d.cardFee.toLocaleString()})` : '—'}</td>
-                            <td className="px-3 py-2 w-4"></td>
-                          </tr>
-                          {isExpanded && d.bookings.map((b, i) => (
-                            <tr key={`${d.day}-${i}`} className="bg-gray-50/70">
-                              <td className="px-3 py-1.5 pl-8 text-xs text-gray-400" colSpan={2}>
-                                <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] mr-1.5 ${
-                                  b.source === 'Booking' ? 'bg-indigo-100 text-indigo-600' : 'bg-amber-100 text-amber-600'
-                                }`}>{b.source}</span>
-                                {b.guestName}
-                              </td>
-                              <td className="px-3 py-1.5 text-right text-xs text-gray-500">{b.roomCharge.toLocaleString()}</td>
-                              <td className="px-3 py-1.5 text-xs text-gray-400">{b.roomNo || ''}</td>
-                              <td colSpan={8}></td>
-                            </tr>
-                          ))}
-                        </React.Fragment>
-                      );
-                    })}
-                    {/* 合計列 */}
-                    {(() => {
-                      const t = drData.totals;
-                      return (
-                        <tr className="bg-indigo-50 font-bold text-indigo-800">
-                          <td className="px-3 py-2.5">合計</td>
-                          <td className="px-3 py-2.5 text-right">{t.count}</td>
-                          <td className="px-3 py-2.5 text-right">{Math.round(t.roomCharge).toLocaleString()}</td>
-                          <td className="px-3 py-2.5 text-right">{Math.round(t.otherCharge).toLocaleString()}</td>
-                          <td className="px-3 py-2.5 text-right">{Math.round(t.roomCharge + t.otherCharge).toLocaleString()}</td>
-                          <td className="px-3 py-2.5 text-right">{Math.round(t.payDeposit).toLocaleString()}</td>
-                          <td className="px-3 py-2.5 text-right">{Math.round(t.payTransfer).toLocaleString()}</td>
-                          <td className="px-3 py-2.5 text-right">{Math.round(t.payCard).toLocaleString()}</td>
-                          <td className="px-3 py-2.5 text-right">{Math.round(t.payCash).toLocaleString()}</td>
-                          <td className="px-3 py-2.5 text-right">{Math.round(t.payVoucher).toLocaleString()}</td>
-                          <td className="px-3 py-2.5 text-right">({Math.round(t.cardFee).toLocaleString()})</td>
-                          <td className="px-3 py-2.5"></td>
-                        </tr>
-                      );
-                    })()}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+          <DailyRevTab
+            drMonth={drMonth} setDrMonth={setDrMonth}
+            drWarehouse={drWarehouse} setDrWarehouse={setDrWarehouse}
+            drData={drData} drLoading={drLoading} drError={drError}
+            drExpandDay={drExpandDay} setDrExpandDay={setDrExpandDay}
+            fetchDailyRevenue={fetchDailyRevenue}
+            warehouseList={warehouseList}
+            doPrint={doPrint}
+          />
         )}
 
         {/* ══ Tab: 月收入總表 ══ */}
         {activeTab === 'analytics' && analyticsSub === 'monthly' && (
-          <div>
-            <div className="flex flex-wrap items-center gap-3 mb-4">
-              <label htmlFor="f-8" className="text-sm text-gray-600">年份</label>
-              <select id="f-8" value={summaryYear} onChange={e => setSummaryYear(e.target.value)} className={inputCls}>
-                {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
-              </select>
-              <label htmlFor="f-28" className="text-sm text-gray-600">館別</label>
-              <select id="f-28" value={summaryWarehouse} onChange={e => setSummaryWarehouse(e.target.value)} className={inputCls}>
-                <option value="">全部</option>
-                {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
-              </select>
-              <WhQuickBtns list={warehouseList} value={summaryWarehouse} onChange={setSummaryWarehouse} />
-              <button onClick={fetchSummary} className={`${btnCls} bg-indigo-50 text-indigo-700`}>重新整理</button>
-              <div className="ml-auto flex gap-2">
-                <ExportButtons
-                  data={summaryRows}
-                  columns={MONTHLY_EXPORT_COLS}
-                  filename={`月收入總表_${summaryYear}`}
-                  title={`月收入總表 ${summaryYear}`}
-                />
-                <button
-                  onClick={() => doPrint(
-                    `月收入總表 ${summaryYear}`,
-                    MONTHLY_EXPORT_COLS.map(c => c.header),
-                    summaryRows.map(r => MONTHLY_EXPORT_COLS.map(c => r[c.key] ?? ''))
-                  )}
-                  className={`${btnCls} text-gray-600`}
-                >列印</button>
-              </div>
-            </div>
-
-            <p className="text-xs text-gray-400 mb-3">
-              ※ 依「入住月份」分組；跨月入住（如月底入住隔月退房）整筆計入入住當月，退房月不另計。訂房明細中標有
-              <span className="mx-1 px-1 py-0.5 rounded bg-orange-100 text-orange-600 text-[10px] font-medium">跨月</span>
-              的訂單即為此情況。
-            </p>
-            {summaryLoading ? (
-              <div className="text-center py-16 text-gray-400">載入中…</div>
-            ) : (
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 tbl-wrap">
-                <table className="w-full text-sm">
-                  <thead className="sticky top-0 z-10 bg-indigo-50">
-                    <tr className="bg-indigo-50 text-indigo-800 text-xs">
-                      {['月份','間數','住宿房費','其他消費','訂金匯款','當天匯款','刷卡','現金','住宿卷','手續費','淨收入','鎖帳'].map(h => (
-                        <th key={h} className="px-3 py-2 text-right first:text-left font-medium whitespace-nowrap">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {summaryRows.length === 0 && (
-                      <tr><td colSpan={12} className="text-center py-10 text-gray-400">無資料</td></tr>
-                    )}
-                    {summaryRows.map(r => {
-                      const lockRatio = r.rooms > 0 ? (r.lockedCount || 0) / r.rooms : 0;
-                      const lockColor = lockRatio === 1 ? 'text-green-600 font-semibold' : lockRatio > 0 ? 'text-amber-600' : 'text-gray-300';
-                      return (
-                      <tr key={r.month} className="hover:bg-gray-50">
-                        <td className="px-3 py-2 font-medium">{r.month}</td>
-                        <td className="px-3 py-2 text-right">{r.rooms}</td>
-                        <td className="px-3 py-2 text-right">{Math.round(r.totalRevenue).toLocaleString()}</td>
-                        <td className="px-3 py-2 text-right text-gray-500">{Math.round(r.otherCharge).toLocaleString()}</td>
-                        <td className="px-3 py-2 text-right text-blue-600">{Math.round(r.payDeposit).toLocaleString()}</td>
-                        <td className="px-3 py-2 text-right text-teal-600">{Math.round(r.payTransfer).toLocaleString()}</td>
-                        <td className="px-3 py-2 text-right text-purple-600">{Math.round(r.payCard).toLocaleString()}</td>
-                        <td className="px-3 py-2 text-right text-green-600">{Math.round(r.payCash).toLocaleString()}</td>
-                        <td className="px-3 py-2 text-right text-amber-600">{Math.round(r.payVoucher).toLocaleString()}</td>
-                        <td className="px-3 py-2 text-right text-red-400">({Math.round(r.cardFee).toLocaleString()})</td>
-                        <td className="px-3 py-2 text-right font-semibold text-indigo-700">{Math.round(r.netRevenue).toLocaleString()}</td>
-                        <td className={`px-3 py-2 text-right text-xs ${lockColor}`} title={`${r.lockedCount || 0}/${r.rooms} 筆已鎖帳`}>
-                          {r.lockedCount || 0}/{r.rooms}
-                        </td>
-                      </tr>
-                    );})}
-                    {summaryRows.length > 0 && (() => {
-                      const tot = summaryRows.reduce((a, r) => ({
-                        rooms: a.rooms + r.rooms,
-                        totalRevenue: a.totalRevenue + r.totalRevenue,
-                        otherCharge: a.otherCharge + r.otherCharge,
-                        payDeposit: a.payDeposit + r.payDeposit,
-                        payTransfer: a.payTransfer + (r.payTransfer || 0),
-                        payCard: a.payCard + r.payCard,
-                        payCash: a.payCash + r.payCash,
-                        payVoucher: a.payVoucher + r.payVoucher,
-                        cardFee: a.cardFee + r.cardFee,
-                        netRevenue: a.netRevenue + r.netRevenue,
-                      }), { rooms:0, totalRevenue:0, otherCharge:0, payDeposit:0, payTransfer:0, payCard:0, payCash:0, payVoucher:0, cardFee:0, netRevenue:0 });
-                      return (
-                        <tr className="bg-indigo-50 font-bold text-indigo-800">
-                          <td className="px-3 py-2">總計</td>
-                          <td className="px-3 py-2 text-right">{tot.rooms}</td>
-                          <td className="px-3 py-2 text-right">{Math.round(tot.totalRevenue).toLocaleString()}</td>
-                          <td className="px-3 py-2 text-right">{Math.round(tot.otherCharge).toLocaleString()}</td>
-                          <td className="px-3 py-2 text-right">{Math.round(tot.payDeposit).toLocaleString()}</td>
-                          <td className="px-3 py-2 text-right">{Math.round(tot.payTransfer).toLocaleString()}</td>
-                          <td className="px-3 py-2 text-right">{Math.round(tot.payCard).toLocaleString()}</td>
-                          <td className="px-3 py-2 text-right">{Math.round(tot.payCash).toLocaleString()}</td>
-                          <td className="px-3 py-2 text-right">{Math.round(tot.payVoucher).toLocaleString()}</td>
-                          <td className="px-3 py-2 text-right">({Math.round(tot.cardFee).toLocaleString()})</td>
-                          <td className="px-3 py-2 text-right">{Math.round(tot.netRevenue).toLocaleString()}</td>
-                          <td className="px-3 py-2 text-right text-xs">
-                            {summaryRows.reduce((s, r) => s + (r.lockedCount || 0), 0)}/{tot.rooms}
-                          </td>
-                        </tr>
-                      );
-                    })()}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+          <MonthlySummaryTab
+            summaryYear={summaryYear} setSummaryYear={setSummaryYear}
+            summaryWarehouse={summaryWarehouse} setSummaryWarehouse={setSummaryWarehouse}
+            summaryRows={summaryRows} summaryLoading={summaryLoading} summaryError={summaryError}
+            fetchSummary={fetchSummary}
+            warehouseList={warehouseList}
+            doPrint={doPrint}
+          />
         )}
 
         {/* ══ Tab: 損益表（月報 / 年報）══ */}
         {activeTab === 'analytics' && analyticsSub === 'pnl' && (
-          <div>
-            {/* 控制列 */}
-            <div className="flex flex-wrap items-center gap-3 mb-4">
-              {/* 月報/年報 切換 */}
-              <div className="flex rounded-lg overflow-hidden border border-gray-200 text-sm">
-                {[['monthly','月報'],['annual','年報']].map(([v, label]) => (
-                  <button
-                    key={v}
-                    onClick={() => setSummaryMode(v)}
-                    className={`px-4 py-1.5 ${summaryMode === v ? 'bg-indigo-600 text-white font-medium' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
-                  >{label}</button>
-                ))}
-              </div>
-              {summaryMode === 'monthly' && (
-                <>
-                  <label htmlFor="f-29" className="text-sm text-gray-600">年份</label>
-                  <select id="f-29" value={summaryYear} onChange={e => setSummaryYear(e.target.value)} className={inputCls}>
-                    {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
-                  </select>
-                </>
-              )}
-              <label htmlFor="f-30" className="text-sm text-gray-600">館別</label>
-              <select id="f-30" value={summaryWarehouse} onChange={e => setSummaryWarehouse(e.target.value)} className={inputCls}>
-                <option value="">全部</option>
-                {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
-              </select>
-              <WhQuickBtns list={warehouseList} value={summaryWarehouse} onChange={setSummaryWarehouse} />
-              <button onClick={fetchSummary} className={`${btnCls} bg-indigo-50 text-indigo-700`}>重新整理</button>
-              <div className="ml-auto flex gap-2">
-                {(() => {
-                  const pnlData = summaryRows.map(r => ({
-                    ...r,
-                    month: summaryMode === 'annual' ? r.year : r.month,
-                    incomeTotal:  r.netRevenue + (r.otherIncome || 0),
-                    pnlNetProfit: r.netProfit,
-                  }));
-                  const title = summaryMode === 'annual'
-                    ? `損益年報_${summaryWarehouse || '全館'}`
-                    : `損益月報_${summaryYear}${summaryWarehouse ? '_' + summaryWarehouse : ''}`;
-                  return (
-                    <>
-                      <ExportButtons
-                        data={pnlData}
-                        columns={PNL_EXPORT_COLS}
-                        filename={title}
-                        title={title}
-                      />
-                      <button
-                        onClick={() => doPrint(
-                          title,
-                          PNL_EXPORT_COLS.map(c => c.header),
-                          pnlData.map(r => PNL_EXPORT_COLS.map(c => r[c.key] ?? ''))
-                        )}
-                        className={`${btnCls} text-gray-600`}
-                      >列印</button>
-                    </>
-                  );
-                })()}
-              </div>
-            </div>
-
-            {/* 月報：固定費用提示 */}
-            {summaryMode === 'monthly' && !summaryLoading && summaryFixedHelp && (
-              <div className="space-y-2 mb-4 text-sm">
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-gray-600">
-                  <span>此表固定費用來自費用管理之共通費用（僅計入<strong>已確認</strong>）。</span>
-                  <Link href="/expenses" className="text-indigo-600 hover:underline font-medium whitespace-nowrap">
-                    前往費用管理
-                  </Link>
-                </div>
-                <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500 space-y-0.5">
-                  <div><span className="font-medium text-gray-700">採購支出</span>：依進貨單的<strong>進貨日期</strong>歸月，僅計入狀態為「已入庫」或「已完成」的進貨單。</div>
-                  <div><span className="font-medium text-gray-700">固定費用</span>：依共通費用記錄的<strong>費用月份</strong>歸月，僅計入狀態為「已確認」、類型為固定費用（非進貨單連結）的記錄。</div>
-                </div>
-                {(summaryFixedHelp.pendingFixedCount ?? 0) > 0 && (
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">
-                    {summaryYear} 年度尚有 <strong>{summaryFixedHelp.pendingFixedCount}</strong> 筆共通費用紀錄未確認，不會計入上表固定費用；請至費用管理處理。
-                  </div>
-                )}
-                {(summaryFixedHelp.monthsWithZeroFixed?.length ?? 0) > 0 && (
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-800">
-                    以下月份有訂房或房費收入，但固定費用為 NT$0，請確認該月是否已建立並確認共通費用：
-                    <span className="ml-1 font-mono text-xs sm:text-sm">
-                      {summaryFixedHelp.monthsWithZeroFixed.join('、')}
-                    </span>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {summaryLoading ? (
-              <div className="text-center py-16 text-gray-400">載入中…</div>
-            ) : (
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 tbl-wrap">
-                <table className="w-full text-sm">
-                  <thead className="sticky top-0 z-10 bg-indigo-50">
-                    <tr className="bg-indigo-50 text-indigo-800 text-xs">
-                      {[summaryMode === 'annual' ? '年份' : '月份','住宿淨收入','其他收入','收入合計','採購支出','固定費用','支出合計','淨利'].map(h => (
-                        <th key={h} className="px-3 py-2 text-right first:text-left font-medium whitespace-nowrap">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {summaryRows.length === 0 && (
-                      <tr><td colSpan={8} className="text-center py-10 text-gray-400">無資料</td></tr>
-                    )}
-                    {summaryRows.map(r => {
-                      const key = summaryMode === 'annual' ? r.year : r.month;
-                      const incomeTotal = r.netRevenue + (r.otherIncome || 0);
-                      const zeroFixedHint =
-                        summaryMode === 'monthly' && (summaryFixedHelp?.monthsWithZeroFixed?.includes(r.month) ?? false);
-                      const fixedExpenseLink = summaryMode === 'monthly'
-                        ? `/expenses?month=${r.month}&subTab=records${summaryWarehouse ? `&warehouse=${encodeURIComponent(summaryWarehouse)}` : ''}`
-                        : null;
-                      const purchaseLink = summaryMode === 'monthly'
-                        ? `/purchasing?startDate=${r.month}-01&endDate=${r.month}-31${summaryWarehouse ? `&warehouse=${encodeURIComponent(summaryWarehouse)}` : ''}`
-                        : null;
-                      return (
-                        <tr
-                          key={key}
-                          className={`hover:bg-gray-50 ${zeroFixedHint ? 'bg-amber-50/60' : ''}`}
-                        >
-                          <td className="px-3 py-2 font-medium">{key}</td>
-                          <td className="px-3 py-2 text-right text-indigo-700">{Math.round(r.netRevenue).toLocaleString()}</td>
-                          <td className="px-3 py-2 text-right text-gray-500">{Math.round(r.otherIncome || 0).toLocaleString()}</td>
-                          <td className="px-3 py-2 text-right font-semibold">{Math.round(incomeTotal).toLocaleString()}</td>
-                          <td className="px-3 py-2 text-right text-red-500">
-                            {purchaseLink ? (
-                              <a href={purchaseLink} target="_blank" rel="noopener" className="hover:underline hover:text-red-600">
-                                ({Math.round(r.purchaseExpense).toLocaleString()})
-                              </a>
-                            ) : (
-                              <span>({Math.round(r.purchaseExpense).toLocaleString()})</span>
-                            )}
-                          </td>
-                          <td className="px-3 py-2 text-right text-red-400">
-                            {fixedExpenseLink ? (
-                              <a href={fixedExpenseLink} target="_blank" rel="noopener" className="hover:underline hover:text-red-600">
-                                ({Math.round(r.fixedExpense).toLocaleString()})
-                              </a>
-                            ) : (
-                              <span>({Math.round(r.fixedExpense).toLocaleString()})</span>
-                            )}
-                            {zeroFixedHint && (
-                              <span className="block text-[10px] leading-tight text-amber-800 font-normal mt-0.5">可能未登記或未確認</span>
-                            )}
-                          </td>
-                          <td className="px-3 py-2 text-right text-red-600">({Math.round(r.totalExpense).toLocaleString()})</td>
-                          <td className={`px-3 py-2 text-right font-bold ${r.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            {Math.round(r.netProfit).toLocaleString()}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                    {/* 合計列（月報模式才顯示，年報各年已是年度合計） */}
-                    {summaryMode === 'monthly' && summaryRows.length > 0 && (() => {
-                      const tot = summaryRows.reduce((a, r) => ({
-                        netRevenue:      (a.netRevenue      || 0) + r.netRevenue,
-                        otherIncome:     (a.otherIncome     || 0) + (r.otherIncome || 0),
-                        purchaseExpense: (a.purchaseExpense || 0) + r.purchaseExpense,
-                        fixedExpense:    (a.fixedExpense    || 0) + r.fixedExpense,
-                        totalExpense:    (a.totalExpense    || 0) + r.totalExpense,
-                        netProfit:       (a.netProfit       || 0) + r.netProfit,
-                      }), {});
-                      const incomeTotal = tot.netRevenue + tot.otherIncome;
-                      return (
-                        <tr className="bg-indigo-50 font-bold text-indigo-800 text-xs border-t-2 border-indigo-200">
-                          <td className="px-3 py-2">全年合計</td>
-                          <td className="px-3 py-2 text-right">{Math.round(tot.netRevenue).toLocaleString()}</td>
-                          <td className="px-3 py-2 text-right">{Math.round(tot.otherIncome).toLocaleString()}</td>
-                          <td className="px-3 py-2 text-right">{Math.round(incomeTotal).toLocaleString()}</td>
-                          <td className="px-3 py-2 text-right text-red-600">({Math.round(tot.purchaseExpense).toLocaleString()})</td>
-                          <td className="px-3 py-2 text-right text-red-500">({Math.round(tot.fixedExpense).toLocaleString()})</td>
-                          <td className="px-3 py-2 text-right text-red-700">({Math.round(tot.totalExpense).toLocaleString()})</td>
-                          <td className={`px-3 py-2 text-right ${tot.netProfit >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                            {Math.round(tot.netProfit).toLocaleString()}
-                          </td>
-                        </tr>
-                      );
-                    })()}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+          <PnlTab
+            summaryMode={summaryMode} setSummaryMode={setSummaryMode}
+            summaryYear={summaryYear} setSummaryYear={setSummaryYear}
+            summaryWarehouse={summaryWarehouse} setSummaryWarehouse={setSummaryWarehouse}
+            summaryRows={summaryRows} summaryLoading={summaryLoading} summaryError={summaryError}
+            summaryFixedHelp={summaryFixedHelp}
+            fetchSummary={fetchSummary}
+            warehouseList={warehouseList}
+            doPrint={doPrint}
+          />
         )}
 
         {/* ══ Tab: 旅宿網申報 ══ */}
         {activeTab === 'declaration' && (
-          <div>
-            {/* 搜尋列 */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4 flex flex-wrap gap-3 items-end">
-              <div>
-                <label htmlFor="f-9" className="block text-xs text-gray-500 mb-1">申報月份</label>
-                <input id="f-9" type="month" value={declMonth} onChange={e => setDeclMonth(e.target.value)} className={inputCls} />
-              </div>
-              <div>
-                <label htmlFor="f-10" className="block text-xs text-gray-500 mb-1">館別</label>
-                <select id="f-10" value={declWarehouse} onChange={e => setDeclWarehouse(e.target.value)} className={inputCls}>
-                  {(warehouseList.length ? warehouseList : [declWarehouse]).map(w => <option key={w} value={w}>{w}</option>)}
-                </select>
-                <WhQuickBtns list={warehouseList} value={declWarehouse} onChange={setDeclWarehouse} />
-              </div>
-              <button onClick={fetchDecl} disabled={declLoading}
-                className={`${btnCls} bg-indigo-50 text-indigo-700 disabled:opacity-40`}>
-                {declLoading ? '查詢中…' : '查詢'}
-              </button>
-            </div>
-
-            {!declSearched && !declLoading && (
-              <div className="text-center py-20 text-gray-400">請選擇月份與館別後按「查詢」</div>
-            )}
-
-            {declSearched && !declLoading && (
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-
-                {/* ── 左欄：實際資料（唯讀）── */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                  <div className="px-5 py-3 bg-emerald-50 border-b border-emerald-100">
-                    <h3 className="text-sm font-semibold text-emerald-800">實際營業資料（自動計算）</h3>
-                    <p className="text-[11px] text-emerald-500 mt-0.5">來源：{declMonth} {declWarehouse} 訂房明細</p>
-                  </div>
-                  {declActual ? (
-                    <div className="p-5">
-                      <div className="grid grid-cols-2 gap-x-6 gap-y-3">
-                        {[
-                          ['刷卡總計',        Math.round(declActual.payCard),        'text-purple-600'],
-                          ['房費+消費金額',   Math.round(declActual.revenueTotal),   'text-indigo-700'],
-                          ['平均房價',        declActual.avgRoomRate,                'text-blue-600'],
-                          ['每月間數（筆數）', declActual.roomCount,                  'text-gray-800'],
-                          ['住宿間數（晚）',   declActual.roomNights,                 'text-teal-700'],
-                          ['訂金匯款',        Math.round(declActual.payDeposit),     'text-blue-500'],
-                          ['當天匯款',        Math.round(declActual.payTransfer),    'text-teal-600'],
-                          ['現金收入',        Math.round(declActual.payCash),        'text-green-600'],
-                          ['住宿卷',          Math.round(declActual.payVoucher),     'text-amber-600'],
-                          ['刷卡手續費',      Math.round(declActual.cardFee),        'text-red-400'],
-                        ].map(([label, val, color]) => (
-                          <div key={label} className="flex justify-between items-center py-1 border-b border-gray-50">
-                            <span className="text-xs text-gray-500">{label}</span>
-                            <span className={`text-sm font-semibold ${color}`}>{Number(val).toLocaleString()}</span>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="mt-3 pt-3 border-t flex justify-between items-center">
-                        <span className="text-xs text-gray-500">業務來源（自動）</span>
-                        <span className="text-xs text-gray-700">{declActual.businessSourceAuto || '—'}</span>
-                      </div>
-                      <div className="mt-2 flex justify-between items-center text-[11px] text-gray-400">
-                        <span>Booking {declActual.sourceBooking} 筆 / 電話 {declActual.sourcePhone} 筆 / 其他 {declActual.sourceOther} 筆</span>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="p-8 text-center text-gray-400 text-sm">本月無訂房資料</div>
-                  )}
-                </div>
-
-                {/* ── 右欄：申報資料（可編輯）── */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                  <div className="px-5 py-3 bg-indigo-50 border-b border-indigo-100 flex items-center justify-between">
-                    <div>
-                      <h3 className="text-sm font-semibold text-indigo-800">旅宿網申報資料{isLocked ? '（已鎖帳）' : '（可編輯）'}</h3>
-                      <p className="text-[11px] text-indigo-400 mt-0.5">{isLocked ? '本月已鎖帳，僅供檢視' : '調整後按儲存，此為實際申報數字'}</p>
-                    </div>
-                    <button onClick={handleAutoFillDecl} disabled={isLocked}
-                      className="text-[11px] px-2.5 py-1 rounded-lg border border-blue-300 text-blue-600 hover:bg-blue-50 whitespace-nowrap disabled:opacity-40">
-                      ← 從實際帶入
-                    </button>
-                  </div>
-                  <div className="p-5 space-y-3">
-                    <div className="grid grid-cols-2 gap-3">
-                      {[
-                        ['cardTotal',        '刷卡總計'],
-                        ['roomPriceTotal',   '房價金額'],
-                        ['subsidizedRooms',  '補助間數'],
-                        ['avgRoomRate',      '平均房價'],
-                        ['monthlyRoomCount', '每月間數'],
-                        ['roomSuppliesCost', '客房備品'],
-                        ['fbExpense',        '餐飲支出'],
-                        ['fitGuestCount',    '住客FIT人數'],
-                        ['staffCount',       '員工人數'],
-                        ['salary',           '薪資'],
-                      ].map(([k, label]) => (
-                        <div key={k}>
-                          <label className="block text-[11px] text-gray-500 mb-0.5">{label}</label>
-                          <input type="number" value={declForm[k]} disabled={isLocked}
-                            onChange={e => setDeclForm(p => ({ ...p, [k]: e.target.value }))}
-                            className={inputCls + ' w-full text-sm disabled:bg-gray-100'} />
-                        </div>
-                      ))}
-                    </div>
-
-                    <div>
-                      <label htmlFor="f-31" className="block text-[11px] text-gray-500 mb-0.5">業務來源%</label>
-                      <input id="f-31" type="text" value={declForm.businessSource} disabled={isLocked}
-                        onChange={e => setDeclForm(p => ({ ...p, businessSource: e.target.value }))}
-                        placeholder="例：Booking 60%、電話 40%" className={inputCls + ' w-full text-sm disabled:bg-gray-100'} />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label htmlFor="f-11" className="block text-[11px] text-gray-500 mb-0.5">其他額外收入</label>
-                        <input id="f-11" type="number" value={declForm.otherIncome} disabled={isLocked}
-                          onChange={e => setDeclForm(p => ({ ...p, otherIncome: e.target.value }))}
-                          className={inputCls + ' w-full text-sm disabled:bg-gray-100'} />
-                      </div>
-                      <div>
-                        <label htmlFor="f-12" className="block text-[11px] text-gray-500 mb-0.5">收入說明</label>
-                        <input id="f-12" type="text" value={declForm.otherIncomeNote} disabled={isLocked}
-                          onChange={e => setDeclForm(p => ({ ...p, otherIncomeNote: e.target.value }))}
-                          className={inputCls + ' w-full text-sm disabled:bg-gray-100'} />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label htmlFor="f-13" className="block text-[11px] text-gray-500 mb-0.5">備註</label>
-                      <textarea id="f-13" rows={2} value={declForm.note} disabled={isLocked}
-                        onChange={e => setDeclForm(p => ({ ...p, note: e.target.value }))}
-                        className={inputCls + ' w-full text-sm resize-none disabled:bg-gray-100'} />
-                    </div>
-
-                    <div className="flex gap-2">
-                      <button onClick={handleDeclSave} disabled={declSaving || isLocked}
-                        className="flex-1 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors">
-                        {declSaving ? '儲存中…' : isLocked ? '已鎖帳' : '儲存申報資料'}
-                      </button>
-                      <button onClick={() => {
-                        const d = declForm;
-                        const fmtN = v => v != null && v !== '' ? Number(v).toLocaleString() : '—';
-                        doPrint(
-                          `旅宿網申報 ${declMonth}（${declWarehouse}）`,
-                          ['項目', '申報數值'],
-                          [
-                            ['刷卡總計',   fmtN(d.cardTotal)],
-                            ['房價金額',   fmtN(d.roomPriceTotal)],
-                            ['補助間數',   fmtN(d.subsidizedRooms)],
-                            ['平均房價',   fmtN(d.avgRoomRate)],
-                            ['每月間數',   fmtN(d.monthlyRoomCount)],
-                            ['客房備品',   fmtN(d.roomSuppliesCost)],
-                            ['餐飲支出',   fmtN(d.fbExpense)],
-                            ['住客FIT人數',fmtN(d.fitGuestCount)],
-                            ['員工人數',   fmtN(d.staffCount)],
-                            ['薪資',       fmtN(d.salary)],
-                            ['業務來源%',  d.businessSource || '—'],
-                            ['其他額外收入',fmtN(d.otherIncome)],
-                            ['收入說明',   d.otherIncomeNote || '—'],
-                            ['備註',       d.note || '—'],
-                          ]
-                        );
-                      }}
-                        className={`${btnCls} text-gray-600 whitespace-nowrap`}>
-                        列印申報表
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-              </div>
-            )}
-          </div>
+          <DeclarationTab
+            declMonth={declMonth} setDeclMonth={setDeclMonth}
+            declWarehouse={declWarehouse} setDeclWarehouse={setDeclWarehouse}
+            declLoading={declLoading} declError={declError}
+            declSearched={declSearched} setDeclSearched={setDeclSearched}
+            declActual={declActual}
+            declForm={declForm} setDeclForm={setDeclForm}
+            declSaving={declSaving}
+            fetchDecl={fetchDecl}
+            handleAutoFillDecl={handleAutoFillDecl}
+            handleDeclSave={handleDeclSave}
+            warehouseList={warehouseList}
+            isLocked={isLocked}
+            doPrint={doPrint}
+          />
         )}
 
-        {/* ══ Tab: 年度申報總覽 ══ */}
+                {/* ══ Tab: 年度申報總覽 ══ */}
         {activeTab === 'analytics' && analyticsSub === 'declList' && (
-          <div>
-            <div className="flex flex-wrap items-center gap-3 mb-4">
-              <label htmlFor="f-14" className="text-sm text-gray-600">年份</label>
-              <select id="f-14" value={dlYear} onChange={e => setDlYear(e.target.value)} className={inputCls}>
-                {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
-              </select>
-              <label htmlFor="f-32" className="text-sm text-gray-600">館別</label>
-              <select id="f-32" value={dlWarehouse} onChange={e => setDlWarehouse(e.target.value)} className={inputCls}>
-                {(warehouseList.length ? warehouseList : [dlWarehouse]).map(w => <option key={w} value={w}>{w}</option>)}
-              </select>
-              <WhQuickBtns list={warehouseList} value={dlWarehouse} onChange={setDlWarehouse} />
-              <button onClick={fetchDeclList} className={`${btnCls} bg-indigo-50 text-indigo-700`}>查詢</button>
-              <ExportButtons
-                data={dlRows}
-                columns={[
-                  { header: '月份',       key: 'monthLabel' },
-                  { header: '刷卡總計',    key: 'cardTotal',        format: 'number' },
-                  { header: '房價金額',    key: 'roomPriceTotal',   format: 'number' },
-                  { header: '補助間數',    key: 'subsidizedRooms',  format: 'number' },
-                  { header: '平均房價',    key: 'avgRoomRate',      format: 'number' },
-                  { header: '每月間數',    key: 'monthlyRoomCount', format: 'number' },
-                  { header: '客房備品',    key: 'roomSuppliesCost', format: 'number' },
-                  { header: '餐飲支出',    key: 'fbExpense',        format: 'number' },
-                  { header: '住客FIT人數', key: 'fitGuestCount',    format: 'number' },
-                  { header: '員工人數',    key: 'staffCount',       format: 'number' },
-                  { header: '薪資',       key: 'salary',           format: 'number' },
-                  { header: '業務來源%',   key: 'businessSource' },
-                  { header: '其他收入',    key: 'otherIncome',      format: 'number' },
-                  { header: '收入說明',    key: 'otherIncomeNote' },
-                  { header: '備註',       key: 'note' },
-                ]}
-                filename={`旅宿網申報_${dlYear}`}
-                title={`旅宿網申報 ${dlYear}（${dlWarehouse}）`}
-              />
-              <button
-                onClick={() => {
-                  const cols = ['月份','刷卡總計','房價金額','補助間數','平均房價','每月間數','客房備品','餐飲支出','住客FIT','員工','薪資','業務來源%','其他收入','收入說明','備註'];
-                  const rows = dlRows.map(r => [
-                    r.monthLabel,
-                    r.cardTotal != null ? Number(r.cardTotal).toLocaleString() : '',
-                    r.roomPriceTotal != null ? Number(r.roomPriceTotal).toLocaleString() : '',
-                    r.subsidizedRooms ?? '',
-                    r.avgRoomRate != null ? Number(r.avgRoomRate).toLocaleString() : '',
-                    r.monthlyRoomCount ?? '',
-                    r.roomSuppliesCost != null ? Number(r.roomSuppliesCost).toLocaleString() : '',
-                    r.fbExpense != null ? Number(r.fbExpense).toLocaleString() : '',
-                    r.fitGuestCount ?? '',
-                    r.staffCount ?? '',
-                    r.salary != null ? Number(r.salary).toLocaleString() : '',
-                    r.businessSource || '',
-                    r.otherIncome ? Number(r.otherIncome).toLocaleString() : '',
-                    r.otherIncomeNote || '',
-                    r.note || '',
-                  ]);
-                  doPrint(`旅宿網申報 ${dlYear}年（${dlWarehouse}）`, cols, rows);
-                }}
-                className={`${btnCls} text-gray-600`}
-              >列印</button>
-            </div>
-
-            {dlLoading ? (
-              <div className="text-center py-16 text-gray-400">載入中…</div>
-            ) : (
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 tbl-wrap">
-                <table className="w-full text-sm">
-                  <thead className="sticky top-0 z-10 bg-indigo-50">
-                    <tr className="bg-indigo-50 text-indigo-800 text-xs">
-                      {['月份','刷卡總計','房價金額','補助間數','平均房價','每月間數','客房備品','餐飲支出','住客FIT','員工','薪資','業務來源%','其他收入','備註'].map(h => (
-                        <th key={h} className="px-3 py-2.5 text-right first:text-left font-medium whitespace-nowrap">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {dlRows.map(r => (
-                      <tr key={r.month} className={`hover:bg-gray-50 ${r.hasReport ? '' : 'text-gray-300'}`}>
-                        <td className="px-3 py-2.5 font-medium text-gray-800">{r.monthLabel}</td>
-                        <td className="px-3 py-2.5 text-right text-purple-600">{r.cardTotal != null ? Number(r.cardTotal).toLocaleString() : '—'}</td>
-                        <td className="px-3 py-2.5 text-right text-indigo-700 font-semibold">{r.roomPriceTotal != null ? Number(r.roomPriceTotal).toLocaleString() : '—'}</td>
-                        <td className="px-3 py-2.5 text-right text-gray-600">{r.subsidizedRooms ?? '—'}</td>
-                        <td className="px-3 py-2.5 text-right text-blue-600">{r.avgRoomRate != null ? Number(r.avgRoomRate).toLocaleString() : '—'}</td>
-                        <td className="px-3 py-2.5 text-right text-gray-700">{r.monthlyRoomCount ?? '—'}</td>
-                        <td className="px-3 py-2.5 text-right text-gray-600">{r.roomSuppliesCost != null ? Number(r.roomSuppliesCost).toLocaleString() : '—'}</td>
-                        <td className="px-3 py-2.5 text-right text-gray-600">{r.fbExpense != null ? Number(r.fbExpense).toLocaleString() : '—'}</td>
-                        <td className="px-3 py-2.5 text-right text-teal-600">{r.fitGuestCount ?? '—'}</td>
-                        <td className="px-3 py-2.5 text-right text-gray-600">{r.staffCount ?? '—'}</td>
-                        <td className="px-3 py-2.5 text-right text-gray-700">{r.salary != null ? Number(r.salary).toLocaleString() : '—'}</td>
-                        <td className="px-3 py-2.5 text-left text-gray-500 text-xs">{r.businessSource || '—'}</td>
-                        <td className="px-3 py-2.5 text-right text-gray-600">{r.otherIncome ? Number(r.otherIncome).toLocaleString() : '—'}</td>
-                        <td className="px-3 py-2.5 text-left text-gray-400 text-xs max-w-[120px] truncate" title={[r.otherIncomeNote, r.note].filter(Boolean).join(' / ')}>{r.note || r.otherIncomeNote || '—'}</td>
-                      </tr>
-                    ))}
-                    {dlRows.length > 0 && (() => {
-                      const tot = dlRows.reduce((a, r) => ({
-                        cardTotal:       a.cardTotal       + (Number(r.cardTotal) || 0),
-                        roomPriceTotal:  a.roomPriceTotal  + (Number(r.roomPriceTotal) || 0),
-                        subsidizedRooms: a.subsidizedRooms + (r.subsidizedRooms || 0),
-                        monthlyRoomCount:a.monthlyRoomCount+ (r.monthlyRoomCount || 0),
-                        roomSuppliesCost:a.roomSuppliesCost+ (Number(r.roomSuppliesCost) || 0),
-                        fbExpense:       a.fbExpense       + (Number(r.fbExpense) || 0),
-                        fitGuestCount:   a.fitGuestCount   + (r.fitGuestCount || 0),
-                        salary:          a.salary          + (Number(r.salary) || 0),
-                        otherIncome:     a.otherIncome     + (Number(r.otherIncome) || 0),
-                      }), { cardTotal:0, roomPriceTotal:0, subsidizedRooms:0, monthlyRoomCount:0, roomSuppliesCost:0, fbExpense:0, fitGuestCount:0, salary:0, otherIncome:0 });
-                      return (
-                        <tr className="bg-indigo-50 font-bold text-indigo-800">
-                          <td className="px-3 py-2.5">合計</td>
-                          <td className="px-3 py-2.5 text-right">{tot.cardTotal.toLocaleString()}</td>
-                          <td className="px-3 py-2.5 text-right">{tot.roomPriceTotal.toLocaleString()}</td>
-                          <td className="px-3 py-2.5 text-right">{tot.subsidizedRooms}</td>
-                          <td className="px-3 py-2.5 text-right">—</td>
-                          <td className="px-3 py-2.5 text-right">{tot.monthlyRoomCount}</td>
-                          <td className="px-3 py-2.5 text-right">{tot.roomSuppliesCost.toLocaleString()}</td>
-                          <td className="px-3 py-2.5 text-right">{tot.fbExpense.toLocaleString()}</td>
-                          <td className="px-3 py-2.5 text-right">{tot.fitGuestCount}</td>
-                          <td className="px-3 py-2.5 text-right">—</td>
-                          <td className="px-3 py-2.5 text-right">{tot.salary.toLocaleString()}</td>
-                          <td className="px-3 py-2.5"></td>
-                          <td className="px-3 py-2.5 text-right">{tot.otherIncome ? tot.otherIncome.toLocaleString() : ''}</td>
-                          <td className="px-3 py-2.5"></td>
-                        </tr>
-                      );
-                    })()}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+          <AnnualDeclListTab
+            dlYear={dlYear} setDlYear={setDlYear}
+            dlWarehouse={dlWarehouse} setDlWarehouse={setDlWarehouse}
+            dlRows={dlRows} dlLoading={dlLoading} dlError={dlError}
+            fetchDeclList={fetchDeclList}
+            warehouseList={warehouseList}
+            doPrint={doPrint}
+          />
         )}
 
         {/* ══ Tab: 訂金核對 ══ */}
-        {activeTab === 'deposit' && (() => {
-          const suggestMap = new Map((dmData?.suggestions || []).map(s => [s.bnbId, s.bankLineId]));
-          const lineMatchedByBnb = new Map(
-            (dmData?.bnbRecords || [])
-              .filter(r => r.bankLineId)
-              .map(r => [r.bankLineId, r.guestName])
-          );
-          const summary    = dmData?.summary;
-          const bnbRecords = dmData?.bnbRecords || [];
-          const bankLines  = dmData?.bankLines  || [];
-          const allSummary = dmData?.summary;  // for paymentType=all view
-
-          const PAY_TYPE_TABS = [
-            { key: 'payment', label: '收款明細' },
-            { key: 'ledger',  label: '流水帳' },
-            { key: 'all',     label: '整體進度' },
-          ];
-          const PAY_SUB_TYPES = [
-            { key: 'combined', label: '全部' },
-            { key: 'deposit',  label: '訂金匯款' },
-            { key: 'transfer', label: '當天匯款' },
-            { key: 'card',     label: '刷卡' },
-            { key: 'cash',     label: '現金存款' },
-          ];
-          const activeOuterTab = dmPayType === 'all' ? 'all' : dmPayType === 'ledger' ? 'ledger' : 'payment';
-
-          return (
-            <div>
-              {/* 付款類型切換 */}
-              <div className="flex gap-1 mb-4 overflow-x-auto">
-                {PAY_TYPE_TABS.map(t => (
-                  <button key={t.key}
-                    onClick={() => {
-                      if (t.key === 'all') { setDmPayType('all'); setDmData(null); setDmSelBnb(null); setDmSelLine(null); }
-                      else if (t.key === 'ledger') { setDmPayType('ledger'); }
-                      else if (dmPayType === 'all' || dmPayType === 'ledger') { setDmPayType('deposit'); setDmData(null); setDmSelBnb(null); setDmSelLine(null); }
-                    }}
-                    className={`px-4 py-1.5 text-sm rounded-lg whitespace-nowrap transition-colors ${
-                      activeOuterTab === t.key
-                        ? 'bg-indigo-600 text-white shadow-sm'
-                        : 'bg-white border border-gray-200 text-gray-600 hover:bg-indigo-50'
-                    }`}>
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-
-              {/* 篩選列 */}
-              {activeOuterTab !== 'ledger' && <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4 flex flex-wrap gap-3 items-end">
-                <div>
-                  <label htmlFor="f-15" className="block text-xs text-gray-500 mb-1">月份</label>
-                  <input id="f-15" type="month" value={dmMonth} onChange={e => setDmMonth(e.target.value)} className={inputCls} />
-                </div>
-                {dmPayType !== 'all' && (
-                  <div>
-                    <label htmlFor="f-16" className="block text-xs text-gray-500 mb-1">分類</label>
-                    <select id="f-16" value={dmPayType} onChange={e => { setDmPayType(e.target.value); setDmData(null); setDmSelBnb(null); setDmSelLine(null); }} className={inputCls}>
-                      {PAY_SUB_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
-                    </select>
-                  </div>
-                )}
-                <div>
-                  <label htmlFor="f-33" className="block text-xs text-gray-500 mb-1">館別</label>
-                  <select id="f-33" value={dmWarehouse} onChange={e => setDmWarehouse(e.target.value)} className={inputCls}>
-                    <option value="">全部</option>
-                    {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
-                  </select>
-                  <WhQuickBtns list={warehouseList} value={dmWarehouse} onChange={setDmWarehouse} />
-                </div>
-                {dmPayType !== 'all' && dmPayType !== 'combined' && (
-                  <div>
-                    <label htmlFor="f-34" className="block text-xs text-gray-500 mb-1">存簿帳戶</label>
-                    <select id="f-34" value={dmAccountId} onChange={e => setDmAccountId(e.target.value)} className={inputCls}>
-                      <option value="">請選擇帳戶</option>
-                      {dmAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                    </select>
-                  </div>
-                )}
-                <button onClick={fetchDepositMatch} disabled={dmLoading || (dmPayType !== 'all' && dmPayType !== 'combined' && !dmAccountId)}
-                  className={`${btnCls} bg-indigo-50 text-indigo-700 disabled:opacity-40`}>
-                  {dmLoading ? '載入中…' : '查詢'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setBankImportLines([]); setBankImportError(''); setShowBankImport(true); }}
-                  className="px-4 py-1.5 text-sm rounded-lg font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors whitespace-nowrap">
-                  ↑ 匯入銀行對帳單
-                </button>
-                {dmData && dmPayType !== 'all' && (
-                  <>
-                    <button onClick={handleAutoMatch} disabled={dmMatching || !(dmData?.suggestions?.length) || isLocked}
-                      className={`${btnCls} bg-amber-50 text-amber-700 disabled:opacity-40`}>
-                      ⚡ 自動配對{dmData?.suggestions?.length ? `（${dmData.suggestions.length}筆）` : ''}
-                    </button>
-                    <ExportButtons
-                      data={(dmData?.bnbRecords || []).map(r => ({
-                        guestName:   r.guestName,
-                        checkInDate: r.checkInDate,
-                        checkOutDate:r.checkOutDate,
-                        payAmount:   r.payAmount,
-                        payDate:     r.payDate,
-                        last5:       r.last5,
-                        matchStatus: r.bankLineId ? '已配對' : '未配對',
-                        matchedBy:   r.matchedBy || '',
-                      }))}
-                      columns={[
-                        { header: '姓名',    key: 'guestName' },
-                        { header: '入住',    key: 'checkInDate' },
-                        { header: '退房',    key: 'checkOutDate' },
-                        { header: '金額',    key: 'payAmount',  format: 'number' },
-                        { header: '付款日期', key: 'payDate' },
-                        { header: '後五碼',  key: 'last5' },
-                        { header: '配對狀態', key: 'matchStatus' },
-                        { header: '配對者',  key: 'matchedBy' },
-                      ]}
-                      filename={`核對_${dmPayType}_${dmMonth}`}
-                      title={`${PAY_SUB_TYPES.find(t => t.key === dmPayType)?.label || ''} 核對 ${dmMonth}`}
-                    />
-                  </>
-                )}
-              </div>}
-
-              {/* 流水帳 */}
-              {activeOuterTab === 'ledger' && (
-                <div>
-                  {/* 流水帳篩選列 */}
-                  <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4 flex flex-wrap gap-3 items-end">
-                    <div>
-                      <label htmlFor="f-17" className="block text-xs text-gray-500 mb-1">月份起</label>
-                      <input id="f-17" type="month" value={ledgerMonthFrom} onChange={e => setLedgerMonthFrom(e.target.value)} className={inputCls} />
-                    </div>
-                    <div>
-                      <label htmlFor="f-18" className="block text-xs text-gray-500 mb-1">月份迄</label>
-                      <input id="f-18" type="month" value={ledgerMonthTo} onChange={e => setLedgerMonthTo(e.target.value)} className={inputCls} />
-                    </div>
-                    <div>
-                      <label htmlFor="f-19" className="block text-xs text-gray-500 mb-1">館別</label>
-                      <select id="f-19" value={ledgerWarehouse} onChange={e => setLedgerWarehouse(e.target.value)} className={inputCls}>
-                        <option value="">全部</option>
-                        {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
-                      </select>
-                      <WhQuickBtns list={warehouseList} value={ledgerWarehouse} onChange={setLedgerWarehouse} />
-                    </div>
-                    <button onClick={fetchLedger} disabled={ledgerLoading}
-                      className={`${btnCls} bg-indigo-50 text-indigo-700 disabled:opacity-40`}>
-                      {ledgerLoading ? '載入中…' : '查詢'}
-                    </button>
-                    {ledgerRows.length > 0 && (() => {
-                      const sumRoom    = ledgerRows.reduce((s, r) => s + Number(r.roomCharge  || 0), 0);
-                      const sumOther   = ledgerRows.reduce((s, r) => s + Number(r.otherCharge || 0), 0);
-                      const sumDeposit = ledgerRows.reduce((s, r) => s + Number(r.payDeposit  || 0), 0);
-                      const sumXfer    = ledgerRows.reduce((s, r) => s + Number(r.payTransfer || 0), 0);
-                      const sumCard    = ledgerRows.reduce((s, r) => s + Number(r.payCard     || 0), 0);
-                      const sumCash    = ledgerRows.reduce((s, r) => s + Number(r.payCash     || 0), 0);
-                      const sumVoucher = ledgerRows.reduce((s, r) => s + Number(r.payVoucher  || 0), 0);
-                      const sumFee     = ledgerRows.reduce((s, r) => s + Number(r.cardFee     || 0), 0);
-                      const net = sumDeposit + sumXfer + sumCard + sumCash + sumVoucher - sumFee;
-                      return (
-                        <div className="flex flex-wrap gap-2 items-center ml-2 text-xs">
-                          <span className="text-gray-400">{ledgerRows.length} 筆</span>
-                          <span className="text-gray-500">房費 <b className="text-indigo-700">{NT(sumRoom)}</b></span>
-                          <span className="text-gray-500">訂金 <b>{NT(sumDeposit)}</b></span>
-                          <span className="text-gray-500">匯款 <b>{NT(sumXfer)}</b></span>
-                          <span className="text-gray-500">刷卡 <b>{NT(sumCard)}</b></span>
-                          <span className="text-gray-500">現金 <b>{NT(sumCash)}</b></span>
-                          <span className="text-gray-500">住宿券 <b>{NT(sumVoucher)}</b></span>
-                          <span className="text-gray-500">手續費 <b className="text-red-500">-{NT(sumFee)}</b></span>
-                          <span className="text-gray-700 font-semibold">淨收入 <b className="text-green-700">{NT(net)}</b></span>
-                        </div>
-                      );
-                    })()}
-                    {ledgerRows.length > 0 && (
-                      <ExportButtons
-                        data={ledgerRows.map(r => ({
-                          importMonth:  r.importMonth,
-                          warehouse:    r.warehouse,
-                          source:       r.source,
-                          guestName:    r.guestName,
-                          roomNo:       r.roomNo || '',
-                          checkInDate:  r.checkInDate,
-                          checkOutDate: r.checkOutDate,
-                          roomCharge:   Number(r.roomCharge  || 0),
-                          otherCharge:  Number(r.otherCharge || 0),
-                          payDeposit:   Number(r.payDeposit  || 0),
-                          depositDate:  r.depositDate  || '',
-                          depositLast5: r.depositLast5 || '',
-                          payTransfer:  Number(r.payTransfer || 0),
-                          transferDate: r.transferDate  || '',
-                          transferLast5:r.transferLast5 || '',
-                          payCard:      Number(r.payCard     || 0),
-                          cardFeeRate:  Number(r.cardFeeRate || 0),
-                          cardFee:      Number(r.cardFee     || 0),
-                          payCash:      Number(r.payCash     || 0),
-                          payVoucher:   Number(r.payVoucher  || 0),
-                          net: Number(r.payDeposit||0)+Number(r.payTransfer||0)+Number(r.payCard||0)+Number(r.payCash||0)+Number(r.payVoucher||0)-Number(r.cardFee||0),
-                          status:       r.status,
-                          note:         r.note || '',
-                        }))}
-                        columns={[
-                          { header: '月份',     key: 'importMonth' },
-                          { header: '館別',     key: 'warehouse' },
-                          { header: '來源',     key: 'source' },
-                          { header: '姓名',     key: 'guestName' },
-                          { header: '房號',     key: 'roomNo' },
-                          { header: '入住',     key: 'checkInDate' },
-                          { header: '退房',     key: 'checkOutDate' },
-                          { header: '房費',     key: 'roomCharge',   format: 'number' },
-                          { header: '其他費用', key: 'otherCharge',  format: 'number' },
-                          { header: '訂金',     key: 'payDeposit',   format: 'number' },
-                          { header: '訂金日期', key: 'depositDate' },
-                          { header: '訂金後五碼',key:'depositLast5' },
-                          { header: '當天匯款', key: 'payTransfer',  format: 'number' },
-                          { header: '匯款日期', key: 'transferDate' },
-                          { header: '匯款後五碼',key:'transferLast5'},
-                          { header: '刷卡',     key: 'payCard',      format: 'number' },
-                          { header: '手續費率', key: 'cardFeeRate',  format: 'number' },
-                          { header: '手續費',   key: 'cardFee',      format: 'number' },
-                          { header: '現金',     key: 'payCash',      format: 'number' },
-                          { header: '住宿券',   key: 'payVoucher',   format: 'number' },
-                          { header: '淨收入',   key: 'net',          format: 'number' },
-                          { header: '狀態',     key: 'status' },
-                          { header: '備註',     key: 'note' },
-                        ]}
-                        filename={`流水帳_${ledgerMonthFrom}_${ledgerMonthTo}${ledgerWarehouse ? '_' + ledgerWarehouse : ''}`}
-                        title={`收款流水帳 ${ledgerMonthFrom} ~ ${ledgerMonthTo}${ledgerWarehouse ? '　' + ledgerWarehouse : ''}`}
-                      />
-                    )}
-                  </div>
-
-                  {/* 流水帳表格 */}
-                  {ledgerLoading && <div className="text-center py-20 text-gray-400">載入中…</div>}
-                  {!ledgerLoading && ledgerRows.length === 0 && (
-                    <div className="text-center py-20 text-gray-400">請設定月份區間後按「查詢」</div>
-                  )}
-                  {!ledgerLoading && ledgerRows.length > 0 && (
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 tbl-wrap">
-                      <table className="w-full text-xs whitespace-nowrap">
-                        <thead className="sticky top-0 bg-indigo-50 text-indigo-800">
-                          <tr>
-                            <th className="px-3 py-2 text-left">月份</th>
-                            <th className="px-3 py-2 text-left">館別</th>
-                            <th className="px-3 py-2 text-left">姓名</th>
-                            <th className="px-3 py-2 text-left">入住</th>
-                            <th className="px-3 py-2 text-left">退房</th>
-                            <th className="px-3 py-2 text-right">房費</th>
-                            <th className="px-3 py-2 text-right">其他</th>
-                            <th className="px-3 py-2 text-right">訂金</th>
-                            <th className="px-3 py-2 text-left">訂金日</th>
-                            <th className="px-3 py-2 text-left">後五碼</th>
-                            <th className="px-3 py-2 text-right">匯款</th>
-                            <th className="px-3 py-2 text-left">匯款日</th>
-                            <th className="px-3 py-2 text-left">後五碼</th>
-                            <th className="px-3 py-2 text-right">刷卡</th>
-                            <th className="px-3 py-2 text-right">手續費</th>
-                            <th className="px-3 py-2 text-right">現金</th>
-                            <th className="px-3 py-2 text-right">住宿券</th>
-                            <th className="px-3 py-2 text-right font-semibold">淨收入</th>
-                            <th className="px-3 py-2 text-left">狀態</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-50">
-                          {ledgerRows.map(r => {
-                            const net = Number(r.payDeposit||0)+Number(r.payTransfer||0)+Number(r.payCard||0)+Number(r.payCash||0)+Number(r.payVoucher||0)-Number(r.cardFee||0);
-                            return (
-                              <tr key={r.id} className="hover:bg-gray-50">
-                                <td className="px-3 py-2">{r.importMonth}</td>
-                                <td className="px-3 py-2">{r.warehouse}</td>
-                                <td className="px-3 py-2">{r.guestName}</td>
-                                <td className="px-3 py-2">{r.checkInDate}</td>
-                                <td className="px-3 py-2">{r.checkOutDate}</td>
-                                <td className="px-3 py-2 text-right">{Number(r.roomCharge||0) > 0 ? NT(r.roomCharge) : ''}</td>
-                                <td className="px-3 py-2 text-right">{Number(r.otherCharge||0) > 0 ? NT(r.otherCharge) : ''}</td>
-                                <td className="px-3 py-2 text-right">{Number(r.payDeposit||0) > 0 ? NT(r.payDeposit) : ''}</td>
-                                <td className="px-3 py-2 text-gray-500">{r.depositDate || ''}</td>
-                                <td className="px-3 py-2 font-mono text-gray-500">{r.depositLast5 || ''}</td>
-                                <td className="px-3 py-2 text-right">{Number(r.payTransfer||0) > 0 ? NT(r.payTransfer) : ''}</td>
-                                <td className="px-3 py-2 text-gray-500">{r.transferDate || ''}</td>
-                                <td className="px-3 py-2 font-mono text-gray-500">{r.transferLast5 || ''}</td>
-                                <td className="px-3 py-2 text-right">{Number(r.payCard||0) > 0 ? NT(r.payCard) : ''}</td>
-                                <td className="px-3 py-2 text-right text-red-500">{Number(r.cardFee||0) > 0 ? `-${NT(r.cardFee)}` : ''}</td>
-                                <td className="px-3 py-2 text-right">{Number(r.payCash||0) > 0 ? NT(r.payCash) : ''}</td>
-                                <td className="px-3 py-2 text-right">{Number(r.payVoucher||0) > 0 ? NT(r.payVoucher) : ''}</td>
-                                <td className="px-3 py-2 text-right font-semibold text-green-700">{net > 0 ? NT(net) : ''}</td>
-                                <td className="px-3 py-2 text-gray-500">{r.status}</td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* 整體進度視圖 */}
-              {dmPayType === 'all' && dmData && !dmLoading && (
-                <div className="space-y-3">
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {(dmData.summary || []).map(s => {
-                      const pct = s.total > 0 ? Math.round(s.matched / s.total * 100) : 0;
-                      return (
-                        <div key={s.label} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-                          <div className="text-xs text-gray-500 mb-1">{s.label}</div>
-                          <div className="text-lg font-bold text-indigo-700">
-                            NT$ {s.amount.toLocaleString()}
-                          </div>
-                          <div className="mt-2 flex items-center gap-2">
-                            <div className="flex-1 bg-gray-100 rounded-full h-2">
-                              <div className="bg-green-500 h-2 rounded-full transition-all"
-                                style={{ width: `${pct}%` }} />
-                            </div>
-                            <span className="text-xs text-gray-500">{pct}%</span>
-                          </div>
-                          <div className="mt-1 flex justify-between text-xs">
-                            <span className="text-green-600">✓ {s.matched}</span>
-                            {s.skipped > 0 && <span className="text-orange-500">↗ {s.skipped}</span>}
-                            <span className={s.unmatched > 0 ? 'text-amber-600' : 'text-gray-400'}>
-                              ○ {s.unmatched}
-                            </span>
-                            <span className="text-gray-400">共 {s.total}</span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* 摘要卡 */}
-              {summary && dmPayType !== 'all' && dmPayType !== 'ledger' && (
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
-                  {[
-                    { label: `BNB ${PAY_SUB_TYPES.find(t => t.key === dmPayType)?.label || ''}合計`,
-                      val: `NT$ ${summary.totalBnbAmount.toLocaleString()}`, color: 'text-indigo-700' },
-                    { label: '存簿入帳合計',   val: `NT$ ${summary.totalBankCredit.toLocaleString()}`,  color: 'text-blue-700' },
-                    { label: '差異',          val: `NT$ ${Math.abs(summary.diff).toLocaleString()}`,    color: summary.diff !== 0 ? 'text-red-600 font-bold' : 'text-green-600' },
-                    { label: '已配對',         val: `${summary.matchedCount} 筆`,                        color: 'text-green-600' },
-                    { label: '標記處理',       val: `${summary.skippedCount || 0} 筆`,                   color: summary.skippedCount > 0 ? 'text-orange-500' : 'text-gray-400' },
-                    { label: '未配對（BNB）',  val: `${summary.unmatchedBnbCount} 筆`,                   color: summary.unmatchedBnbCount > 0 ? 'text-amber-600' : 'text-gray-500' },
-                  ].map(c => (
-                    <div key={c.label} className="bg-white rounded-xl border border-gray-100 shadow-sm p-3">
-                      <p className="text-xs text-gray-500">{c.label}</p>
-                      <p className={`font-bold text-sm mt-0.5 ${c.color}`}>{c.val}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* 配對按鈕 */}
-              {(dmSelBnb && dmSelLine) && (
-                <div className="mb-3 flex items-center gap-3 p-3 bg-indigo-50 rounded-xl border border-indigo-200">
-                  <span className="text-sm text-indigo-700">已選取雙側各一筆，確認配對？</span>
-                  <button onClick={handleMatch} disabled={dmMatching || isLocked}
-                    className="px-4 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
-                    {dmMatching ? '配對中…' : isLocked ? '已鎖帳' : '確認配對'}
-                  </button>
-                  <button onClick={() => { setDmSelBnb(null); setDmSelLine(null); }}
-                    className="text-xs text-gray-500 hover:underline">取消</button>
-                </div>
-              )}
-
-              {!dmData && !dmLoading && activeOuterTab !== 'ledger' && (
-                <div className="text-center py-20 text-gray-400">
-                  {dmPayType === 'all' ? '請選擇月份後按「查詢」' : '請選擇存簿帳戶後按「查詢」'}
-                </div>
-              )}
-              {dmLoading && activeOuterTab !== 'ledger' && (
-                <div className="text-center py-20 text-gray-400">載入中…</div>
-              )}
-
-              {/* 雙欄核對表 */}
-              {/* 全部分類合併列表 */}
-              {dmData && !dmLoading && dmPayType === 'combined' && (
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                  <div className="px-4 py-2.5 bg-indigo-50 border-b border-indigo-100 flex items-center justify-between">
-                    <span className="text-sm font-semibold text-indigo-800">全部收款類型（BNB）</span>
-                    <span className="text-xs text-indigo-500">
-                      {bnbRecords.length} 筆 　合計 NT${bnbRecords.reduce((s, r) => s + (r.payAmount || 0), 0).toLocaleString('zh-TW')}
-                    </span>
-                  </div>
-                  <div className="overflow-y-auto max-h-[600px]">
-                    <table className="w-full text-xs">
-                      <thead className="sticky top-0 bg-gray-50">
-                        <tr className="text-gray-500">
-                          <th className="px-3 py-2 text-left">姓名</th>
-                          <th className="px-3 py-2 text-left">入住</th>
-                          <th className="px-3 py-2 text-left">付款日</th>
-                          <th className="px-3 py-2 text-left">分類</th>
-                          <th className="px-3 py-2 text-left">後五碼</th>
-                          <th className="px-3 py-2 text-right">金額</th>
-                          <th className="px-3 py-2 text-center">配對</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-50">
-                        {bnbRecords.length === 0 && (
-                          <tr><td colSpan={7} className="text-center py-8 text-gray-400">本月無收款記錄</td></tr>
-                        )}
-                        {bnbRecords.map(r => {
-                          const typeColors = { deposit: 'bg-blue-50 text-blue-700', transfer: 'bg-indigo-50 text-indigo-700', card: 'bg-purple-50 text-purple-700', cash: 'bg-green-50 text-green-700' };
-                          return (
-                            <tr key={r.id} className={r.bankLineId ? 'bg-green-50' : 'hover:bg-gray-50'}>
-                              <td className="px-3 py-2 font-medium max-w-[90px] truncate">{r.guestName}</td>
-                              <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{r.checkInDate}</td>
-                              <td className="px-3 py-2 text-blue-500 whitespace-nowrap">{r.payDate || '—'}</td>
-                              <td className="px-3 py-2">
-                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium whitespace-nowrap ${typeColors[r.paymentTypeKey] || 'bg-gray-100 text-gray-600'}`}>
-                                  {r.paymentTypeLabel}
-                                </span>
-                              </td>
-                              <td className="px-3 py-2 text-blue-600 font-mono">{r.last5 || '—'}</td>
-                              <td className="px-3 py-2 text-right font-semibold text-indigo-700">{r.payAmount.toLocaleString()}</td>
-                              <td className="px-3 py-2 text-center">
-                                {r.bankLineId
-                                  ? <span className="text-green-600 font-bold">✓</span>
-                                  : r.matchSkip
-                                    ? <div className="flex items-center justify-center gap-1">
-                                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${r.matchSkip === 'next_month' ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-600'}`}
-                                          title={r.matchSkipNote || ''}>
-                                          {r.matchSkip === 'next_month' ? '跨月' : '免配'}
-                                        </span>
-                                        <button onClick={() => handleClearMark(r.bnbId, r.paymentTypeKey)}
-                                          className="text-gray-300 hover:text-red-400 text-sm leading-none">×</button>
-                                      </div>
-                                    : <div className="flex items-center justify-center gap-1">
-                                        <button onClick={() => { setDmMarkNote(''); setDmMarkModal({ bnbId: r.bnbId, skipType: 'next_month', paymentType: r.paymentTypeKey }); }}
-                                          className="text-[10px] text-orange-600 border border-orange-200 hover:bg-orange-50 px-1 py-0.5 rounded">跨月</button>
-                                        <button onClick={() => { setDmMarkNote(''); setDmMarkModal({ bnbId: r.bnbId, skipType: 'no_match', paymentType: r.paymentTypeKey }); }}
-                                          className="text-[10px] text-gray-500 border border-gray-200 hover:bg-gray-50 px-1 py-0.5 rounded">免配</button>
-                                      </div>
-                                }
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                      <tfoot className="bg-gray-50 font-semibold text-xs">
-                        <tr>
-                          {['deposit','transfer','card','cash'].map(key => {
-                            const typeRows = bnbRecords.filter(r => r.paymentTypeKey === key);
-                            if (typeRows.length === 0) return null;
-                            const label = PAY_SUB_TYPES.find(t => t.key === key)?.label || key;
-                            const total = typeRows.reduce((s, r) => s + (r.payAmount || 0), 0);
-                            return <td key={key} className="px-3 py-2 text-gray-600">{label}: {total.toLocaleString()}</td>;
-                          })}
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
-                </div>
-              )}
-
-              {dmData && !dmLoading && dmPayType !== 'all' && dmPayType !== 'combined' && (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-
-                  {/* 左欄：BNB 收款 */}
-                  <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                    <div className="px-4 py-2.5 bg-indigo-50 border-b border-indigo-100 flex items-center justify-between">
-                      <span className="text-sm font-semibold text-indigo-800">
-                        {PAY_SUB_TYPES.find(t => t.key === dmPayType)?.label || ''}（BNB）
-                      </span>
-                      <span className="text-xs text-indigo-500">{bnbRecords.length} 筆　點選後再點右側存簿行配對</span>
-                    </div>
-                    <div className="overflow-y-auto max-h-[480px]">
-                      <table className="w-full text-xs">
-                        <thead className="sticky top-0 bg-gray-50">
-                          <tr className="text-gray-500">
-                            <th className="px-3 py-2 text-left">狀態</th>
-                            <th className="px-3 py-2 text-left">姓名</th>
-                            <th className="px-3 py-2 text-left">入住</th>
-                            <th className="px-3 py-2 text-left">付款日</th>
-                            <th className="px-3 py-2 text-left">分類</th>
-                            {(dmPayType === 'deposit' || dmPayType === 'transfer') && (
-                              <th className="px-3 py-2 text-left">後五碼</th>
-                            )}
-                            <th className="px-3 py-2 text-right">金額</th>
-                            <th className="px-3 py-2"></th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-50">
-                          {bnbRecords.length === 0 && (
-                            <tr><td colSpan={(dmPayType === 'deposit' || dmPayType === 'transfer') ? 8 : 7} className="text-center py-8 text-gray-400">本月無此類型收款記錄</td></tr>
-                          )}
-                          {bnbRecords.map((r, _ri, arr) => {
-                            const isMatched   = !!r.bankLineId;
-                            const isSkipped   = !r.bankLineId && !!r.matchSkip;
-                            const isSuggested = !isMatched && !isSkipped && suggestMap.has(r.id);
-                            const isSelected  = dmSelBnb === r.id;
-                            const isFirstUnmatched = !isMatched && !isSkipped && arr.findIndex(x => !x.bankLineId && !x.matchSkip) === _ri;
-                            let rowCls = 'transition-colors ';
-                            if (!isMatched && !isSkipped) rowCls += 'cursor-pointer ';
-                            if (isSelected)       rowCls += 'bg-indigo-100 ring-1 ring-inset ring-indigo-300';
-                            else if (isMatched)   rowCls += 'bg-green-50 hover:bg-green-100';
-                            else if (isSkipped)   rowCls += r.matchSkip === 'next_month' ? 'bg-orange-50' : 'bg-gray-50';
-                            else if (isSuggested) rowCls += 'bg-amber-50 hover:bg-amber-100';
-                            else rowCls += 'hover:bg-gray-50';
-                            return (
-                              <tr key={r.id} className={rowCls}
-                                {...(isFirstUnmatched ? { 'data-first-unmatched': '1' } : {})}
-                                onClick={() => !isMatched && !isSkipped && setDmSelBnb(isSelected ? null : r.id)}>
-                                <td className="px-3 py-2.5">
-                                  {isMatched
-                                    ? <span className="text-green-600 font-bold">✓</span>
-                                    : isSkipped
-                                      ? <span className={`text-[10px] font-semibold ${r.matchSkip === 'next_month' ? 'text-orange-500' : 'text-gray-400'}`}>
-                                          {r.matchSkip === 'next_month' ? '↗' : '–'}
-                                        </span>
-                                      : isSuggested
-                                        ? <span className="text-amber-500">⚡</span>
-                                        : <span className="text-gray-300">○</span>
-                                  }
-                                </td>
-                                <td className="px-3 py-2.5 max-w-[100px] truncate font-medium">{r.guestName}</td>
-                                <td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">{r.checkInDate}</td>
-                                <td className="px-3 py-2.5 text-blue-500 whitespace-nowrap text-xs">{r.payDate || '—'}</td>
-                                <td className="px-3 py-2.5">
-                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-50 text-indigo-700 whitespace-nowrap">
-                                    {PAY_SUB_TYPES.find(t => t.key === dmPayType)?.label || dmPayType}
-                                  </span>
-                                </td>
-                                {(dmPayType === 'deposit' || dmPayType === 'transfer') && (
-                                  <td className="px-3 py-2.5 text-blue-600 font-mono text-xs tracking-wider">{r.last5 || '—'}</td>
-                                )}
-                                <td className="px-3 py-2.5 text-right font-semibold text-indigo-700">
-                                  {r.payAmount.toLocaleString()}
-                                </td>
-                                <td className="px-3 py-2.5 text-right">
-                                  {isSkipped ? (
-                                    <div className="flex items-center justify-end gap-1">
-                                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${r.matchSkip === 'next_month' ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-600'}`}
-                                        title={r.matchSkipNote || ''}>
-                                        {r.matchSkip === 'next_month' ? '跨月' : '免配'}
-                                      </span>
-                                      {!isLocked && (
-                                        <button onClick={e => { e.stopPropagation(); handleClearMark(r.id); }}
-                                          className="text-gray-300 hover:text-red-400 text-sm leading-none ml-0.5">×</button>
-                                      )}
-                                    </div>
-                                  ) : isMatched ? (
-                                    !isLocked && (
-                                      <button onClick={e => { e.stopPropagation(); handleUnmatch(r.id); }}
-                                        className="text-[10px] text-red-400 hover:text-red-600 px-1.5 py-0.5 rounded border border-red-200 hover:bg-red-50">
-                                        解除
-                                      </button>
-                                    )
-                                  ) : !isLocked ? (
-                                    <div className="flex items-center justify-end gap-1">
-                                      <button onClick={e => { e.stopPropagation(); setDmMarkNote(''); setDmMarkModal({ bnbId: r.id, skipType: 'next_month' }); }}
-                                        className="text-[10px] text-orange-600 border border-orange-200 hover:bg-orange-50 px-1.5 py-0.5 rounded whitespace-nowrap">
-                                        跨月
-                                      </button>
-                                      <button onClick={e => { e.stopPropagation(); setDmMarkNote(''); setDmMarkModal({ bnbId: r.id, skipType: 'no_match' }); }}
-                                        className="text-[10px] text-gray-500 border border-gray-200 hover:bg-gray-50 px-1.5 py-0.5 rounded whitespace-nowrap">
-                                        免配
-                                      </button>
-                                    </div>
-                                  ) : null}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  {/* 右欄：存簿入帳 */}
-                  <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                    <div className="px-4 py-2.5 bg-blue-50 border-b border-blue-100 flex items-center justify-between">
-                      <span className="text-sm font-semibold text-blue-800">存簿入帳（銀行明細）</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-blue-500">{bankLines.length} 筆入帳</span>
-                        {dmAccountId && (
-                          <button onClick={() => { setBankImportLines([]); setBankImportError(''); setShowBankImport(true); }}
-                            className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 whitespace-nowrap">
-                            ↑ 匯入對帳單
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    <div className="overflow-y-auto max-h-[480px]">
-                      <table className="w-full text-xs">
-                        <thead className="sticky top-0 bg-gray-50">
-                          <tr className="text-gray-500">
-                            <th className="px-3 py-2 text-left">狀態</th>
-                            <th className="px-3 py-2 text-left">日期</th>
-                            <th className="px-3 py-2 text-left">說明</th>
-                            <th className="px-3 py-2 text-right">金額</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-50">
-                          {bankLines.length === 0 && (
-                            <tr><td colSpan={4} className="text-center py-8 text-gray-400">本月無存簿入帳資料</td></tr>
-                          )}
-                          {bankLines.map(l => {
-                            const isUsed      = l.isUsed;
-                            const isSuggested = !isUsed && [...suggestMap.values()].includes(l.id);
-                            const isSelected  = dmSelLine === l.id;
-                            const matchedTo   = lineMatchedByBnb.get(l.id);
-                            let rowCls = 'transition-colors ';
-                            if (isUsed) rowCls += 'bg-green-50 opacity-70';
-                            else if (isSelected) rowCls += 'bg-indigo-100 cursor-pointer ring-1 ring-inset ring-indigo-300';
-                            else if (isSuggested) rowCls += 'bg-amber-50 hover:bg-amber-100 cursor-pointer';
-                            else rowCls += 'hover:bg-gray-50 cursor-pointer';
-                            return (
-                              <tr key={l.id} className={rowCls}
-                                onClick={() => !isUsed && setDmSelLine(isSelected ? null : l.id)}>
-                                <td className="px-3 py-2.5">
-                                  {isUsed
-                                    ? <span className="text-green-600 font-bold" title={`已配對：${matchedTo}`}>✓</span>
-                                    : isSuggested
-                                      ? <span className="text-amber-500">⚡</span>
-                                      : <span className="text-gray-300">○</span>
-                                  }
-                                </td>
-                                <td className="px-3 py-2.5 whitespace-nowrap text-gray-600">{l.txDate}</td>
-                                <td className="px-3 py-2.5 max-w-[160px] truncate text-gray-500"
-                                  title={l.description || ''}>
-                                  {l.description || '—'}
-                                  {isUsed && matchedTo && (
-                                    <span className="ml-1 text-green-600">（{matchedTo}）</span>
-                                  )}
-                                </td>
-                                <td className="px-3 py-2.5 text-right font-semibold text-blue-700">
-                                  {l.creditAmount.toLocaleString()}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })()}
+        {activeTab === 'deposit' && (
+          <DepositMatchTab
+            dmMonth={dmMonth} setDmMonth={setDmMonth}
+            dmWarehouse={dmWarehouse} setDmWarehouse={setDmWarehouse}
+            dmAccountId={dmAccountId} setDmAccountId={setDmAccountId}
+            dmData={dmData} setDmData={setDmData}
+            dmLoading={dmLoading} dmError={dmError}
+            dmAccounts={dmAccounts}
+            dmSelBnb={dmSelBnb} setDmSelBnb={setDmSelBnb}
+            dmSelLine={dmSelLine} setDmSelLine={setDmSelLine}
+            dmMatching={dmMatching}
+            dmPayType={dmPayType} setDmPayType={setDmPayType}
+            dmMarkModal={dmMarkModal} setDmMarkModal={setDmMarkModal}
+            dmMarkNote={dmMarkNote} setDmMarkNote={setDmMarkNote}
+            fetchDepositMatch={fetchDepositMatch}
+            handleMatch={handleMatch}
+            handleUnmatch={handleUnmatch}
+            handleMark={handleMark}
+            handleClearMark={handleClearMark}
+            handleAutoMatch={handleAutoMatch}
+            warehouseList={warehouseList}
+            isLocked={isLocked}
+            onGoToBooking={(bookingId) => {
+              setFilterMonth(dmMonth);
+              setActiveTab('records');
+              router.replace('?tab=records', { scroll: false });
+            }}
+            ledgerMonthFrom={ledgerMonthFrom} setLedgerMonthFrom={setLedgerMonthFrom}
+            ledgerMonthTo={ledgerMonthTo}     setLedgerMonthTo={setLedgerMonthTo}
+            ledgerWarehouse={ledgerWarehouse} setLedgerWarehouse={setLedgerWarehouse}
+            ledgerRows={ledgerRows}
+            ledgerLoading={ledgerLoading}
+            fetchLedger={fetchLedger}
+            showBankImport={showBankImport} setShowBankImport={setShowBankImport}
+            bankImportLines={bankImportLines} setBankImportLines={setBankImportLines}
+            bankImportParsing={bankImportParsing}
+            bankImportSubmitting={bankImportSubmitting}
+            bankImportError={bankImportError} setBankImportError={setBankImportError}
+            handleBankFileUpload={handleBankFileUpload}
+            submitBankImport={submitBankImport}
+          />
+        )}
 
         {/* ══ Tab: OTA比對 ══ */}
         {activeTab === 'otaRecon' && (
@@ -3259,6 +1215,7 @@ function BnbPage() {
             otaPreview={otaPreview} otaPreviewLoading={otaPreviewLoading} previewOta={previewOta}
             otaResult={otaResult}
             otaLoading={otaLoading}
+            otaError={otaError}
             otaMonth={otaMonth} setOtaMonth={setOtaMonth}
             otaViewTab={otaViewTab} setOtaViewTab={setOtaViewTab}
             commAmt={commAmt} setCommAmt={setCommAmt}
@@ -3276,6 +1233,7 @@ function BnbPage() {
             openOtaEdit={openOtaEdit}
             openOtaAdd={openOtaAdd}
             deleteOtaBnb={deleteOtaBnb}
+            onGoToCommission={() => { setCommSource(otaSource); setActiveTab('otaCommission'); router.replace('?tab=otaCommission', { scroll: false }); }}
           />
         )}
         {/* ══ Tab: OTA傭金 ══ */}
@@ -3283,11 +1241,11 @@ function BnbPage() {
           <OtaCommissionTab
             otaWarehouse={otaWarehouse} setOtaWarehouse={setOtaWarehouse}
             commSource={commSource} setCommSource={setCommSource}
-            commHistRows={commHistRows} commHistLoading={commHistLoading}
+            commHistRows={commHistRows} commHistLoading={commHistLoading} commHistError={commHistError}
             commEditId={commEditId} setCommEditId={setCommEditId}
             commEditData={commEditData} setCommEditData={setCommEditData}
             commEditSaving={commEditSaving}
-            reconLogs={reconLogs} reconLogsLoading={reconLogsLoading}
+            reconLogs={reconLogs} reconLogsLoading={reconLogsLoading} reconLogsError={reconLogsError}
             warehouseList={warehouseList}
             fetchCommHistory={fetchCommHistory}
             fetchReconLogs={fetchReconLogs}
@@ -3300,7 +1258,7 @@ function BnbPage() {
         {/* ══ Tab: 老闆收取 ══ */}
         {activeTab === 'bossWithdraw' && (
           <BossWithdrawTab
-            bwData={bwData} bwLoading={bwLoading}
+            bwData={bwData} bwLoading={bwLoading} bwError={bwError}
             bwMonth={bwMonth} setBwMonth={setBwMonth}
             bwWarehouse={bwWarehouse} setBwWarehouse={setBwWarehouse}
             bwViewMode={bwViewMode} setBwViewMode={setBwViewMode}
@@ -3314,209 +1272,39 @@ function BnbPage() {
         )}
         {/* ══ Tab: 其他收入 ══ */}
         {activeTab === 'otherIncome' && (
-          <div>
-            {/* 月固定費用模板 */}
-            <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 mb-4">
-              <div className="flex items-center justify-between mb-3">
-                <h4 className="text-sm font-semibold text-indigo-800">月固定費用模板</h4>
-                <button onClick={() => { setShowRecurringMgr(!showRecurringMgr); if (!showRecurringMgr) fetchRecurringTemplates(); }}
-                  className="text-xs text-indigo-600 border border-indigo-300 px-2.5 py-1 rounded hover:bg-indigo-100">
-                  {showRecurringMgr ? '收起' : '管理模板'}
-                </button>
-              </div>
-              <div className="flex items-center gap-3 flex-wrap">
-                <label className="text-xs text-indigo-700">建立月份草稿：</label>
-                <input type="month" value={recurringDraftMonth} onChange={e => setRecurringDraftMonth(e.target.value)}
-                  className="border border-indigo-300 rounded px-2 py-1 text-sm bg-white" />
-                <button onClick={createRecurringDrafts} disabled={recurringDrafting}
-                  className="px-3 py-1 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50">
-                  {recurringDrafting ? '建立中…' : '建立本月草稿'}
-                </button>
-                <span className="text-xs text-indigo-500">（依模板建立草稿，已存在的自動跳過）</span>
-              </div>
-              {showRecurringMgr && (
-                <div className="mt-4 space-y-3">
-                  <div className="grid grid-cols-5 gap-2">
-                    {[
-                      { key: 'warehouse', placeholder: '館別', type: 'text' },
-                      { key: 'category',  placeholder: '科目（如：清潔費）', type: 'text' },
-                      { key: 'description', placeholder: '描述（如：清潔員薪資）', type: 'text' },
-                      { key: 'defaultAmt', placeholder: '預設金額', type: 'number' },
-                    ].map(f => (
-                      <input key={f.key} type={f.type} placeholder={f.placeholder}
-                        value={recurringForm[f.key]} onChange={e => setRecurringForm(p => ({ ...p, [f.key]: e.target.value }))}
-                        className="border rounded px-2 py-1.5 text-sm" />
-                    ))}
-                    <button onClick={saveRecurringTemplate}
-                      className="px-3 py-1.5 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700">
-                      新增
-                    </button>
-                  </div>
-                  <div className="space-y-1">
-                    {recurringTemplates.length === 0 && <p className="text-xs text-indigo-400">尚無模板</p>}
-                    {recurringTemplates.map(t => (
-                      <div key={t.id} className="flex items-center gap-3 bg-white rounded px-3 py-1.5 text-xs border border-indigo-100">
-                        <span className="text-indigo-600 font-medium">{t.warehouse}</span>
-                        <span className="text-gray-600">{t.category}</span>
-                        <span className="text-gray-700 flex-1">{t.description}</span>
-                        <span className="font-semibold text-indigo-700">NT${Number(t.defaultAmt).toLocaleString()}</span>
-                        <button onClick={() => deleteRecurringTemplate(t.id)}
-                          className="text-red-400 hover:text-red-600 hover:underline">停用</button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-            {/* 篩選列 */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4 flex flex-wrap gap-3 items-end">
-              <div>
-                <label htmlFor="f-20" className="block text-xs text-gray-500 mb-1">月份</label>
-                <input id="f-20" type="month" value={oiMonth} onChange={e => setOiMonth(e.target.value)} className={inputCls} />
-              </div>
-              <div>
-                <label htmlFor="f-21" className="block text-xs text-gray-500 mb-1">館別</label>
-                <select id="f-21" value={oiWarehouse} onChange={e => setOiWarehouse(e.target.value)} className={inputCls}>
-                  <option value="">全部</option>
-                  {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
-                </select>
-                <WhQuickBtns list={warehouseList} value={oiWarehouse} onChange={setOiWarehouse} />
-              </div>
-              <button onClick={fetchOtherIncome} disabled={oiLoading}
-                className={`${btnCls} bg-indigo-50 text-indigo-700 disabled:opacity-40`}>
-                {oiLoading ? '載入中…' : '查詢'}
-              </button>
-              <button onClick={() => openOiModal(null)}
-                className={`${btnCls} bg-indigo-600 text-white hover:bg-indigo-700`}>
-                + 新增其他收入
-              </button>
-              {oiRows.length > 0 && (
-                <ExportButtons
-                  data={oiRows.map(r => ({ importMonth: r.importMonth, warehouse: r.warehouse, incomeDate: r.incomeDate, category: r.category || '', description: r.description, amount: r.amount, note: r.note || '' }))}
-                  columns={[
-                    { header: '月份',   key: 'importMonth' },
-                    { header: '館別',   key: 'warehouse' },
-                    { header: '日期',   key: 'incomeDate' },
-                    { header: '類別',   key: 'category' },
-                    { header: '說明',   key: 'description' },
-                    { header: '金額',   key: 'amount', format: 'number' },
-                    { header: '備註',   key: 'note' },
-                  ]}
-                  filename={`其他收入_${oiMonth}${oiWarehouse ? '_' + oiWarehouse : ''}`}
-                  title={`其他收入 ${oiMonth}${oiWarehouse ? '　' + oiWarehouse : ''}`}
-                />
-              )}
-              {oiRows.length > 0 && (
-                <span className="text-sm text-gray-500 ml-2">
-                  合計 <b className="text-indigo-700">{NT(oiRows.reduce((s, r) => s + Number(r.amount), 0))}</b>（{oiRows.length} 筆）
-                </span>
-              )}
-            </div>
-
-            {/* 資料表格 */}
-            {oiLoading && <div className="text-center py-20 text-gray-400">載入中…</div>}
-            {!oiLoading && oiRows.length === 0 && (
-              <div className="text-center py-20 text-gray-400">請選擇月份後按「查詢」，或按「+ 新增其他收入」</div>
-            )}
-            {!oiLoading && oiRows.length > 0 && (
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 tbl-wrap">
-                <table className="w-full text-sm">
-                  <thead className="sticky top-0 z-10 bg-indigo-50">
-                    <tr className="bg-indigo-50 text-indigo-800 text-xs">
-                      <th className="px-3 py-2 text-left">月份</th>
-                      <th className="px-3 py-2 text-left">館別</th>
-                      <th className="px-3 py-2 text-left">日期</th>
-                      <th className="px-3 py-2 text-left">類別</th>
-                      <th className="px-3 py-2 text-left">說明</th>
-                      <th className="px-3 py-2 text-right">金額</th>
-                      <th className="px-3 py-2 text-left">備註</th>
-                      <th className="px-3 py-2 text-center">操作</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {oiRows.map(r => (
-                      <tr key={r.id} className="hover:bg-gray-50">
-                        <td className="px-3 py-2 text-xs text-gray-500">{r.importMonth}</td>
-                        <td className="px-3 py-2 text-xs">{r.warehouse}</td>
-                        <td className="px-3 py-2 text-xs text-gray-600">{r.incomeDate}</td>
-                        <td className="px-3 py-2 text-xs">
-                          {r.category ? <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-xs">{r.category}</span> : '—'}
-                        </td>
-                        <td className="px-3 py-2">{r.description}</td>
-                        <td className="px-3 py-2 text-right font-medium text-indigo-700">{NT(r.amount)}</td>
-                        <td className="px-3 py-2 text-xs text-gray-400">{r.note || '—'}</td>
-                        <td className="px-3 py-2 text-center whitespace-nowrap">
-                          <button onClick={() => openOiModal(r)}
-                            className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-50 mr-1">編輯</button>
-                          <button onClick={() => confirm(`確定刪除「${r.description}」？`, () => deleteOtherIncome(r.id), '刪除')}
-                            className="text-xs px-2 py-1 rounded border border-red-200 text-red-400 hover:bg-red-50">刪除</button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {/* 新增/編輯 Modal */}
-            {oiModalOpen && (
-              <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
-                  <h3 className="text-lg font-bold mb-4">{oiEditRow ? '編輯其他收入' : '新增其他收入'}</h3>
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label htmlFor="f-22" className="block text-xs text-gray-500 mb-1">月份 *</label>
-                        <input id="f-22" type="month" value={oiForm.importMonth} onChange={e => setOiForm(f => ({ ...f, importMonth: e.target.value }))} className="w-full border rounded-lg px-3 py-1.5 text-sm" />
-                      </div>
-                      <div>
-                        <label htmlFor="f-23" className="block text-xs text-gray-500 mb-1">日期 *</label>
-                        <input id="f-23" type="date" value={oiForm.incomeDate} onChange={e => setOiForm(f => ({ ...f, incomeDate: e.target.value }))} className="w-full border rounded-lg px-3 py-1.5 text-sm" />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label htmlFor="f-24" className="block text-xs text-gray-500 mb-1">館別 *</label>
-                        <select id="f-24" value={oiForm.warehouse} onChange={e => setOiForm(f => ({ ...f, warehouse: e.target.value }))} className="w-full border rounded-lg px-3 py-1.5 text-sm">
-                          {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label htmlFor="f-35" className="block text-xs text-gray-500 mb-1">類別</label>
-                        <select id="f-35" value={oiForm.category} onChange={e => setOiForm(f => ({ ...f, category: e.target.value }))} className="w-full border rounded-lg px-3 py-1.5 text-sm">
-                          <option value="">請選擇</option>
-                          {OI_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                        </select>
-                      </div>
-                    </div>
-                    <div>
-                      <label htmlFor="f-36" className="block text-xs text-gray-500 mb-1">說明 *</label>
-                      <input id="f-36" type="text" value={oiForm.description} onChange={e => setOiForm(f => ({ ...f, description: e.target.value }))}
-                        placeholder="例：5月停車費" className="w-full border rounded-lg px-3 py-1.5 text-sm" />
-                    </div>
-                    <div>
-                      <label htmlFor="f-37" className="block text-xs text-gray-500 mb-1">金額 *</label>
-                      <input id="f-37" type="number" value={oiForm.amount} onChange={e => setOiForm(f => ({ ...f, amount: e.target.value }))}
-                        placeholder="0" className="w-full border rounded-lg px-3 py-1.5 text-sm" />
-                    </div>
-                    <div>
-                      <label htmlFor="f-38" className="block text-xs text-gray-500 mb-1">備註</label>
-                      <input id="f-38" type="text" value={oiForm.note} onChange={e => setOiForm(f => ({ ...f, note: e.target.value }))}
-                        className="w-full border rounded-lg px-3 py-1.5 text-sm" />
-                    </div>
-                  </div>
-                  <div className="flex gap-3 mt-5">
-                    <button onClick={saveOtherIncome} disabled={oiSaving}
-                      className="flex-1 bg-indigo-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-50">
-                      {oiSaving ? '儲存中…' : '儲存'}
-                    </button>
-                    <button onClick={() => setOiModalOpen(false)}
-                      className="flex-1 border rounded-lg py-2 text-sm text-gray-600 hover:bg-gray-50">取消</button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
+          <OtherIncomeTab
+            oiRows={oiRows}
+            oiLoading={oiLoading}
+            fetchOtherIncome={fetchOtherIncome}
+            oiMonth={oiMonth}
+            setOiMonth={setOiMonth}
+            oiWarehouse={oiWarehouse}
+            setOiWarehouse={setOiWarehouse}
+            oiModalOpen={oiModalOpen}
+            setOiModalOpen={setOiModalOpen}
+            oiEditRow={oiEditRow}
+            oiForm={oiForm}
+            setOiForm={setOiForm}
+            oiSaving={oiSaving}
+            saveOtherIncome={saveOtherIncome}
+            deleteOtherIncome={deleteOtherIncome}
+            openOiModal={openOiModal}
+            recurringTemplates={recurringTemplates}
+            showRecurringMgr={showRecurringMgr}
+            setShowRecurringMgr={setShowRecurringMgr}
+            recurringForm={recurringForm}
+            setRecurringForm={setRecurringForm}
+            fetchRecurringTemplates={fetchRecurringTemplates}
+            saveRecurringTemplate={saveRecurringTemplate}
+            deleteRecurringTemplate={deleteRecurringTemplate}
+            recurringDraftMonth={recurringDraftMonth}
+            setRecurringDraftMonth={setRecurringDraftMonth}
+            recurringDrafting={recurringDrafting}
+            createRecurringDrafts={createRecurringDrafts}
+            warehouseList={warehouseList}
+            showToast={showToast}
+            confirm={confirm}
+          />
         )}
 
         {/* ══ Tab: 訂房日曆 ══ */}
@@ -3531,7 +1319,8 @@ function BnbPage() {
               calYear={calYear} setCalYear={setCalYear}
               calMonth={calMonth} setCalMonth={setCalMonth}
               calWarehouse={calWarehouse} setCalWarehouse={setCalWarehouse}
-              calData={calData} calLoading={calLoading}
+              calData={calData} calLoading={calLoading} calError={calError}
+              fetchCalendar={fetchCalendar}
               warehouseList={warehouseList}
             />
           </>
@@ -3542,7 +1331,7 @@ function BnbPage() {
           <OccupancyTab
             occYear={occYear} setOccYear={setOccYear}
             occWarehouse={occWarehouse} setOccWarehouse={setOccWarehouse}
-            occData={occData} occLoading={occLoading}
+            occData={occData} occLoading={occLoading} occError={occError}
             fetchOccupancy={fetchOccupancy} warehouseList={warehouseList}
           />
         )}
@@ -3558,8 +1347,14 @@ function BnbPage() {
             <PayAuditTab
               auditMonth={auditMonth} setAuditMonth={setAuditMonth}
               auditWarehouse={auditWarehouse} setAuditWarehouse={setAuditWarehouse}
-              auditData={auditData} auditLoading={auditLoading}
+              auditData={auditData} auditLoading={auditLoading} auditError={auditError}
               fetchAudit={fetchAudit} warehouseList={warehouseList}
+              onGoToRecords={(filter) => {
+                setFilterPayment(filter);
+                setFilterMonth(auditMonth);
+                setActiveTab('records');
+                router.replace('?tab=records', { scroll: false });
+              }}
             />
           </>
         )}
@@ -3569,7 +1364,7 @@ function BnbPage() {
           <SourceAnalysisTab
             saYear={saYear} setSaYear={setSaYear}
             saWarehouse={saWarehouse} setSaWarehouse={setSaWarehouse}
-            saData={saData} saLoading={saLoading}
+            saData={saData} saLoading={saLoading} saError={saError}
             fetchSourceAnalysis={fetchSourceAnalysis} warehouseList={warehouseList}
           />
         )}
@@ -3581,7 +1376,7 @@ function BnbPage() {
             oaWarehouse={oaWarehouse} setOaWarehouse={setOaWarehouse}
             oaData={oaData} oaPrevData={oaPrevData}
             oaCompare={oaCompare} setOaCompare={setOaCompare}
-            oaLoading={oaLoading}
+            oaLoading={oaLoading} oaError={oaError}
             fetchOtaAnalytics={fetchOtaAnalytics} warehouseList={warehouseList}
           />
         )}
@@ -3591,7 +1386,7 @@ function BnbPage() {
           <PaymentSplitTab
             psYear={psYear} setPsYear={setPsYear}
             psWarehouse={psWarehouse} setPsWarehouse={setPsWarehouse}
-            psData={psData} psLoading={psLoading}
+            psData={psData} psLoading={psLoading} psError={psError}
             fetchPaymentSplit={fetchPaymentSplit} warehouseList={warehouseList}
           />
         )}
@@ -3601,7 +1396,7 @@ function BnbPage() {
           <GuestHistoryTab
             ghSearch={ghSearch} setGhSearch={setGhSearch}
             ghData={ghData} ghLoading={ghLoading}
-            ghSearched={ghSearched} fetchGuestHistory={fetchGuestHistory}
+            ghSearched={ghSearched} ghError={ghError} fetchGuestHistory={fetchGuestHistory}
           />
         )}
       </main>
@@ -3612,7 +1407,14 @@ function BnbPage() {
           key={editRecord.id}
           record={editRecord}
           onClose={() => setEditRecord(null)}
-          onSaved={() => { setEditRecord(null); fetchRecords(); }}
+          onSaved={() => {
+            setEditRecord(null);
+            fetchRecords();
+            showToast('付款已儲存，下一步：訂金核對', 'success', {
+              onClick: () => { setActiveTab('deposit'); router.replace('?tab=deposit', { scroll: false }); },
+              label: '→ 訂金核對',
+            });
+          }}
         />
       )}
 
@@ -3683,139 +1485,7 @@ function BnbPage() {
         />
       )}
 
-      {/* ══ 存簿比對：標記跳過 Modal ══ */}
-      {dmMarkModal && (
-        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setDmMarkModal(null)}>
-          <div className="bg-white rounded-2xl shadow-xl p-6 w-[340px]" onClick={e => e.stopPropagation()}>
-            <h3 className="text-base font-semibold text-gray-800 mb-2">
-              {dmMarkModal.skipType === 'next_month' ? '標記為跨月入帳' : '標記為無需配對'}
-            </h3>
-            <p className="text-xs text-gray-500 mb-4">
-              {dmMarkModal.skipType === 'next_month'
-                ? '此筆款項下月才入帳存簿，本月暫不配對。'
-                : '此筆款項為現金收帳或已另行處理，不需存簿配對。'}
-            </p>
-            <div className="mb-5">
-              <label htmlFor="f-25" className="block text-xs text-gray-500 mb-1">備註（選填）</label>
-              <input id="f-25"
-                type="text"
-                value={dmMarkNote}
-                onChange={e => setDmMarkNote(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleMark()}
-                placeholder="說明原因…"
-                maxLength={255}
-                autoFocus
-                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <button onClick={() => { setDmMarkModal(null); setDmMarkNote(''); }}
-                className="px-4 py-1.5 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50">
-                取消
-              </button>
-              <button onClick={handleMark}
-                className={`px-4 py-1.5 text-sm rounded-lg text-white ${dmMarkModal.skipType === 'next_month' ? 'bg-orange-500 hover:bg-orange-600' : 'bg-gray-600 hover:bg-gray-700'}`}>
-                確認標記
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* ══ 存簿對帳單匯入 Modal ══ */}
-      {showBankImport && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowBankImport(false)}>
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-4 max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
-            <div className="px-6 py-4 border-b flex items-center justify-between">
-              <h3 className="text-lg font-bold text-gray-800">↑ 匯入存簿對帳單</h3>
-              <button onClick={() => setShowBankImport(false)} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
-            </div>
-            <div className="px-6 py-4 space-y-4 overflow-y-auto flex-1">
-              {/* 說明 */}
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
-                <p className="font-medium mb-1">📥 土地銀行網路銀行下載步驟</p>
-                <ol className="list-decimal ml-4 space-y-0.5 text-xs">
-                  <li>登入土地銀行網銀 → 帳戶管理 → 存款交易明細</li>
-                  <li>選擇帳戶（土海）、月份區間</li>
-                  <li>點「匯出 Excel」下載 .xls 檔</li>
-                  <li>上傳至此處即可</li>
-                </ol>
-              </div>
-
-              {/* 匯入月份/帳戶 */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="f-26" className="block text-xs text-gray-500 mb-1">月份</label>
-                  <input id="f-26" type="month" value={dmMonth} onChange={e => setDmMonth(e.target.value)}
-                    className="w-full border rounded-lg px-3 py-1.5 text-sm" />
-                </div>
-                <div>
-                  <label htmlFor="f-27" className="block text-xs text-gray-500 mb-1">存簿帳戶 *</label>
-                  <select id="f-27" value={dmAccountId} onChange={e => setDmAccountId(e.target.value)}
-                    className="w-full border rounded-lg px-3 py-1.5 text-sm">
-                    <option value="">請選擇帳戶</option>
-                    {dmAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                  </select>
-                </div>
-              </div>
-
-              {/* 檔案選擇 */}
-              <div>
-                <label htmlFor="xls-xlsx-csv" className="block text-sm font-medium text-gray-700 mb-1">選擇檔案（.xls / .xlsx / .csv）</label>
-                <input id="xls-xlsx-csv" type="file" accept=".xls,.xlsx,.csv"
-                  onChange={handleBankFileUpload}
-                  className="w-full border rounded-lg px-3 py-2 text-sm" />
-                {bankImportParsing && <p className="text-xs text-blue-500 mt-1">解析中…</p>}
-                {bankImportError && <p className="text-xs text-red-500 mt-1">{bankImportError}</p>}
-              </div>
-
-              {/* 解析預覽 */}
-              {bankImportLines.length > 0 && (
-                <div>
-                  <p className="text-sm font-medium text-gray-700 mb-2">
-                    預覽：共 {bankImportLines.length} 筆
-                    （存入 {bankImportLines.filter(l => l.creditAmount > 0).length} 筆 /
-                    支出 {bankImportLines.filter(l => l.debitAmount > 0).length} 筆）
-                  </p>
-                  <div className="border rounded-lg overflow-hidden max-h-48 overflow-y-auto">
-                    <table className="w-full text-xs">
-                      <thead className="bg-gray-50 sticky top-0">
-                        <tr>
-                          <th className="px-3 py-2 text-left">日期</th>
-                          <th className="px-3 py-2 text-left">說明</th>
-                          <th className="px-3 py-2 text-right text-green-700">存入</th>
-                          <th className="px-3 py-2 text-right text-red-600">支出</th>
-                          <th className="px-3 py-2 text-right">餘額</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y">
-                        {bankImportLines.map((l, i) => (
-                          <tr key={i} className={l.creditAmount > 0 ? 'bg-green-50/30' : ''}>
-                            <td className="px-3 py-1.5 whitespace-nowrap">{l.txDate}</td>
-                            <td className="px-3 py-1.5 max-w-[200px] truncate" title={l.description}>{l.description}</td>
-                            <td className="px-3 py-1.5 text-right text-green-700">{l.creditAmount > 0 ? l.creditAmount.toLocaleString() : ''}</td>
-                            <td className="px-3 py-1.5 text-right text-red-600">{l.debitAmount > 0 ? l.debitAmount.toLocaleString() : ''}</td>
-                            <td className="px-3 py-1.5 text-right text-gray-500">{l.runningBalance ? l.runningBalance.toLocaleString() : ''}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-            </div>
-            <div className="px-6 py-4 border-t flex justify-end gap-3">
-              <button onClick={() => setShowBankImport(false)}
-                className="px-4 py-2 text-sm bg-gray-200 rounded-lg hover:bg-gray-300">取消</button>
-              <button onClick={submitBankImport}
-                disabled={bankImportLines.length === 0 || !dmAccountId || bankImportSubmitting}
-                className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40">
-                {bankImportSubmitting ? '匯入中…' : bankImportLines.length === 0 ? '請先上傳檔案' : !dmAccountId ? '請選擇帳戶' : `確認匯入 ${bankImportLines.length} 筆`}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

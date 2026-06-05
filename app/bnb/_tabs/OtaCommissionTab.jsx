@@ -1,16 +1,17 @@
 'use client';
 
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 import ExportButtons from '@/components/ExportButtons';
 import WhQuickBtns from '../_components/WhQuickBtns';
 
 export default function OtaCommissionTab({
   otaWarehouse, setOtaWarehouse,
   commSource, setCommSource,
-  commHistRows, commHistLoading,
+  commHistRows, commHistLoading, commHistError,
   commEditId, setCommEditId,
   commEditData, setCommEditData,
   commEditSaving,
-  reconLogs, reconLogsLoading,
+  reconLogs, reconLogsLoading, reconLogsError,
   warehouseList,
   fetchCommHistory,
   fetchReconLogs,
@@ -116,6 +117,7 @@ export default function OtaCommissionTab({
           />
         )}
       </div>
+      {commHistError && <FetchErrorBanner message={commHistError} onRetry={fetchCommHistory} />}
 
       <div className="bg-white rounded-xl shadow tbl-wrap">
         <table className="w-full text-sm">
@@ -257,6 +259,7 @@ export default function OtaCommissionTab({
             {reconLogsLoading ? '載入中…' : '重新整理'}
           </button>
         </div>
+        {reconLogsError && <FetchErrorBanner message={reconLogsError} onRetry={fetchReconLogs} />}
         <div className="bg-white rounded-xl shadow tbl-wrap">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 sticky top-0">

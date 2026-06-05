@@ -6,6 +6,7 @@ import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 import { useSupplierContracts } from '@/hooks/useSupplierContracts';
 import SupplierForm from '@/components/suppliers/SupplierForm';
 
@@ -16,6 +17,7 @@ export default function SuppliersPage() {
   const isLoggedIn = !!session;
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [suppliersError, setSuppliersError] = useState(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState(null);
   const [formData, setFormData] = useState({
@@ -105,10 +107,12 @@ export default function SuppliersPage() {
   }, [showSortMenu, showDateFilterMenu]);
 
   async function fetchSuppliers(page = currentPage, limit = itemsPerPage, keyword = filterKeyword) {
+    setSuppliersError(null);
     try {
       const params = new URLSearchParams({ page: String(page), limit: String(limit) });
       if (keyword) params.set('keyword', keyword);
       const response = await fetch(`/api/suppliers?${params}`);
+      if (!response.ok) { setSuppliersError('廠商列表載入失敗，請稍後再試'); setLoading(false); return; }
       const result = await response.json();
       if (result.data && result.pagination) {
         const suppliersList = result.data;
@@ -123,8 +127,8 @@ export default function SuppliersPage() {
         applySortAndFilter(suppliersList, sortType, '');
       }
       setLoading(false);
-    } catch (error) {
-      console.error('取得廠商列表失敗:', error);
+    } catch {
+      setSuppliersError('廠商列表載入失敗，請稍後再試');
       setAllSuppliers([]);
       setSuppliers([]);
       setTotalCount(0);
@@ -418,6 +422,8 @@ export default function SuppliersPage() {
             <button onClick={() => setBannerDismissed(true)} className="text-red-400 hover:text-red-600 text-lg leading-none shrink-0">×</button>
           </div>
         )}
+        {suppliersError && <FetchErrorBanner message={suppliersError} onRetry={() => fetchSuppliers(1, itemsPerPage, filterKeyword)} />}
+
         {/* 頁面標題 */}
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-3">

@@ -1,12 +1,13 @@
 'use client';
 
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 import WhQuickBtns from '../_components/WhQuickBtns';
 import { inputCls } from '../_constants';
 
 export default function OtaAnalyticsTab({
   oaYear, setOaYear, oaWarehouse, setOaWarehouse,
   oaData, oaPrevData, oaCompare, setOaCompare,
-  oaLoading, fetchOtaAnalytics, warehouseList,
+  oaLoading, oaError, fetchOtaAnalytics, warehouseList,
 }) {
   return (
     <div className="space-y-4">
@@ -26,6 +27,7 @@ export default function OtaAnalyticsTab({
         <button onClick={fetchOtaAnalytics} className="px-4 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">查詢</button>
         {oaLoading && <span className="text-xs text-gray-400 animate-pulse">載入中…</span>}
       </div>
+      {oaError && <FetchErrorBanner message={oaError} onRetry={fetchOtaAnalytics} />}
 
       {oaData && (() => {
         const { months, bySource, totals } = oaData;

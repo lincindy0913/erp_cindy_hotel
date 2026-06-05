@@ -979,7 +979,7 @@ function ReconciliationPageInner() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-2xl font-bold text-gray-800">存簿對帳</h2>
-            <p className="text-sm text-gray-500 mt-1">銀行對帳單比對與核實</p>
+            <p className="text-sm text-gray-500 mt-1">信用卡、OTA 等科目對帳。銀行存款月結調節表請至 <Link href="/bank-reconciliation" className="text-violet-600 hover:underline">存簿核對 →</Link></p>
           </div>
         </div>
 

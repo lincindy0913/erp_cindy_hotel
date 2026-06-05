@@ -12,6 +12,7 @@ export function useDepositMatch() {
   const [dmAccountId, setDmAccountId] = useState('');
   const [dmData,      setDmData]      = useState(null);
   const [dmLoading,   setDmLoading]   = useState(false);
+  const [dmError,     setDmError]     = useState(null);
   const [dmAccounts,  setDmAccounts]  = useState([]);
   const [dmSelBnb,    setDmSelBnb]    = useState(null);
   const [dmSelLine,   setDmSelLine]   = useState(null);
@@ -24,7 +25,7 @@ export function useDepositMatch() {
     fetch('/api/cashflow/accounts')
       .then(r => r.ok ? r.json() : [])
       .then(data => setDmAccounts(data.filter(a => a.type === '銀行存款' && a.isActive)))
-      .catch(() => {});
+      .catch(() => showToast('存簿帳戶清單載入失敗，請重新整理頁面', 'error'));
   }, []);
 
   const fetchDepositMatch = useCallback(async () => {
@@ -32,22 +33,24 @@ export function useDepositMatch() {
       showToast('請先選擇存簿帳戶', 'error'); return;
     }
     setDmLoading(true);
+    setDmError(null);
     try {
       const p = new URLSearchParams({ month: dmMonth, paymentType: dmPayType });
       if (dmAccountId) p.set('accountId', dmAccountId);
       if (dmWarehouse) p.set('warehouse', dmWarehouse);
       const res = await fetch(`/api/bnb/deposit-match?${p}`);
-      if (!res.ok) { showToast('載入核對資料失敗', 'error'); return; }
+      if (!res.ok) { setDmError('載入核對資料失敗，請稍後再試'); return; }
       setDmData(await res.json());
       setDmSelBnb(null);
       setDmSelLine(null);
-    } catch { showToast('載入核對資料失敗', 'error'); }
+    } catch { setDmError('載入核對資料失敗，請稍後再試'); }
     finally { setDmLoading(false); }
   }, [dmMonth, dmAccountId, dmWarehouse, dmPayType]);
 
-  async function handleMatch() {
+  async function handleMatch(onSuccess) {
     if (!dmSelBnb || !dmSelLine) return;
     setDmMatching(true);
+    const matchedId = dmSelBnb;
     try {
       const res = await fetch('/api/bnb/deposit-match', {
         method: 'POST',
@@ -56,7 +59,7 @@ export function useDepositMatch() {
       });
       const d = await res.json();
       if (!res.ok) { showToast(d.message || '配對失敗', 'error'); return; }
-      showToast('配對成功', 'success');
+      showToast('配對成功－已寫入訂房後五碼', 'success', onSuccess ? { onClick: () => onSuccess(matchedId), label: '→ 查看訂房' } : null);
       setDmSelBnb(null); setDmSelLine(null);
       fetchDepositMatch();
     } catch { showToast('配對失敗', 'error'); }
@@ -129,12 +132,87 @@ export function useDepositMatch() {
     finally { setDmMatching(false); }
   }
 
+  // ── 流水帳 ────────────────────────────────────────────────────
+  const [ledgerMonthFrom, setLedgerMonthFrom] = useState(() => todayStr().slice(0, 7));
+  const [ledgerMonthTo,   setLedgerMonthTo]   = useState(() => todayStr().slice(0, 7));
+  const [ledgerWarehouse, setLedgerWarehouse] = useState('');
+  const [ledgerRows,      setLedgerRows]      = useState([]);
+  const [ledgerLoading,   setLedgerLoading]   = useState(false);
+
+  const fetchLedger = useCallback(async () => {
+    setLedgerLoading(true);
+    try {
+      const p = new URLSearchParams({ pageSize: '500' });
+      if (ledgerMonthFrom) p.set('monthFrom', ledgerMonthFrom);
+      if (ledgerMonthTo)   p.set('monthTo',   ledgerMonthTo);
+      if (ledgerWarehouse) p.set('warehouse', ledgerWarehouse);
+      const res = await fetch(`/api/bnb?${p}`);
+      if (!res.ok) { showToast('載入流水帳失敗', 'error'); return; }
+      const json = await res.json();
+      setLedgerRows(json.data ?? json);
+    } catch { showToast('載入流水帳失敗', 'error'); }
+    finally { setLedgerLoading(false); }
+  }, [ledgerMonthFrom, ledgerMonthTo, ledgerWarehouse, showToast]);
+
+  // ── 存簿匯入 ──────────────────────────────────────────────────
+  const [showBankImport,       setShowBankImport]       = useState(false);
+  const [bankImportLines,      setBankImportLines]      = useState([]);
+  const [bankImportParsing,    setBankImportParsing]    = useState(false);
+  const [bankImportSubmitting, setBankImportSubmitting] = useState(false);
+  const [bankImportError,      setBankImportError]      = useState(null);
+
+  async function handleBankFileUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBankImportParsing(true);
+    setBankImportError(null);
+    setBankImportLines([]);
+    try {
+      const XLSX = (await import('xlsx')).default;
+      const buf = await file.arrayBuffer();
+      const wb  = XLSX.read(buf, { type: 'array', cellDates: true });
+      const ws  = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, dateNF: 'YYYY-MM-DD' });
+      const lines = [];
+      for (const row of rows) {
+        const txDate = String(row[0] || '').trim();
+        if (!txDate || !/\d{4}/.test(txDate)) continue;
+        const credit  = parseFloat(String(row[2] || '0').replace(/,/g, '')) || 0;
+        const debit   = parseFloat(String(row[3] || '0').replace(/,/g, '')) || 0;
+        const balance = parseFloat(String(row[4] || '').replace(/,/g, '')) || null;
+        lines.push({ txDate, description: String(row[1] || '').trim(), creditAmount: credit, debitAmount: debit, runningBalance: balance });
+      }
+      if (!lines.length) { setBankImportError('未能解析到有效交易記錄，請確認檔案格式'); return; }
+      setBankImportLines(lines);
+    } catch { setBankImportError('檔案解析失敗，請確認格式正確'); }
+    finally { setBankImportParsing(false); }
+  }
+
+  async function submitBankImport() {
+    if (!dmAccountId || !bankImportLines.length) return;
+    setBankImportSubmitting(true);
+    try {
+      const res = await fetch(`/api/bank-reconciliation/${dmAccountId}/import-csv`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lines: bankImportLines, month: dmMonth }),
+      });
+      const d = await res.json();
+      if (!res.ok) { showToast(d.error || '匯入失敗', 'error'); return; }
+      showToast(`已匯入 ${d.imported ?? bankImportLines.length} 筆存簿明細`, 'success');
+      setShowBankImport(false);
+      setBankImportLines([]);
+      fetchDepositMatch();
+    } catch { showToast('匯入失敗', 'error'); }
+    finally { setBankImportSubmitting(false); }
+  }
+
   return {
     dmMonth,     setDmMonth,
     dmWarehouse, setDmWarehouse,
     dmAccountId, setDmAccountId,
     dmData,      setDmData,
-    dmLoading,
+    dmLoading,   dmError,
     dmAccounts,  setDmAccounts,
     dmSelBnb,    setDmSelBnb,
     dmSelLine,   setDmSelLine,
@@ -148,5 +226,17 @@ export function useDepositMatch() {
     handleMark,
     handleClearMark,
     handleAutoMatch,
+    ledgerMonthFrom, setLedgerMonthFrom,
+    ledgerMonthTo,   setLedgerMonthTo,
+    ledgerWarehouse, setLedgerWarehouse,
+    ledgerRows,      ledgerLoading,
+    fetchLedger,
+    showBankImport,      setShowBankImport,
+    bankImportLines,     setBankImportLines,
+    bankImportParsing,
+    bankImportSubmitting,
+    bankImportError,     setBankImportError,
+    handleBankFileUpload,
+    submitBankImport,
   };
 }

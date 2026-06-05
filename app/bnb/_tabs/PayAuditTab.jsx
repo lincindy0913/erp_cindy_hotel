@@ -1,11 +1,14 @@
 'use client';
 
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 import WhQuickBtns from '../_components/WhQuickBtns';
 import { inputCls } from '../_constants';
 
 export default function PayAuditTab({
   auditMonth, setAuditMonth, auditWarehouse, setAuditWarehouse,
   auditData, auditLoading, fetchAudit, warehouseList,
+  auditError,
+  onGoToRecords,
 }) {
   const unfilled   = auditData.filter(r => !r.paymentFilled);
   const mismatched = auditData.filter(r => {
@@ -18,6 +21,7 @@ export default function PayAuditTab({
 
   return (
     <div className="space-y-4">
+      {auditError && <div className="mb-4"><FetchErrorBanner message={auditError} onRetry={fetchAudit} /></div>}
       <div className="flex flex-wrap items-center gap-3">
         <input type="month" value={auditMonth} onChange={e => setAuditMonth(e.target.value)} className={inputCls} />
         <select value={auditWarehouse} onChange={e => setAuditWarehouse(e.target.value)} className={inputCls}>
@@ -39,10 +43,16 @@ export default function PayAuditTab({
             <div className="bg-amber-50 rounded-xl p-4 border border-amber-100">
               <div className="text-xs text-amber-600 mb-1">未填付款</div>
               <div className="text-2xl font-bold text-amber-700">{unfilled.length}</div>
+              {unfilled.length > 0 && onGoToRecords && (
+                <button onClick={() => onGoToRecords('unfilled')} className="text-[11px] text-amber-600 hover:underline mt-1">→ 前往填寫</button>
+              )}
             </div>
             <div className="bg-red-50 rounded-xl p-4 border border-red-100">
               <div className="text-xs text-red-600 mb-1">金額不符</div>
               <div className="text-2xl font-bold text-red-700">{mismatched.length}</div>
+              {mismatched.length > 0 && onGoToRecords && (
+                <button onClick={() => onGoToRecords('mismatch')} className="text-[11px] text-red-500 hover:underline mt-1">→ 前往核對</button>
+              )}
             </div>
           </div>
           {(unfilled.length > 0 || mismatched.length > 0) && (

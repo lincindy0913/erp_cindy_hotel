@@ -4,6 +4,7 @@ import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { handleApiError } from '@/lib/error-handler';
 import { localDateStr } from '@/lib/localDate';
+import { calcBalanceDelta } from '@/lib/calc-balance-delta';
 
 export const dynamic = 'force-dynamic';
 
@@ -284,6 +285,132 @@ export async function GET(request) {
       });
     } catch {
       items.push({ key: 'engineering_uninvoiced', step: 9, label: '工程估驗已核定未開票', status: 'manual', href: '/engineering?tab=progressClaims', linkText: '前往估驗計價' });
+    }
+
+    // ── 10. 民宿各館鎖帳 ──────────────────────────────────────────
+    try {
+      const activeWhs = await prisma.bnbBookingRecord.groupBy({
+        by: ['warehouse'],
+        where: { importMonth: ymStr, status: { not: '已刪除' } },
+      });
+      if (activeWhs.length === 0) {
+        items.push({
+          key: 'bnb_month_lock', step: 10,
+          label: '民宿各館鎖帳',
+          desc: '當月無民宿訂房資料',
+          count: 0, done: true, status: 'ok',
+          href: '/bnb', linkText: '前往民宿帳',
+        });
+      } else {
+        const lockedReports = await prisma.bnbMonthlyReport.findMany({
+          where: { reportMonth: ymStr, lockedAt: { not: null } },
+          select: { warehouse: true },
+        });
+        const lockedSet = new Set(lockedReports.map(r => r.warehouse));
+        const unlocked = activeWhs.map(w => w.warehouse).filter(w => !lockedSet.has(w));
+        items.push({
+          key: 'bnb_month_lock', step: 10,
+          label: '民宿各館鎖帳',
+          desc: unlocked.length > 0
+            ? `以下館別尚未鎖帳：${unlocked.join('、')}`
+            : `所有館別（${activeWhs.length} 館）已完成鎖帳`,
+          count: unlocked.length, done: unlocked.length === 0,
+          status: unlocked.length > 0 ? 'warning' : 'ok',
+          href: '/bnb', linkText: '前往民宿帳',
+        });
+      }
+    } catch {
+      items.push({ key: 'bnb_month_lock', step: 10, label: '民宿各館鎖帳', status: 'manual', href: '/bnb', linkText: '前往民宿帳' });
+    }
+
+    // ── 11. 民宿出納同步失敗 ──────────────────────────────────────
+    try {
+      const count = await prisma.bnbSyncFailure.count({ where: { resolved: false } });
+      items.push({
+        key: 'bnb_sync_failure', step: 11,
+        label: '民宿出納同步失敗',
+        desc: count > 0
+          ? `${count} 筆民宿付款出納同步失敗，帳務可能不一致，月結前須先處理`
+          : '民宿出納同步正常',
+        count, done: count === 0,
+        status: count > 0 ? 'warning' : 'ok',
+        href: '/bnb', linkText: '前往民宿帳',
+      });
+    } catch {
+      items.push({ key: 'bnb_sync_failure', step: 11, label: '民宿出納同步失敗', status: 'manual', href: '/bnb', linkText: '前往民宿帳' });
+    }
+
+    // ── 12. 損益科目未分類交易 ────────────────────────────────────
+    try {
+      const count = await prisma.cashTransaction.count({
+        where: {
+          transactionDate: { gte: periodStart, lte: periodEnd },
+          categoryId: null,
+          type: { in: ['收入', '支出'] },
+        },
+      });
+      items.push({
+        key: 'uncategorized_tx', step: 12,
+        label: '損益科目未分類',
+        desc: count > 0
+          ? `當月有 ${count} 筆收支交易未設定損益科目，損益表將顯示為「未分類」，月結前建議補齊`
+          : '當月交易損益科目已全數設定',
+        count, done: count === 0,
+        status: count > 0 ? 'warning' : 'ok',
+        href: '/cashflow?tab=category-mgmt', linkText: '前往批次歸類',
+      });
+    } catch {
+      items.push({ key: 'uncategorized_tx', step: 12, label: '損益科目未分類', status: 'manual', href: '/cashflow?tab=category-mgmt', linkText: '前往批次歸類' });
+    }
+
+    // ── 13. 草稿付款單（尚未送出）──────────────────────────────────
+    try {
+      const count = await prisma.paymentOrder.count({ where: { status: '草稿' } });
+      items.push({
+        key: 'draft_payment_orders', step: 13,
+        label: '草稿付款單未送出',
+        desc: count > 0
+          ? `有 ${count} 張付款單仍為草稿，尚未送出出納，月結前請送出或刪除`
+          : '無草稿付款單，全數已送出或處理',
+        count, done: count === 0,
+        status: count > 0 ? 'warning' : 'ok',
+        href: '/cashier', linkText: '前往付款管理',
+      });
+    } catch {
+      items.push({ key: 'draft_payment_orders', step: 13, label: '草稿付款單未送出', status: 'manual', href: '/cashier', linkText: '前往付款管理' });
+    }
+
+    // ── 14. 帳戶餘額與交易不一致 ──────────────────────────────────
+    try {
+      const cashAccounts = await prisma.cashAccount.findMany({
+        where: { isActive: true },
+        select: { id: true, name: true, openingBalance: true, currentBalance: true },
+      });
+      let mismatchCount = 0;
+      const mismatchNames = [];
+      for (const account of cashAccounts) {
+        const txs = await prisma.cashTransaction.findMany({
+          where: { accountId: account.id, status: '已確認' },
+          select: { type: true, amount: true, fee: true, hasFee: true },
+        });
+        const expected = Number(account.openingBalance) + calcBalanceDelta(txs);
+        if (Math.abs(expected - Number(account.currentBalance)) > 0.01) {
+          mismatchCount++;
+          mismatchNames.push(account.name);
+        }
+      }
+      items.push({
+        key: 'balance_mismatch', step: 14,
+        label: '帳戶餘額與交易不一致',
+        desc: mismatchCount > 0
+          ? `${mismatchCount} 個帳戶餘額與交易加總不符（${mismatchNames.slice(0, 3).join('、')}${mismatchNames.length > 3 ? '…' : ''}），請使用「重算餘額」修正後再月結`
+          : '所有帳戶餘額與交易加總一致',
+        count: mismatchCount, done: mismatchCount === 0,
+        status: mismatchCount > 0 ? 'warning' : 'ok',
+        href: '/fund-management', linkText: '前往資金管理（重算餘額）',
+      });
+    } catch {
+      items.push({ key: 'balance_mismatch', step: 14, label: '帳戶餘額與交易不一致', status: 'manual', href: '/fund-management', linkText: '前往資金管理' });
     }
 
     const doneCount    = items.filter(i => i.done).length;

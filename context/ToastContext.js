@@ -8,9 +8,9 @@ const ToastContext = createContext(null);
 export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([]);
 
-  const showToast = useCallback((message, type = 'info') => {
+  const showToast = useCallback((message, type = 'info', link = null) => {
     const id = Date.now() + Math.random();
-    setToasts(prev => [...prev, { id, message, type }]);
+    setToasts(prev => [...prev, { id, message, type, link }]);
   }, []);
 
   const removeToast = useCallback((id) => {
@@ -26,6 +26,7 @@ export function ToastProvider({ children }) {
             key={toast.id}
             type={toast.type}
             message={toast.message}
+            link={toast.link}
             onClose={() => removeToast(toast.id)}
           />
         ))}

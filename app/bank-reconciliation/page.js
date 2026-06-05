@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import Navigation from '@/components/Navigation';
 import FetchErrorBanner from '@/components/FetchErrorBanner';
 import { useConfirm } from '@/context/ConfirmContext';
@@ -225,7 +226,10 @@ export default function BankReconciliationPage() {
       )}
       <div className="max-w-7xl mx-auto px-4 py-6 space-y-4">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-gray-800">存簿核對（銀行調節表）</h1>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-800">存簿核對（銀行調節表）</h1>
+            <p className="text-sm text-gray-500 mt-1">銀行存款帳戶月結調節表；<strong className="text-red-600">12 月份未完成將擋住年結。</strong>信用卡／OTA 對帳請至 <Link href="/reconciliation" className="text-violet-600 hover:underline">存簿對帳 →</Link></p>
+          </div>
         </div>
 
         {/* Legacy system warning */}

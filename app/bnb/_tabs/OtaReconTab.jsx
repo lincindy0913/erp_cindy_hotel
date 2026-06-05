@@ -2,8 +2,10 @@
 
 import ExportButtons from '@/components/ExportButtons';
 import WhQuickBtns from '../_components/WhQuickBtns';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 
 export default function OtaReconTab({
+  onGoToCommission,
   otaSource, setOtaSource,
   otaDateFrom, setOtaDateFrom,
   otaDateTo, setOtaDateTo,
@@ -12,6 +14,7 @@ export default function OtaReconTab({
   otaPreview, otaPreviewLoading, previewOta,
   otaResult,
   otaLoading,
+  otaError,
   otaMonth, setOtaMonth,
   otaViewTab, setOtaViewTab,
   commAmt, setCommAmt,
@@ -32,6 +35,18 @@ export default function OtaReconTab({
 }) {
   return (
     <div>
+      {otaError && <div className="mb-4"><FetchErrorBanner message={otaError} onRetry={runOtaReconcile} /></div>}
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-[11px] text-gray-400">
+          💡 目前支援 Booking.com 對帳單；Agoda／Expedia 開發中。比對完成後請至「OTA傭金」分頁確認佣金。
+        </p>
+        {onGoToCommission && (
+          <button onClick={onGoToCommission}
+            className="text-xs text-indigo-600 hover:underline whitespace-nowrap ml-4">
+            → OTA傭金
+          </button>
+        )}
+      </div>
       {/* 搜尋列 */}
       <div className="bg-white rounded-xl shadow p-4 mb-4 flex flex-wrap items-end gap-3">
         <div>

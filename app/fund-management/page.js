@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import FetchErrorBanner from '@/components/FetchErrorBanner';
@@ -30,6 +31,7 @@ export default function FundManagementPage() {
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [formSaving, setFormSaving] = useState(false);
+  const [recalcing, setRecalcing] = useState(null);
   const [warehouses, setWarehouses] = useState([]);
 
   useEffect(() => {
@@ -117,6 +119,18 @@ export default function FundManagementPage() {
     }
   }
 
+  async function handleRecalc(id, name) {
+    setRecalcing(id);
+    try {
+      const res = await fetch(`/api/cashflow/accounts/${id}/recalc`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) { showToast(data.error || '重算失敗', 'error'); return; }
+      showToast(`${name} 餘額已重算：${Number(data.currentBalance).toLocaleString()}`, 'success');
+      fetchAccounts();
+    } catch { showToast('重算失敗', 'error'); }
+    finally { setRecalcing(null); }
+  }
+
   async function handleDelete(id, name) {
     if (!(await confirm(`確定要刪除帳戶「${name}」嗎？\n注意：如果有關聯的交易紀錄將無法刪除。`, { title: '刪除確認', danger: true }))) return;
     try {
@@ -174,7 +188,10 @@ export default function FundManagementPage() {
       )}
       <div className="max-w-7xl mx-auto px-4 py-6">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-gray-800">資金帳戶管理</h2>
+          <div>
+            <h2 className="text-xl font-bold text-gray-800">資金帳戶管理</h2>
+            <p className="text-xs text-gray-400 mt-0.5">帳戶主檔設定。日常收支請至 <Link href="/cashflow" className="text-emerald-600 hover:underline">現金流管理 →</Link></p>
+          </div>
           <div className="flex items-center gap-3">
             <span className="text-sm text-gray-500">
               共 {accounts.length} 個帳戶
@@ -278,7 +295,10 @@ export default function FundManagementPage() {
                 </select>
               </div>
               <div>
-                <label htmlFor="f-5" className="block text-sm font-medium text-gray-700 mb-1">期初餘額</label>
+                <label htmlFor="f-5" className="block text-sm font-medium text-gray-700 mb-1">
+                  期初餘額
+                  <span className="ml-1 text-xs text-amber-600 font-normal">（新增後如有交易，請透過年結調整，勿直接改此值）</span>
+                </label>
                 <input id="f-5"
                   type="number"
                   step="0.01"
@@ -353,7 +373,7 @@ export default function FundManagementPage() {
                     <th className="text-right px-4 py-3 font-semibold text-emerald-800 w-32">目前餘額</th>
                     <th className="text-left px-4 py-3 font-semibold text-emerald-800">備註</th>
                     {isLoggedIn && (
-                      <th className="text-center px-4 py-3 font-semibold text-emerald-800 w-20">操作</th>
+                      <th className="text-center px-4 py-3 font-semibold text-emerald-800 w-32">操作</th>
                     )}
                   </tr>
                 </thead>
@@ -380,19 +400,35 @@ export default function FundManagementPage() {
                           {Number(account.openingBalance).toLocaleString()}
                         </td>
                         <td className="px-4 py-2.5 text-right font-mono font-medium">
-                          <span className={Number(account.currentBalance) >= 0 ? 'text-emerald-700' : 'text-red-600'}>
-                            {Number(account.currentBalance).toLocaleString()}
-                          </span>
+                          <div className="flex items-center justify-end gap-1.5">
+                            <span className={Number(account.currentBalance) >= 0 ? 'text-emerald-700' : 'text-red-600'}>
+                              {Number(account.currentBalance).toLocaleString()}
+                            </span>
+                            {isLoggedIn && (
+                              <button
+                                onClick={() => handleRecalc(account.id, account.name)}
+                                disabled={recalcing === account.id}
+                                title="重算餘額（若餘額與交易不一致時使用）"
+                                className="text-[10px] px-1.5 py-0.5 rounded border border-gray-200 text-gray-400 hover:text-emerald-600 hover:border-emerald-300 disabled:opacity-40 whitespace-nowrap">
+                                {recalcing === account.id ? '…' : '重算'}
+                              </button>
+                            )}
+                          </div>
                         </td>
                         <td className="px-4 py-2.5 text-gray-500 text-xs">{account.note || ''}</td>
                         {isLoggedIn && (
                           <td className="px-4 py-2.5 text-center">
-                            <button
-                              onClick={() => handleDelete(account.id, account.name)}
-                              className="text-red-500 hover:text-red-700 text-xs hover:underline"
-                            >
-                              刪除
-                            </button>
+                            <div className="flex items-center justify-center gap-2">
+                              {account.type === '現金' && (
+                                <Link href="/cashflow?tab=cash-count" className="text-xs text-emerald-600 hover:underline whitespace-nowrap">盤點</Link>
+                              )}
+                              <button
+                                onClick={() => handleDelete(account.id, account.name)}
+                                className="text-red-500 hover:text-red-700 text-xs hover:underline"
+                              >
+                                刪除
+                              </button>
+                            </div>
                           </td>
                         )}
                       </tr>

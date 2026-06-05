@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import Navigation from '@/components/Navigation';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 
 const fmt  = (n) => (n == null ? '—' : Number(n).toLocaleString('zh-TW'));
 const fmtAmt = (n) => {
@@ -79,7 +80,7 @@ export default function CashFlowPage() {
           </div>
         </div>
 
-        {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded-lg text-sm">{error}</div>}
+        {error && <FetchErrorBanner message={error} onRetry={load} />}
         {loading && <div className="text-center py-12 text-gray-400">計算中…</div>}
 
         {data && !loading && (

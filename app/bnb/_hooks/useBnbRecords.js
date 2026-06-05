@@ -22,10 +22,14 @@ export function useBnbRecords() {
   const [recError,       setRecError]       = useState(null);
   const [recPage,        setRecPage]        = useState(1);
   const [recTotal,       setRecTotal]       = useState(0);
-  const [filterMonth,    setFilterMonth]    = useState(() => todayStr().slice(0, 7));
+  const getLS = (k, fb) => { try { return localStorage.getItem(k) || fb; } catch { return fb; } };
+  const [filterMonth,    setFilterMonth]    = useState(() => getLS('bnb_filterMonth', todayStr().slice(0, 7)));
   const [filterSource,   setFilterSource]   = useState('');
   const [filterStatus,   setFilterStatus]   = useState('');
-  const [filterWarehouse,setFilterWarehouse]= useState('');
+  const [filterWarehouse,setFilterWarehouse]= useState(() => getLS('bnb_filterWarehouse', ''));
+
+  useEffect(() => { try { localStorage.setItem('bnb_filterMonth', filterMonth); } catch {} }, [filterMonth]);
+  useEffect(() => { try { localStorage.setItem('bnb_filterWarehouse', filterWarehouse); } catch {} }, [filterWarehouse]);
   const [filterPayment,  setFilterPayment]  = useState(''); // '' | 'unfilled' | 'filled'
 
   // ── 批次填入 state ────────────────────────────────────────────
@@ -59,6 +63,13 @@ export function useBnbRecords() {
       if (filterSource)    p.set('source', filterSource);
       if (filterStatus)    p.set('status', filterStatus);
       if (filterWarehouse) p.set('warehouse', filterWarehouse);
+      if (filterPayment === 'mismatch') {
+        // mismatch 需要全部已填記錄再前端過濾
+        p.set('paymentFilter', 'filled');
+        p.set('pageSize', '500');
+      } else if (filterPayment) {
+        p.set('paymentFilter', filterPayment);
+      }
       const res = await fetch(`/api/bnb?${p}`);
       if (!res.ok) {
         if (res.status === 401) { window.location.href = '/login'; return; }
@@ -78,7 +89,7 @@ export function useBnbRecords() {
       setRecError(`載入訂房記錄失敗：${e.message}`);
     }
     finally { setRecLoading(false); }
-  }, [filterMonth, filterSource, filterStatus, filterWarehouse]);
+  }, [filterMonth, filterSource, filterStatus, filterWarehouse, filterPayment]);
 
   // ── 批次套用 ──────────────────────────────────────────────────
   async function handleBatchApply() {

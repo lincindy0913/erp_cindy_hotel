@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 import WhQuickBtns from '../_components/WhQuickBtns';
 
 export default function BossWithdrawTab({
@@ -14,6 +15,7 @@ export default function BossWithdrawTab({
   fetchBossWithdraw,
   fetchBossWithdrawSummary,
   showToast,
+  bwError,
 }) {
   const [confirmFilter, setConfirmFilter] = useState('all'); // all | unconfirmed | confirmed
   const [confirming, setConfirming] = useState(null); // id being confirmed
@@ -46,6 +48,10 @@ export default function BossWithdrawTab({
 
   return (
     <div>
+      <p className="text-[11px] text-gray-400 mb-3">
+        💡 老闆保管現金為資金去向，金額已計入訂房明細收入，不會重複出現於月收支。
+      </p>
+      {bwError && <div className="mb-4"><FetchErrorBanner message={bwError} onRetry={fetchBossWithdraw} /></div>}
       {/* 檢視切換 */}
       <div className="flex gap-2 mb-4">
         {[{ key: 'detail', label: '📋 明細' }, { key: 'monthly', label: '📊 月份報表' }].map(v => (

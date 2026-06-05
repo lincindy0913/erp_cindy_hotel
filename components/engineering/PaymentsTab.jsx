@@ -206,7 +206,7 @@ export default function PaymentsTab({ paymentOrders, projects, suppliers, wareho
                               if (!(await confirm(`確定要將付款單 ${o.orderNo} 送出出納？`, { title: '送出確認', danger: false }))) return;
                               const action = isRejected ? 'resubmit' : 'submit';
                               const res = await fetch(`/api/payment-orders/${o.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action }) });
-                              if (res.ok) { showToast('付款單已送出，請至出納執行匯款', 'success'); onRefresh?.(); setPayTab('pending'); }
+                              if (res.ok) { showToast('付款單已送出，請至出納執行匯款', 'success', { href: '/cashier', label: '→ 前往出納' }); onRefresh?.(); setPayTab('pending'); }
                               else { const d = await res.json(); showToast((typeof d.error === 'string' ? d.error : d.error?.message) || '送出失敗', 'error'); }
                             }} className="text-blue-600 hover:underline text-xs">送出出納</button>
                           )}

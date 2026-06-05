@@ -1,11 +1,12 @@
 'use client';
 
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 import WhQuickBtns from '../_components/WhQuickBtns';
 import { inputCls } from '../_constants';
 
 export default function SourceAnalysisTab({
   saYear, setSaYear, saWarehouse, setSaWarehouse,
-  saData, saLoading, fetchSourceAnalysis, warehouseList,
+  saData, saLoading, saError, fetchSourceAnalysis, warehouseList,
 }) {
   return (
     <div className="space-y-4">
@@ -20,6 +21,7 @@ export default function SourceAnalysisTab({
         <button onClick={fetchSourceAnalysis} className="px-4 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">查詢</button>
         {saLoading && <span className="text-xs text-gray-400 animate-pulse">載入中…</span>}
       </div>
+      {saError && <FetchErrorBanner message={saError} onRetry={fetchSourceAnalysis} />}
       {saData && (() => {
         const sources = saData.sources || [];
         const trend   = saData.trend   || [];

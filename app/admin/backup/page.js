@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 
 const TIER_LABELS = {
   tier1_full:       { label: 'Tier 1 全量備份', desc: 'pg_dump 完整資料庫', color: 'bg-red-100 text-red-800' },
@@ -36,17 +37,19 @@ export default function BackupPage() {
   const [loading, setLoading] = useState(true);
   const [triggering, setTriggering] = useState(false);
   const [confirmTier, setConfirmTier] = useState(null);
+  const [fetchError, setFetchError] = useState(null);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
   const fetchRecords = useCallback(async () => {
+    setFetchError(null);
     try {
       const res = await fetch('/api/backup');
-      if (!res.ok) throw new Error('載入失敗');
+      if (!res.ok) throw new Error('備份記錄載入失敗，請稍後再試');
       const data = await res.json();
       setRecords(data.records || []);
     } catch (e) {
-      setError(e.message);
+      setFetchError(e.message || '備份記錄載入失敗，請稍後再試');
     } finally {
       setLoading(false);
     }
@@ -95,6 +98,7 @@ export default function BackupPage() {
         <p className="text-sm text-gray-500 mt-1">三層備份架構：pg_dump 全量、快照備份、完整 JSON 匯出</p>
       </div>
 
+      {fetchError && <FetchErrorBanner message={fetchError} onRetry={fetchRecords} />}
       {error && (
         <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">{error}</div>
       )}

@@ -15,6 +15,7 @@ export function useOtaReconcile({ showToast, confirm, setEditBooking, DEFAULT_WA
   const [otaPreviewLoading, setOtaPreviewLoading] = useState(false);
   const [otaResult,         setOtaResult]         = useState(null);
   const [otaLoading,        setOtaLoading]        = useState(false);
+  const [otaError,          setOtaError]          = useState(null);
   const [otaMonth,          setOtaMonth]          = useState('');
   const [otaViewTab,        setOtaViewTab]        = useState('matched');
   // ── OTA 傭金 state ────────────────────────────────────────────
@@ -28,12 +29,14 @@ export function useOtaReconcile({ showToast, confirm, setEditBooking, DEFAULT_WA
   const [commSource,        setCommSource]        = useState('');
   const [commHistRows,      setCommHistRows]      = useState([]);
   const [commHistLoading,   setCommHistLoading]   = useState(false);
+  const [commHistError,     setCommHistError]     = useState(null);
   const [commEditId,        setCommEditId]        = useState(null);
   const [commEditData,      setCommEditData]      = useState({});
   const [commEditSaving,    setCommEditSaving]    = useState(false);
   // ── 比對歷史記錄 ─────────────────────────────────────────────
   const [reconLogs,        setReconLogs]        = useState([]);
   const [reconLogsLoading, setReconLogsLoading] = useState(false);
+  const [reconLogsError,   setReconLogsError]   = useState(null);
 
   // ── 工具：查詢傭金狀態 ─────────────────────────────────────────
   const _checkCommExisting = useCallback(async (month, source, warehouse) => {
@@ -67,6 +70,7 @@ export function useOtaReconcile({ showToast, confirm, setEditBooking, DEFAULT_WA
     setOtaLoading(true);
     setOtaResult(null);
     setOtaPreview(null);
+    setOtaError(null);
     setReconcileConfirmed(false);
     try {
       const fd = new FormData();
@@ -76,14 +80,14 @@ export function useOtaReconcile({ showToast, confirm, setEditBooking, DEFAULT_WA
       if (otaDateTo)   fd.append('dateTo', otaDateTo);
       if (otaWarehouse) fd.append('warehouse', otaWarehouse);
       const res = await fetch('/api/bnb/ota-reconcile', { method: 'POST', body: fd });
-      if (!res.ok) { const err = await res.json().catch(() => ({})); showToast(err.message || 'OTA 比對失敗', 'error'); return; }
+      if (!res.ok) { const err = await res.json().catch(() => ({})); const msg = err.message || 'OTA 比對失敗'; setOtaError(msg); showToast(msg, 'error'); return; }
       const data = await res.json();
       setOtaResult(data);
       setOtaViewTab('matched');
       setCommAmt(data.summary?.otaCommission > 0 ? String(data.summary.otaCommission) : '');
       const month = otaDateFrom ? otaDateFrom.substring(0, 7) : todayStr().slice(0, 7);
       await _checkCommExisting(month, otaSource, otaWarehouse);
-    } catch { showToast('OTA 比對失敗', 'error'); }
+    } catch { const msg = 'OTA 比對失敗'; setOtaError(msg); showToast(msg, 'error'); }
     finally { setOtaLoading(false); }
   }, [otaFile, otaSource, otaDateFrom, otaDateTo, otaWarehouse, _checkCommExisting]);
 
@@ -117,6 +121,7 @@ export function useOtaReconcile({ showToast, confirm, setEditBooking, DEFAULT_WA
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { showToast(data.error || '存檔失敗', 'error'); return; }
       setReconcileConfirmed(true);
+      setCommSource(otaSource);
       showToast('比對結果已確認存檔', 'success');
     } catch { showToast('存檔失敗', 'error'); }
     finally { setReconcileConfirming(false); }
@@ -163,6 +168,7 @@ export function useOtaReconcile({ showToast, confirm, setEditBooking, DEFAULT_WA
   // ── 比對歷史記錄 ───────────────────────────────────────────────
   const fetchReconLogs = useCallback(async () => {
     setReconLogsLoading(true);
+    setReconLogsError(null);
     try {
       const p = new URLSearchParams();
       if (otaWarehouse) p.set('warehouse', otaWarehouse);
@@ -172,7 +178,7 @@ export function useOtaReconcile({ showToast, confirm, setEditBooking, DEFAULT_WA
       setReconLogs(data.rows || []);
     } catch (e) {
       console.warn('[useOtaReconcile] fetchReconLogs:', e.message);
-      showToast('比對歷史記錄載入失敗', 'error');
+      setReconLogsError('比對歷史記錄載入失敗，請稍後再試');
       setReconLogs([]);
     } finally { setReconLogsLoading(false); }
   }, [otaWarehouse, showToast]);
@@ -205,6 +211,7 @@ export function useOtaReconcile({ showToast, confirm, setEditBooking, DEFAULT_WA
   // ── 傭金：歷史列表 ─────────────────────────────────────────────
   const fetchCommHistory = useCallback(async () => {
     setCommHistLoading(true);
+    setCommHistError(null);
     try {
       const p = new URLSearchParams();
       if (otaWarehouse) p.set('warehouse', otaWarehouse);
@@ -215,7 +222,7 @@ export function useOtaReconcile({ showToast, confirm, setEditBooking, DEFAULT_WA
       setCommHistRows(data.rows || []);
     } catch (e) {
       console.warn('[useOtaReconcile] fetchCommHistory:', e.message);
-      showToast('傭金歷史記錄載入失敗', 'error');
+      setCommHistError('傭金歷史記錄載入失敗，請稍後再試');
       setCommHistRows([]);
     } finally { setCommHistLoading(false); }
   }, [otaWarehouse, commSource, showToast]);
@@ -275,16 +282,16 @@ export function useOtaReconcile({ showToast, confirm, setEditBooking, DEFAULT_WA
     // OTA 比對
     otaSource, setOtaSource, otaDateFrom, setOtaDateFrom, otaDateTo, setOtaDateTo,
     otaWarehouse, setOtaWarehouse, otaFile, setOtaFile, otaPreview, otaPreviewLoading,
-    otaResult, otaLoading, otaMonth, setOtaMonth, otaViewTab, setOtaViewTab,
+    otaResult, otaLoading, otaError, otaMonth, setOtaMonth, otaViewTab, setOtaViewTab,
     previewOta, runOtaReconcile, confirmReconcile,
     reconcileConfirmed, reconcileConfirming,
     openOtaEdit, deleteOtaBnb, openOtaAdd,
     // 比對歷史
-    reconLogs, reconLogsLoading, fetchReconLogs,
+    reconLogs, reconLogsLoading, reconLogsError, fetchReconLogs,
     // OTA 傭金
     commAmt, setCommAmt, commMethod, setCommMethod, commNote, setCommNote,
     commSubmitting, commExisting, commSource, setCommSource,
-    commHistRows, commHistLoading, commEditId, setCommEditId, commEditData, setCommEditData, commEditSaving,
+    commHistRows, commHistLoading, commHistError, commEditId, setCommEditId, commEditData, setCommEditData, commEditSaving,
     submitCommission, fetchCommHistory, confirmCommission, cancelCommission,
     startEditComm, saveEditComm,
   };

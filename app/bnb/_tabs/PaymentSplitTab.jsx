@@ -1,11 +1,12 @@
 'use client';
 
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 import WhQuickBtns from '../_components/WhQuickBtns';
 import { inputCls } from '../_constants';
 
 export default function PaymentSplitTab({
   psYear, setPsYear, psWarehouse, setPsWarehouse,
-  psData, psLoading, fetchPaymentSplit, warehouseList,
+  psData, psLoading, psError, fetchPaymentSplit, warehouseList,
 }) {
   return (
     <div className="space-y-4">
@@ -20,6 +21,7 @@ export default function PaymentSplitTab({
         <button onClick={fetchPaymentSplit} className="px-4 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">查詢</button>
         {psLoading && <span className="text-xs text-gray-400 animate-pulse">載入中…</span>}
       </div>
+      {psError && <FetchErrorBanner message={psError} onRetry={fetchPaymentSplit} />}
 
       {psData && (() => {
         const { months, totals } = psData;

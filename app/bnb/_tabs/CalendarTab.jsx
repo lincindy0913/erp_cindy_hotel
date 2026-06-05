@@ -1,5 +1,6 @@
 'use client';
 
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 import WhQuickBtns from '../_components/WhQuickBtns';
 import { inputCls } from '../_constants';
 import { todayStr } from '@/lib/localDate';
@@ -7,7 +8,7 @@ import { todayStr } from '@/lib/localDate';
 export default function CalendarTab({
   calYear, setCalYear, calMonth, setCalMonth,
   calWarehouse, setCalWarehouse,
-  calData, calLoading,
+  calData, calLoading, calError, fetchCalendar,
   warehouseList,
 }) {
   const today = todayStr();
@@ -47,6 +48,7 @@ export default function CalendarTab({
         <WhQuickBtns list={warehouseList} value={calWarehouse} onChange={setCalWarehouse} />
         {calLoading && <span className="text-xs text-gray-400 animate-pulse">載入中…</span>}
       </div>
+      {calError && <FetchErrorBanner message={calError} onRetry={fetchCalendar} />}
       <div className="bg-white rounded-xl shadow overflow-hidden">
         <div className="grid grid-cols-7 border-b">
           {weekLabels.map(w => (

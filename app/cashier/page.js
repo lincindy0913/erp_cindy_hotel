@@ -10,6 +10,7 @@ import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 import { todayStr, localDateStr } from '@/lib/localDate';
+import { usePeriodCheck } from '@/lib/hooks/usePeriodCheck';
 
 // Determine the correct display order number based on source
 function getDisplayOrderNo(order) {
@@ -237,6 +238,9 @@ export default function CashierPage() {
   }
 
   const selectedOrders = pendingOrders.filter(o => selectedOrderIds.has(o.id));
+  const expandedOrder  = pendingOrders.find(o => o.id === expandedOrderId) || null;
+  const { locked: execLocked,      status: execLockStatus      } = usePeriodCheck(executeData.executionDate, expandedOrder?.warehouse || null);
+  const { locked: batchExecLocked, status: batchExecLockStatus } = usePeriodCheck(batchExecutionDate, null);
   const batchExtrasTotal = selectedOrders.reduce((sum, o) => sum + (parseFloat(batchExtraAmounts[o.id]) || 0), 0);
   const selectedTotal = selectedOrders.reduce((sum, o) => sum + Number(o.netAmount), 0) + batchExtrasTotal;
   const hasLoanOrders = selectedOrders.some(o => (o.summary || '').includes('貸款還款'));
@@ -1041,7 +1045,12 @@ export default function CashierPage() {
                                         <label htmlFor="f-4" className="block text-xs font-medium text-gray-700 mb-1">執行日期</label>
                                         <input id="f-4" type="date" value={executeData.executionDate}
                                           onChange={e => setExecuteData({...executeData, executionDate: e.target.value})}
-                                          className="w-full border rounded px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none" required />
+                                          className={`w-full border rounded px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none ${execLocked ? 'border-red-400 bg-red-50' : ''}`} required />
+                                        {execLocked && (
+                                          <p className="mt-1 text-xs text-red-600">
+                                            ⚠ 此月份已{execLockStatus}，執行將被擋。請至 <a href="/month-end" className="underline font-medium">月結管理</a> 解鎖。
+                                          </p>
+                                        )}
                                       </div>
                                       <div>
                                         <label htmlFor="f-5" className="block text-xs font-medium text-gray-700 mb-1">實付金額</label>
@@ -1339,7 +1348,12 @@ export default function CashierPage() {
                 <label htmlFor="f-10" className="block text-sm font-medium text-gray-700 mb-1">執行日期</label>
                 <input id="f-10" type="date" value={batchExecutionDate}
                   onChange={e => setBatchExecutionDate(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none" />
+                  className={`w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none ${batchExecLocked ? 'border-red-400 bg-red-50' : ''}`} />
+                {batchExecLocked && (
+                  <p className="mt-1 text-xs text-red-600">
+                    ⚠ 此月份已{batchExecLockStatus}，請至 <a href="/month-end" className="underline font-medium">月結管理</a> 解鎖。
+                  </p>
+                )}
               </div>
               <div>
                 <label htmlFor="f-11" className="block text-sm font-medium text-gray-700 mb-1">備註</label>

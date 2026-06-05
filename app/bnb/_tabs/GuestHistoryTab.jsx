@@ -1,5 +1,6 @@
 'use client';
 
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 import { inputCls } from '../_constants';
 
 const STATUS_COLORS = {
@@ -13,7 +14,7 @@ const STATUS_COLORS = {
 const getStatusColor = s => STATUS_COLORS[s] ?? 'bg-gray-100 text-gray-600';
 
 export default function GuestHistoryTab({
-  ghSearch, setGhSearch, ghData, ghLoading, ghSearched, fetchGuestHistory,
+  ghSearch, setGhSearch, ghData, ghLoading, ghSearched, ghError, fetchGuestHistory,
 }) {
   return (
     <div className="space-y-4">
@@ -26,6 +27,7 @@ export default function GuestHistoryTab({
           {ghLoading ? '搜尋中…' : '搜尋'}
         </button>
       </div>
+      {ghError && <FetchErrorBanner message={ghError} onRetry={fetchGuestHistory} />}
       {ghSearched && !ghLoading && (
         ghData.length === 0 ? (
           <div className="text-center py-10 text-gray-400">找不到「{ghSearch}」的訂房記錄</div>

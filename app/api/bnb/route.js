@@ -78,6 +78,9 @@ export async function GET(request) {
     if (source)    where.source      = source;
     if (status)    where.status      = status;  // explicit status overrides default
     if (guestName) where.guestName   = { contains: guestName.replace(/\s+/g, '').replace(/[%_\\]/g, '\\$&'), mode: 'insensitive' };
+    const paymentFilter = searchParams.get('paymentFilter'); // 'filled' | 'unfilled'
+    if (paymentFilter === 'filled')   where.paymentFilled = true;
+    if (paymentFilter === 'unfilled') where.paymentFilled = false;
 
     const [total, records] = await prisma.$transaction([
       prisma.bnbBookingRecord.count({ where }),

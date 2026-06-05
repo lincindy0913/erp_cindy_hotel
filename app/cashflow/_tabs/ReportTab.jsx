@@ -8,7 +8,13 @@ export default function ReportTab({
   reportData,
   fetchReport,
   formatMoney,
+  onGoToCategoryMgmt,
 }) {
+  const hasUncategorized = reportData && (
+    (reportData.incomeByCategory  || []).some(c => c.name === '未分類') ||
+    (reportData.expenseByCategory || []).some(c => c.name === '未分類')
+  );
+
   return (
     <div>
       {/* Report filters */}
@@ -74,6 +80,17 @@ export default function ReportTab({
       </div>
 
       {/* Report content */}
+      {hasUncategorized && (
+        <div className="mb-4 flex items-center gap-3 bg-amber-50 border border-amber-300 rounded-xl px-4 py-2.5">
+          <span className="text-sm text-amber-800">⚠ 報表中含「未分類」項目，損益數字可能不完整。</span>
+          {onGoToCategoryMgmt && (
+            <button onClick={onGoToCategoryMgmt}
+              className="ml-auto text-xs px-3 py-1 rounded-lg bg-amber-600 text-white hover:bg-amber-700 whitespace-nowrap">
+              → 前往批次歸類
+            </button>
+          )}
+        </div>
+      )}
       {reportData && (
         <div>
           {/* Summary cards */}

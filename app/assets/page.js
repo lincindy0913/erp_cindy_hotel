@@ -12,6 +12,7 @@ import PropertyModal from '@/components/PropertyModal';
 import { todayStr } from '@/lib/localDate';
 import { getApiError } from '@/lib/get-api-error';
 import { PROPERTY_STATUSES, PROPERTY_STATUS_LABEL } from '@/lib/propertyStatus';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 
 const ASSET_TYPE_OPTIONS = [
   { value: 'BUILDING', label: '建物' },
@@ -79,7 +80,7 @@ function AssetsPageInner() {
   const [reportData, setReportData] = useState([]);   // operating report rows
   const [detailTaxes, setDetailTaxes] = useState([]);   // taxes for selected property (lazy)
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState(null);
   const [currentMonthIncomeMap, setCurrentMonthIncomeMap] = useState(new Map()); // propertyId → income
 
   // Selected property for detail panel
@@ -206,7 +207,7 @@ function AssetsPageInner() {
     const curMonth = now.getMonth() + 1;
     (async () => {
       setLoading(true);
-      setLoadError(false);
+      setLoadError(null);
       try {
         const [, , acctData, incomeData] = await Promise.all([
           loadProperties(),
@@ -235,8 +236,7 @@ function AssetsPageInner() {
       } catch (err) {
         if (!cancelled) {
           setLoading(false);
-          setLoadError(true);
-          showToast('頁面載入失敗，請重新整理', 'error');
+          setLoadError('資產資料載入失敗，請稍後再試');
         }
       }
     })();
@@ -956,18 +956,10 @@ function AssetsPageInner() {
         )}
 
         {/* Main Table */}
+        {loadError && <FetchErrorBanner message={loadError} onRetry={() => window.location.reload()} />}
         {loading ? (
           <p className="text-gray-500 py-8">載入中…</p>
-        ) : loadError ? (
-          <div className="py-12 text-center">
-            <p className="text-red-500 mb-1 font-medium">資料載入失敗</p>
-            <p className="text-sm text-gray-400 mb-4">請確認網路連線後重試</p>
-            <button onClick={() => window.location.reload()}
-              className="px-4 py-2 bg-teal-600 text-white text-sm rounded-lg hover:bg-teal-700">
-              重新整理
-            </button>
-          </div>
-        ) : (
+        ) : !loadError && (
           <div className="bg-white rounded-lg shadow tbl-wrap">
             <table className="w-full text-sm">
               <thead className="bg-teal-50 text-xs sticky top-0 z-10">

@@ -1,8 +1,30 @@
 'use client';
 
+import { useState } from 'react';
+import Link from 'next/link';
 import { SortableTh } from '@/components/SortableTh';
+import { usePeriodCheck } from '@/lib/hooks/usePeriodCheck';
+import { resolveCashTransactionSource } from '@/lib/resolve-cash-transaction-source';
 
 const TX_TYPES = ['收入', '支出', '移轉'];
+
+// 編輯 modal 裡「此交易由系統產生，請勿直接修改」提示
+const EDIT_HINT = {
+  cashier_payment:        '金額請至出納修改，或作廢付款單重建',
+  pms_income_settlement:  '請至 PMS 收入模組修改',
+  pms_income_fee:         '請至 PMS 收入模組修改',
+  pms_manual_commission:  '請至 PMS 收入模組修改',
+  reversal:               '沖銷交易僅可修改備註',
+};
+
+function getEditHint(sourceType) {
+  if (!sourceType || sourceType === 'manual') return null;
+  if (EDIT_HINT[sourceType]) return EDIT_HINT[sourceType];
+  if (sourceType.startsWith('bnb_'))     return '請至民宿帳修改原始記錄';
+  if (sourceType.startsWith('rental_'))  return '請至租屋模組修改';
+  if (sourceType.startsWith('pms_'))     return '請至 PMS 收入模組修改';
+  return '此交易由系統產生，僅可修改備註';
+}
 
 export default function TransactionsTab({
   accounts,
@@ -34,7 +56,83 @@ export default function TransactionsTab({
   getAccountName,
   getSupplierName,
   getCategoriesForType,
+  onUpdate,
+  onReverse,
 }) {
+  const { locked: newTxLocked, status: newTxLockStatus } = usePeriodCheck(txForm.transactionDate, txForm.warehouse || null);
+  const [editingTx, setEditingTx] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const [reversingTx, setReversingTx] = useState(null);
+  const [reverseReason, setReverseReason] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
+
+  function openEdit(tx) {
+    setEditingTx(tx);
+    setEditForm({
+      description: tx.description || '',
+      amount: tx.amount || '',
+      transactionDate: tx.transactionDate || '',
+      categoryId: tx.categoryId || tx.category?.id || '',
+      supplierId: tx.supplierId || tx.supplier?.id || '',
+      fee: tx.fee || '',
+      hasFee: tx.hasFee || false,
+    });
+  }
+
+  function closeEdit() {
+    setEditingTx(null);
+    setEditForm({});
+  }
+
+  async function handleEditSave() {
+    if (!onUpdate || !editingTx) return;
+    setActionLoading(true);
+    const tx = editingTx;
+    const isManual = !tx.sourceType || tx.sourceType === 'manual';
+    const isTransfer = tx.type === '移轉';
+
+    let payload = { description: editForm.description };
+    if (isTransfer) {
+      payload = {
+        description: editForm.description,
+        amount: editForm.amount,
+        fee: editForm.fee,
+        hasFee: editForm.hasFee,
+        transactionDate: editForm.transactionDate,
+      };
+    } else if (isManual) {
+      payload = {
+        description: editForm.description,
+        amount: editForm.amount,
+        transactionDate: editForm.transactionDate,
+        categoryId: editForm.categoryId || null,
+        supplierId: editForm.supplierId || null,
+      };
+    }
+
+    const ok = await onUpdate(tx.id, payload);
+    setActionLoading(false);
+    if (ok) closeEdit();
+  }
+
+  function openReverse(tx) {
+    setReversingTx(tx);
+    setReverseReason('');
+  }
+
+  function closeReverse() {
+    setReversingTx(null);
+    setReverseReason('');
+  }
+
+  async function handleReverseConfirm() {
+    if (!onReverse || !reversingTx) return;
+    setActionLoading(true);
+    const ok = await onReverse(reversingTx.id, reverseReason);
+    setActionLoading(false);
+    if (ok) closeReverse();
+  }
+
   return (
     <div>
       {/* 未分類提示 */}
@@ -190,8 +288,13 @@ export default function TransactionsTab({
                   required
                   value={txForm.transactionDate}
                   onChange={(e) => setTxForm({ ...txForm, transactionDate: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 ${newTxLocked ? 'border-red-400 bg-red-50' : 'border-gray-300'}`}
                 />
+                {newTxLocked && (
+                  <p className="mt-1 text-xs text-red-600">
+                    ⚠ 此月份已{newTxLockStatus}，儲存將被擋。請至 <Link href="/month-end" className="underline font-medium">月結管理</Link> 解鎖。
+                  </p>
+                )}
               </div>
               <div>
                 <label htmlFor="f-8" className="block text-sm font-medium text-gray-700 mb-1">類別 *</label>
@@ -473,12 +576,13 @@ export default function TransactionsTab({
               <SortableTh label="手續費" colKey="fee" sortKey={cfTxKey} sortDir={cfTxDir} onSort={cfTxToggle} className="px-3 py-3" align="right" />
               <SortableTh label="備註" colKey="description" sortKey={cfTxKey} sortDir={cfTxDir} onSort={cfTxToggle} className="px-3 py-3" />
               <SortableTh label="來源" colKey="sourceType" sortKey={cfTxKey} sortDir={cfTxDir} onSort={cfTxToggle} className="px-3 py-3" />
+              <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">操作</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
             {transactions.length === 0 ? (
               <tr>
-                <td colSpan={12} className="px-4 py-8 text-center text-gray-500">
+                <td colSpan={13} className="px-4 py-8 text-center text-gray-500">
                   尚無交易紀錄，請先查詢或新增交易
                 </td>
               </tr>
@@ -520,48 +624,71 @@ export default function TransactionsTab({
                     {tx.description || '-'}
                   </td>
                   <td className="px-3 py-2 text-sm">
-                    {tx.sourceType ? (
-                      <span className={`px-1.5 py-0.5 rounded text-xs ${
-                        tx.sourceType.startsWith('pms_') ? 'bg-teal-100 text-teal-700' :
-                        tx.sourceType === 'cashier_payment' ? 'bg-amber-100 text-amber-700' :
-                        tx.sourceType.startsWith('loan_') ? 'bg-purple-100 text-purple-700' :
-                        tx.sourceType.startsWith('rental_') ? 'bg-indigo-100 text-indigo-700' :
-                        tx.sourceType.startsWith('fixed_') || tx.sourceType.includes('expense') ? 'bg-orange-100 text-orange-700' :
-                        tx.sourceType.startsWith('check_') ? 'bg-cyan-100 text-cyan-700' :
-                        tx.sourceType.startsWith('cash_count') ? 'bg-pink-100 text-pink-700' :
-                        tx.sourceType === 'engineering_income' ? 'bg-blue-100 text-blue-700' :
-                        tx.sourceType === 'purchase_allowance' ? 'bg-green-100 text-green-700' :
-                        'bg-gray-100 text-gray-600'
-                      }`}>
-                        {{
-                          pms_income_settlement: 'PMS結算',
-                          pms_income_fee: 'PMS手續費',
-                          pms_manual_commission: 'PMS佣金',
-                          cashier_payment: '出納付款',
-                          loan_payment: '貸款還款',
-                          rental_income: '租賃收入',
-                          rental_deposit_in: '租賃押金收',
-                          rental_deposit_out: '租賃押金退',
-                          rental_maintenance: '租賃維修',
-                          rental_tax: '租賃稅費',
-                          fixed_expense: '固定費用',
-                          common_expense: '一般費用',
-                          purchase_expense: '採購費用',
-                          check_payment: '支票付款',
-                          check_receipt: '支票收款',
-                          check_bounce: '支票退票',
-                          cash_count_adjustment: '盤點調整',
-                          cash_count_shortage: '盤點短缺',
-                          reversal: '沖銷',
-                          reconciliation_adjustment: '對帳調整',
-                          engineering_income: '工程收入',
-                          purchase_allowance: '退貨收入',
-                          manual: '手動',
-                        }[tx.sourceType] || tx.sourceType}
-                      </span>
-                    ) : (
-                      <span className="text-xs text-gray-400">手動</span>
-                    )}
+                    {(() => {
+                      const resolved = resolveCashTransactionSource(tx.sourceType, tx.sourceRecordId);
+                      const colorCls =
+                        (tx.sourceType || '').startsWith('pms_')          ? 'bg-teal-100 text-teal-700' :
+                        tx.sourceType === 'cashier_payment'               ? 'bg-amber-100 text-amber-700' :
+                        (tx.sourceType || '').startsWith('loan_')         ? 'bg-purple-100 text-purple-700' :
+                        (tx.sourceType || '').startsWith('rental_')       ? 'bg-indigo-100 text-indigo-700' :
+                        (tx.sourceType || '').startsWith('bnb_')          ? 'bg-rose-100 text-rose-700' :
+                        (tx.sourceType || '').startsWith('fixed_') ||
+                        (tx.sourceType || '').includes('expense')         ? 'bg-orange-100 text-orange-700' :
+                        (tx.sourceType || '').startsWith('check_')        ? 'bg-cyan-100 text-cyan-700' :
+                        (tx.sourceType || '').startsWith('cash_count')    ? 'bg-pink-100 text-pink-700' :
+                        tx.sourceType === 'engineering_income'            ? 'bg-blue-100 text-blue-700' :
+                        tx.sourceType === 'purchase_allowance'            ? 'bg-green-100 text-green-700' :
+                        'bg-gray-100 text-gray-600';
+                      const badge = (
+                        <span
+                          className={`px-1.5 py-0.5 rounded text-xs ${colorCls} ${resolved.path ? 'underline decoration-dotted cursor-pointer' : ''}`}
+                          title={resolved.hint}
+                        >
+                          {resolved.label}
+                        </span>
+                      );
+                      if (!tx.sourceType || tx.sourceType === 'manual') {
+                        return <span className="text-xs text-gray-400">手動</span>;
+                      }
+                      return resolved.path
+                        ? <Link href={resolved.path} target="_blank" rel="noopener noreferrer">{badge}</Link>
+                        : badge;
+                    })()}
+                  </td>
+                  {/* 操作欄 */}
+                  <td className="px-3 py-2 text-sm">
+                    <div className="flex items-center gap-1 whitespace-nowrap">
+                      {/* 編輯 */}
+                      {isLoggedIn && onUpdate && (
+                        <button
+                          onClick={() => openEdit(tx)}
+                          className="text-amber-600 hover:text-amber-800 text-xs font-medium px-1.5 py-0.5 rounded hover:bg-amber-50"
+                        >
+                          編輯
+                        </button>
+                      )}
+                      {/* 沖銷 */}
+                      {isLoggedIn && onReverse &&
+                        tx.type !== '移轉' && tx.type !== '移轉入' &&
+                        !tx.isReversal && !tx.reversedById && tx.sourceType !== 'reversal' && (
+                        <button
+                          onClick={() => openReverse(tx)}
+                          className="text-red-500 hover:text-red-700 text-xs font-medium px-1.5 py-0.5 rounded hover:bg-red-50"
+                        >
+                          沖銷
+                        </button>
+                      )}
+                      {/* 刪除 */}
+                      {isLoggedIn && handleDeleteTransaction &&
+                        (!tx.sourceType || tx.sourceType === 'manual') && (
+                        <button
+                          onClick={() => handleDeleteTransaction(tx.id, tx.transactionNo)}
+                          className="text-red-500 hover:text-red-700 text-xs font-medium px-1.5 py-0.5 rounded hover:bg-red-50"
+                        >
+                          刪除
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))
@@ -608,6 +735,208 @@ export default function TransactionsTab({
               onClick={() => { const p = txPagination.page + 1; setTxPage(p); fetchTransactions(p); }}
               className="px-3 py-1 text-sm border rounded disabled:opacity-40 hover:bg-gray-100"
             >下一頁</button>
+          </div>
+        </div>
+      )}
+
+      {/* ===== Edit Modal ===== */}
+      {editingTx && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={(e) => { if (e.target === e.currentTarget) closeEdit(); }}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+              <h3 className="text-base font-semibold text-gray-800">編輯交易 <span className="text-sm font-normal text-gray-500 font-mono">{editingTx.transactionNo}</span></h3>
+              <button onClick={closeEdit} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+            </div>
+
+            <div className="px-6 py-4 space-y-4">
+              {/* Source type banner */}
+              {(() => {
+                if (!editingTx.sourceType || editingTx.sourceType === 'manual') return null;
+                const resolved = resolveCashTransactionSource(editingTx.sourceType, editingTx.sourceRecordId);
+                const hint = getEditHint(editingTx.sourceType);
+                return (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm">
+                    <p className="font-medium text-amber-800">來源：{resolved.label}</p>
+                    {hint && <p className="text-amber-700 mt-0.5">{hint}</p>}
+                    {resolved.path && (
+                      <Link href={resolved.path} target="_blank" rel="noopener noreferrer"
+                        className="text-amber-800 underline text-xs mt-1 inline-block hover:text-amber-900">
+                        前往原始單據 →
+                      </Link>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* 備註 — always editable */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">備註</label>
+                <input
+                  type="text"
+                  value={editForm.description}
+                  onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                  placeholder="備註說明"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
+                />
+              </div>
+
+              {/* 移轉連動說明 */}
+              {editingTx.type === '移轉' && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2.5 text-xs text-blue-800">
+                  ⚡ 移轉交易：修改金額或日期後，對應的<strong>移轉入</strong>交易會自動同步更新。手續費只計入轉出側。
+                </div>
+              )}
+
+              {/* Fields editable for manual or transfer */}
+              {((!editingTx.sourceType || editingTx.sourceType === 'manual') || editingTx.type === '移轉') && (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">交易日期</label>
+                      <input
+                        type="date"
+                        value={editForm.transactionDate}
+                        onChange={(e) => setEditForm({ ...editForm, transactionDate: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">金額</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        value={editForm.amount}
+                        onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  {/* hasFee / fee — transfer only */}
+                  {editingTx.type === '移轉' && (
+                    <div className="flex items-center gap-4">
+                      <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={editForm.hasFee}
+                          onChange={(e) => setEditForm({ ...editForm, hasFee: e.target.checked, fee: e.target.checked ? editForm.fee : '' })}
+                          className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                        />
+                        有手續費
+                        <span className="text-xs text-gray-400 font-normal ml-1">（計入轉出帳戶，影響該帳戶餘額）</span>
+                      </label>
+                      {editForm.hasFee && (
+                        <div className="flex-1">
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={editForm.fee}
+                            onChange={(e) => setEditForm({ ...editForm, fee: e.target.value })}
+                            placeholder="手續費金額"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* categoryId / supplierId — manual non-transfer only */}
+                  {editingTx.type !== '移轉' && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">資金類別</label>
+                        <select
+                          value={editForm.categoryId}
+                          onChange={(e) => setEditForm({ ...editForm, categoryId: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
+                        >
+                          <option value="">選擇類別</option>
+                          {getCategoriesForType(editingTx.type).map(c => (
+                            <option key={c.id} value={c.id}>{c.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">廠商</label>
+                        <select
+                          value={editForm.supplierId}
+                          onChange={(e) => setEditForm({ ...editForm, supplierId: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
+                        >
+                          <option value="">選擇廠商</option>
+                          {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 px-6 py-4 border-t border-gray-200">
+              <button
+                onClick={closeEdit}
+                disabled={actionLoading}
+                className="border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-50 text-sm disabled:opacity-50"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleEditSave}
+                disabled={actionLoading}
+                className="bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 text-sm disabled:opacity-50"
+              >
+                {actionLoading ? '儲存中…' : '儲存'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== Reverse Confirm Modal ===== */}
+      {reversingTx && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={(e) => { if (e.target === e.currentTarget) closeReverse(); }}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+              <h3 className="text-base font-semibold text-gray-800">確認沖銷</h3>
+              <button onClick={closeReverse} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+            </div>
+
+            <div className="px-6 py-4 space-y-3">
+              <p className="text-sm text-gray-700">
+                即將對交易 <span className="font-mono font-semibold">{reversingTx.transactionNo}</span>（{reversingTx.transactionDate}，{formatMoney(reversingTx.amount)}）建立沖銷反向交易，此操作不可逆。
+              </p>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">沖銷原因（選填）</label>
+                <input
+                  type="text"
+                  value={reverseReason}
+                  onChange={(e) => setReverseReason(e.target.value)}
+                  placeholder="請輸入沖銷原因"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 text-sm"
+                  autoFocus
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 px-6 py-4 border-t border-gray-200">
+              <button
+                onClick={closeReverse}
+                disabled={actionLoading}
+                className="border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-50 text-sm disabled:opacity-50"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleReverseConfirm}
+                disabled={actionLoading}
+                className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 text-sm disabled:opacity-50"
+              >
+                {actionLoading ? '處理中…' : '確認沖銷'}
+              </button>
+            </div>
           </div>
         </div>
       )}

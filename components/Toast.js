@@ -45,7 +45,7 @@ const typeConfig = {
   },
 };
 
-export default function Toast({ type = 'info', message, onClose }) {
+export default function Toast({ type = 'info', message, link, onClose }) {
   const [visible, setVisible] = useState(true);
 
   useEffect(() => {
@@ -64,7 +64,14 @@ export default function Toast({ type = 'info', message, onClose }) {
     <div className="fixed top-4 right-4 z-50 animate-slide-in">
       <div className={`flex items-start gap-3 px-4 py-3 rounded-lg border shadow-lg ${config.bg} ${config.border}`}>
         <div className="flex-shrink-0 mt-0.5">{config.icon}</div>
-        <p className={`text-sm font-medium whitespace-pre-line ${config.text}`}>{message}</p>
+        <div>
+          <p className={`text-sm font-medium whitespace-pre-line ${config.text}`}>{message}</p>
+          {link && (
+            link.onClick
+              ? <button onClick={link.onClick} className={`text-xs font-semibold underline ${config.text} opacity-80 hover:opacity-100`}>{link.label}</button>
+              : <a href={link.href} className={`text-xs font-semibold underline ${config.text} opacity-80 hover:opacity-100`}>{link.label}</a>
+          )}
+        </div>
         <button
           onClick={() => {
             setVisible(false);

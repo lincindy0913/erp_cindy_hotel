@@ -8,6 +8,7 @@ import { ROLE_CODES, ROLE_LABELS, ROLE_COLORS, PERMISSIONS, ROLE_DEFAULTS, hasRo
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
 import { getApiError } from '@/lib/get-api-error';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 
 // 權限分類（用於顯示）
 const PERMISSION_GROUPS = [
@@ -46,6 +47,7 @@ export default function UserManagementPage() {
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [usersError, setUsersError] = useState(null);
   const [userSaving, setUserSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
@@ -72,17 +74,17 @@ export default function UserManagementPage() {
   }, [status, session, router]);
 
   async function fetchUsers() {
+    setUsersError(null);
     try {
       const response = await fetch('/api/users');
       if (response.ok) {
         const data = await response.json();
         setUsers(data);
       } else {
-        showToast('載入用戶清單失敗，請重新整理', 'error');
+        setUsersError('使用者清單載入失敗，請稍後再試');
       }
-    } catch (error) {
-      console.error('Fetch users error:', error);
-      showToast('載入用戶清單失敗，請重新整理', 'error');
+    } catch {
+      setUsersError('使用者清單載入失敗，請稍後再試');
     } finally {
       setLoading(false);
     }
@@ -242,6 +244,8 @@ export default function UserManagementPage() {
       <Navigation borderColor="border-blue-500" />
 
       <main className="max-w-7xl mx-auto px-4 py-8">
+        {usersError && <FetchErrorBanner message={usersError} onRetry={fetchUsers} />}
+
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold text-gray-800">使用者管理</h2>
           <button

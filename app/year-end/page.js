@@ -902,11 +902,22 @@ export default function YearEndPage() {
                         <div className="space-y-4 mt-6">
                           {/* Already completed */}
                           {validationResult.alreadyCompleted && (
-                            <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-center gap-3">
-                              <svg className="w-6 h-6 text-green-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                              </svg>
-                              <span className="text-green-700">{selectedYear} 年度已完成結轉</span>
+                            <div className="space-y-3">
+                              <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-center gap-3">
+                                <svg className="w-6 h-6 text-green-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                <span className="text-green-700 font-medium">{selectedYear} 年度已完成結轉，各帳戶期初餘額已結轉至 {selectedYear + 1} 年。</span>
+                              </div>
+                              <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800 space-y-1">
+                                <p className="font-semibold">⚠ 年結後修改去年帳務的正確流程：</p>
+                                <ul className="list-disc ml-4 space-y-0.5 text-amber-700">
+                                  <li>至<strong>月結管理</strong>（/month-end）解鎖對應月份（需填寫原因，系統留稽核記錄）</li>
+                                  <li>完成修改後重新執行該月月結並鎖定</li>
+                                  <li>若為金額調整，可改走<strong>沖銷流程</strong>（現金流交易 → 操作 → 沖銷）無需解鎖</li>
+                                  <li>請勿直接修改去年已鎖定月份交易，系統會擋住並要求先解鎖</li>
+                                </ul>
+                              </div>
                             </div>
                           )}
 

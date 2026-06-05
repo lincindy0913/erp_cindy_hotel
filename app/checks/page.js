@@ -1441,6 +1441,15 @@ export default function ChecksPage() {
         title="兌現支票">
         {selectedCheck && (
           <div className="space-y-4">
+            {selectedCheck.paymentId ? (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2.5 text-sm text-blue-800">
+                ℹ 此支票來自出納付款單，現金流已在出納執行時建立。兌現後<strong>不會重複建立現金流交易</strong>，僅更新支票狀態。
+              </div>
+            ) : (
+              <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-2.5 text-sm text-green-800">
+                ✓ 兌現後系統將自動建立現金流交易（{selectedCheck.checkType === 'payable' ? '支出' : '收入'}）。請勿在現金流模組手動重複記帳。
+              </div>
+            )}
             <div className="bg-gray-50 rounded-lg p-4">
               <div className="grid grid-cols-2 gap-2 text-base">
                 <div>支票號碼: <span className="font-mono font-medium">{selectedCheck.checkNumber}</span></div>

@@ -9,9 +9,22 @@ export default function SubjectQueryTab({
   subjectLoading,
   fetchSubjectQuery,
   formatMoney,
+  noCatStats,
+  onGoToCategoryMgmt,
 }) {
   return (
     <div>
+      {noCatStats && noCatStats.noCategory > 0 && (
+        <div className="mb-4 flex items-center gap-3 bg-amber-50 border border-amber-300 rounded-xl px-4 py-2.5">
+          <span className="text-sm text-amber-800">⚠ 有 <strong>{noCatStats.noCategory}</strong> 筆未分類交易，科目查詢結果可能不完整。</span>
+          {onGoToCategoryMgmt && (
+            <button onClick={onGoToCategoryMgmt}
+              className="ml-auto text-xs px-3 py-1 rounded-lg bg-amber-600 text-white hover:bg-amber-700 whitespace-nowrap">
+              → 前往批次歸類
+            </button>
+          )}
+        </div>
+      )}
       {/* Filters */}
       <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-3">

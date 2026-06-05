@@ -103,6 +103,21 @@ function ProjectDetailInner() {
   const totalCertified  = useMemo(() => progressClaims.filter(c => c.certifiedAmount != null).reduce((s, c) => s + Number(c.certifiedAmount || 0), 0), [progressClaims]);
   const totalClaimRecvd = useMemo(() => progressClaims.reduce((s, c) => s + (c.incomes || []).reduce((ss, i) => ss + Number(i.amount || 0), 0), 0), [progressClaims]);
 
+  const { paidTerms, totalTerms } = useMemo(() => {
+    let total = 0, paid = 0;
+    for (const c of contracts) {
+      for (const t of c.terms || []) {
+        if (['cancelled', 'void'].includes(t.status)) continue;
+        total++;
+        const p = paymentOrders
+          .filter(po => po.sourceRecordId === t.id && po.status === '已執行')
+          .reduce((s, po) => s + getActualPaid(po), 0);
+        if (p >= Number(t.amount) && Number(t.amount) > 0) paid++;
+      }
+    }
+    return { paidTerms: paid, totalTerms: total };
+  }, [contracts, paymentOrders]);
+
   const retentionStats = useMemo(() => {
     let totalRetained = 0;
     let totalReleased = 0;
@@ -306,14 +321,14 @@ function ProjectDetailInner() {
             </div>
           </div>
 
-          {/* 進度條 */}
-          {(budget > 0 || totalContracted > 0) && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
+          {/* 進度總覽 */}
+          {(budget > 0 || totalContracted > 0 || totalIncome > 0 || sumOutputInv > 0 || totalTerms > 0) && (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 mt-4">
               {budget > 0 && (
                 <div>
                   <div className="flex justify-between text-xs text-gray-400 mb-1">
                     <span className={overBudget ? 'text-red-600 font-medium' : ''}>廠商發包 NT$ {formatNum(totalContracted)}</span>
-                    <span>預算 NT$ {formatNum(budget)}</span>
+                    <span>預算 NT$ {formatNum(budget)}　{contractedPct.toFixed(0)}%</span>
                   </div>
                   <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                     <div className={`h-full rounded-full transition-all ${overBudget ? 'bg-red-500' : contractedPct > 80 ? 'bg-orange-400' : 'bg-amber-500'}`}
@@ -325,13 +340,57 @@ function ProjectDetailInner() {
                 <div>
                   <div className="flex justify-between text-xs text-gray-400 mb-1">
                     <span className="text-green-700">已付 NT$ {formatNum(totalPaid)}</span>
-                    <span>發包 NT$ {formatNum(totalContracted)}</span>
+                    <span>發包 NT$ {formatNum(totalContracted)}　{paidPct.toFixed(0)}%</span>
                   </div>
                   <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                     <div className="h-full rounded-full bg-green-500 transition-all" style={{ width: `${paidPct}%` }} />
                   </div>
                 </div>
               )}
+              {totalTerms > 0 && (
+                <div>
+                  <div className="flex justify-between text-xs text-gray-400 mb-1">
+                    <span className="text-amber-700">期數完成 {paidTerms}/{totalTerms} 期</span>
+                    <span>{totalTerms > 0 ? `${((paidTerms / totalTerms) * 100).toFixed(0)}%` : '—'}</span>
+                  </div>
+                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-full rounded-full bg-amber-500 transition-all"
+                      style={{ width: `${totalTerms > 0 ? (paidTerms / totalTerms) * 100 : 0}%` }} />
+                  </div>
+                </div>
+              )}
+              {(() => {
+                const clientAmt = Number(project.clientContractAmount || 0);
+                if (clientAmt <= 0 && totalIncome <= 0) return null;
+                const incomePct = clientAmt > 0 ? Math.min((totalIncome / clientAmt) * 100, 100) : 0;
+                return (
+                  <div>
+                    <div className="flex justify-between text-xs text-gray-400 mb-1">
+                      <span className="text-teal-700">收款 NT$ {formatNum(totalIncome)}</span>
+                      <span>{clientAmt > 0 ? `業主 NT$ ${formatNum(clientAmt)}　${incomePct.toFixed(0)}%` : '—'}</span>
+                    </div>
+                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full bg-teal-500 transition-all" style={{ width: `${incomePct}%` }} />
+                    </div>
+                  </div>
+                );
+              })()}
+              {(() => {
+                const clientAmt = Number(project.clientContractAmount || 0);
+                if (clientAmt <= 0 && sumOutputInv <= 0) return null;
+                const outputPct = clientAmt > 0 ? Math.min((sumOutputInv / clientAmt) * 100, 100) : 0;
+                return (
+                  <div>
+                    <div className="flex justify-between text-xs text-gray-400 mb-1">
+                      <span className="text-green-600">銷項發票 NT$ {formatNum(sumOutputInv)}</span>
+                      <span>{clientAmt > 0 ? `業主 NT$ ${formatNum(clientAmt)}　${outputPct.toFixed(0)}%` : '—'}</span>
+                    </div>
+                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full bg-green-400 transition-all" style={{ width: `${outputPct}%` }} />
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>

@@ -6,6 +6,7 @@ import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import { useToast } from '@/context/ToastContext';
 import { localDateStr } from '@/lib/localDate';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 
 export default function PaymentVoucherListPage() {
   const { data: session } = useSession();
@@ -14,6 +15,7 @@ export default function PaymentVoucherListPage() {
   const [suppliers, setSuppliers] = useState([]);
   const [paymentOrders, setPaymentOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(null);
   const [activeView, setActiveView] = useState('monthly'); // 'monthly' | 'orders' | 'invoices'
   const [expandedOrderId, setExpandedOrderId] = useState(null);
   const [filterData, setFilterData] = useState({
@@ -57,41 +59,34 @@ export default function PaymentVoucherListPage() {
 
   async function fetchAll() {
     setLoading(true);
-    await Promise.all([fetchInvoices(), fetchSuppliers(), fetchPaymentOrders()]);
+    setFetchError(null);
+    try {
+      await Promise.all([fetchInvoices(), fetchSuppliers(), fetchPaymentOrders()]);
+    } catch {
+      setFetchError('資料載入失敗，請稍後再試');
+    }
     setLoading(false);
   }
 
   async function fetchInvoices() {
-    try {
-      const response = await fetch('/api/sales/with-info');
-      const data = await response.json();
-      setInvoices(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error('取得發票列表失敗:', error);
-      setInvoices([]);
-    }
+    const response = await fetch('/api/sales/with-info');
+    if (!response.ok) throw new Error('fetchInvoices');
+    const data = await response.json();
+    setInvoices(Array.isArray(data) ? data : []);
   }
 
   async function fetchSuppliers() {
-    try {
-      const response = await fetch('/api/suppliers?all=true');
-      const data = await response.json();
-      setSuppliers(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error('取得廠商列表失敗:', error);
-      setSuppliers([]);
-    }
+    const response = await fetch('/api/suppliers?all=true');
+    if (!response.ok) throw new Error('fetchSuppliers');
+    const data = await response.json();
+    setSuppliers(Array.isArray(data) ? data : []);
   }
 
   async function fetchPaymentOrders() {
-    try {
-      const response = await fetch('/api/payment-orders');
-      const data = await response.json();
-      setPaymentOrders(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error('取得付款單列表失敗:', error);
-      setPaymentOrders([]);
-    }
+    const response = await fetch('/api/payment-orders');
+    if (!response.ok) throw new Error('fetchPaymentOrders');
+    const data = await response.json();
+    setPaymentOrders(Array.isArray(data) ? data : []);
   }
 
   function filterInvoices() {
@@ -340,6 +335,8 @@ export default function PaymentVoucherListPage() {
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold">傳票列印</h2>
         </div>
+
+        {fetchError && <FetchErrorBanner message={fetchError} onRetry={fetchAll} />}
 
         {/* View Toggle */}
         <div className="flex gap-2 mb-6">

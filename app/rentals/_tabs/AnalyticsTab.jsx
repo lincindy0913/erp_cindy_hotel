@@ -148,6 +148,23 @@ export default function AnalyticsTab({
                     })()
                   )}
                 </tbody>
+                {incomeReportData.rows.length > 0 && (() => {
+                  const rows = incomeReportData.rows;
+                  const grandTotal = rows.reduce((s, r) => s + (r.total || 0), 0);
+                  return (
+                    <tfoot className="bg-teal-50 font-semibold text-sm border-t-2 border-teal-300">
+                      <tr>
+                        <td className="px-2 py-2 border border-gray-200 text-center text-xs text-gray-500">—</td>
+                        <td className="px-3 py-2 border border-gray-200 text-teal-800">合計</td>
+                        {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => {
+                          const sum = rows.reduce((s, r) => s + (r.months?.[m] || 0), 0);
+                          return <td key={m} className="text-right px-2 py-2 border border-gray-200 text-teal-800">{sum > 0 ? fmt(sum) : ''}</td>;
+                        })}
+                        <td className="text-right px-3 py-2 border border-gray-200 text-teal-900">{fmt(grandTotal)}</td>
+                      </tr>
+                    </tfoot>
+                  );
+                })()}
               </table>
             </div>
           )}
@@ -197,7 +214,8 @@ export default function AnalyticsTab({
                   <tr>
                     <th className="text-center px-2 py-2 border border-gray-200 w-8 text-gray-500">序號</th>
                     <th className="text-left px-3 py-2 border border-gray-200">物業</th>
-                    <th className="text-right px-3 py-2 border border-gray-200">租金+水電實收</th>
+                    <th className="text-right px-3 py-2 border border-gray-200">租金實收</th>
+                    <th className="text-right px-3 py-2 border border-gray-200">水電實收</th>
                     <th className="text-right px-3 py-2 border border-gray-200">維修金額</th>
                     <th className="text-right px-3 py-2 border border-gray-200">房務稅/地價稅</th>
                     <th className="text-right px-3 py-2 border border-gray-200">總支出</th>
@@ -207,13 +225,14 @@ export default function AnalyticsTab({
                 </thead>
                 <tbody>
                   {operatingReportData.rows.length === 0 ? (
-                    <tr><td colSpan={8} className="px-3 py-4 text-gray-500 text-center">尚無資料</td></tr>
+                    <tr><td colSpan={9} className="px-3 py-4 text-gray-500 text-center">尚無資料</td></tr>
                   ) : (
                     operatingReportData.rows.map((r, idx) => (
                       <tr key={r.propertyId} className="hover:bg-gray-50">
                         <td className="text-center px-2 py-2 border border-gray-200 text-xs text-gray-400">{r.sortOrder ?? (idx + 1)}</td>
                         <td className="px-3 py-2 border border-gray-200">{r.propertyLabel}</td>
-                        <td className="text-right px-3 py-2 border border-gray-200">{fmt(r.rentIncome)}</td>
+                        <td className="text-right px-3 py-2 border border-gray-200">{fmt(r.rentOnly ?? r.rentIncome)}</td>
+                        <td className="text-right px-3 py-2 border border-gray-200">{r.utilityIncome > 0 ? fmt(r.utilityIncome) : <span className="text-gray-300">—</span>}</td>
                         <td className="text-right px-3 py-2 border border-gray-200">{fmt(r.maintenanceAmount)}</td>
                         <td className="text-right px-3 py-2 border border-gray-200">{fmt(r.taxAmount)}</td>
                         <td className="text-right px-3 py-2 border border-gray-200">{fmt(r.totalExpense)}</td>
@@ -223,6 +242,32 @@ export default function AnalyticsTab({
                     ))
                   )}
                 </tbody>
+                {operatingReportData.rows.length > 0 && (() => {
+                  const rows = operatingReportData.rows;
+                  const sumRent     = rows.reduce((s, r) => s + (r.rentOnly ?? r.rentIncome ?? 0), 0);
+                  const sumUtility  = rows.reduce((s, r) => s + (r.utilityIncome || 0), 0);
+                  const sumMaint    = rows.reduce((s, r) => s + (r.maintenanceAmount || 0), 0);
+                  const sumTax      = rows.reduce((s, r) => s + (r.taxAmount || 0), 0);
+                  const sumExpense  = rows.reduce((s, r) => s + (r.totalExpense || 0), 0);
+                  const sumProfit   = rows.reduce((s, r) => s + (r.netProfit || 0), 0);
+                  const sumIncome   = sumRent + sumUtility;
+                  const totalMargin = sumIncome > 0 ? Math.round((sumProfit / sumIncome) * 10000) / 100 : null;
+                  return (
+                    <tfoot className="bg-teal-50 font-semibold text-sm border-t-2 border-teal-300">
+                      <tr>
+                        <td className="px-2 py-2 border border-gray-200 text-center text-xs text-gray-500">—</td>
+                        <td className="px-3 py-2 border border-gray-200 text-teal-800">合計</td>
+                        <td className="text-right px-3 py-2 border border-gray-200 text-teal-800">{fmt(sumRent)}</td>
+                        <td className="text-right px-3 py-2 border border-gray-200 text-teal-800">{sumUtility > 0 ? fmt(sumUtility) : <span className="text-gray-300">—</span>}</td>
+                        <td className="text-right px-3 py-2 border border-gray-200 text-teal-800">{fmt(sumMaint)}</td>
+                        <td className="text-right px-3 py-2 border border-gray-200 text-teal-800">{fmt(sumTax)}</td>
+                        <td className="text-right px-3 py-2 border border-gray-200 text-teal-800">{fmt(sumExpense)}</td>
+                        <td className={`text-right px-3 py-2 border border-gray-200 ${sumProfit >= 0 ? 'text-green-700' : 'text-red-700'}`}>{fmt(sumProfit)}</td>
+                        <td className="text-right px-3 py-2 border border-gray-200 text-teal-800">{totalMargin != null ? `${totalMargin}%` : '-'}</td>
+                      </tr>
+                    </tfoot>
+                  );
+                })()}
               </table>
             </div>
           )}

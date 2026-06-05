@@ -8,6 +8,7 @@ import ExportButtons from '@/components/ExportButtons';
 import { EXPORT_CONFIGS } from '@/lib/export-columns';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 
 export default function ProductsPage() {
   const { data: session } = useSession();
@@ -16,6 +17,7 @@ export default function ProductsPage() {
   const isLoggedIn = !!session;
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [productsError, setProductsError] = useState(null);
   const [productSaving, setProductSaving] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
@@ -119,10 +121,12 @@ export default function ProductsPage() {
   }
 
   async function fetchProducts(page = currentPage, limit = itemsPerPage, keyword = searchKeyword) {
+    setProductsError(null);
     try {
       const params = new URLSearchParams({ page: String(page), limit: String(limit) });
       if (keyword) params.set('keyword', keyword);
       const response = await fetch(`/api/products?${params}`);
+      if (!response.ok) { setProductsError('產品列表載入失敗，請稍後再試'); setLoading(false); return []; }
       const result = await response.json();
       if (result.data && result.pagination) {
         setProducts(result.data);
@@ -136,8 +140,8 @@ export default function ProductsPage() {
       }
       setLoading(false);
       return result;
-    } catch (error) {
-      console.error('取得產品列表失敗:', error);
+    } catch {
+      setProductsError('產品列表載入失敗，請稍後再試');
       setProducts([]);
       setTotalCount(0);
       setLoading(false);
@@ -403,6 +407,8 @@ export default function ProductsPage() {
             </button>
           )}
         </div>
+
+        {productsError && <FetchErrorBanner message={productsError} onRetry={() => fetchProducts(1, itemsPerPage, searchKeyword)} />}
 
         {/* 新增/編輯產品表單 */}
         {showAddForm && (

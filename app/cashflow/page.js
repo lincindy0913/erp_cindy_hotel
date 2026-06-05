@@ -19,6 +19,8 @@ import OverviewTab      from './_tabs/OverviewTab';
 import SubjectQueryTab  from './_tabs/SubjectQueryTab';
 import TransactionsTab  from './_tabs/TransactionsTab';
 import FetchErrorBanner from '@/components/FetchErrorBanner';
+import ModuleGuideCard from '@/components/ModuleGuideCard';
+import HelpButton from '@/components/HelpButton';
 
 const ACCOUNT_TYPES = ['現金', '銀行存款', '代墊款', '信用卡'];
 const TX_TYPES = ['收入', '支出', '移轉'];
@@ -608,6 +610,36 @@ export default function CashFlowPage() {
     } catch { showToast('刪除交易失敗', 'error'); }
   }
 
+  async function handleUpdateTransaction(id, data) {
+    try {
+      const res = await fetch(`/api/cashflow/transactions/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      const d = await res.json();
+      if (!res.ok) { showToast((typeof d.error === 'string' ? d.error : d.error?.message) || '更新失敗', 'error'); return false; }
+      showToast('已更新', 'success');
+      fetchTransactions(txPage);
+      return true;
+    } catch { showToast('更新失敗', 'error'); return false; }
+  }
+
+  async function handleReverseTransaction(id, reason) {
+    try {
+      const res = await fetch(`/api/cashflow/transactions/${id}/reverse`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason }),
+      });
+      const d = await res.json();
+      if (!res.ok) { showToast((typeof d.error === 'string' ? d.error : d.error?.message) || '沖銷失敗', 'error'); return false; }
+      showToast('沖銷成功', 'success');
+      fetchTransactions(txPage);
+      return true;
+    } catch { showToast('沖銷失敗', 'error'); return false; }
+  }
+
   // ==================== Helpers ====================
   function formatMoney(val) {
     const num = parseFloat(val) || 0;
@@ -668,23 +700,53 @@ export default function CashFlowPage() {
       <NotificationBanner moduleFilter="cashflow" />
 
       <main className="max-w-7xl mx-auto px-4 py-8">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold">現金流管理</h2>
-          {activeTab === 'transactions' && (
-            <ExportButtons
-              data={transactions.map(tx => ({
-                ...tx,
-                accountName: tx.account?.name || '-',
-                categoryName: tx.category?.name || '-',
-                supplierName: tx.supplier?.name || '-',
-              }))}
-              columns={EXPORT_CONFIGS.cashflow.columns}
-              exportName={EXPORT_CONFIGS.cashflow.filename}
-              title="現金交易紀錄"
-              sheetName="交易紀錄"
-            />
-          )}
+        <div className="flex justify-between items-center mb-4">
+          <div>
+            <h2 className="text-2xl font-bold">現金流管理</h2>
+            <p className="text-xs text-gray-400 mt-0.5">日常收支記錄。帳戶主檔設定請至 <Link href="/fund-management" className="text-emerald-600 hover:underline">資金管理 →</Link></p>
+          </div>
+          <div className="flex items-center gap-3">
+            <HelpButton anchor="八現金流管理" />
+            {activeTab === 'transactions' && (
+              <ExportButtons
+                data={transactions.map(tx => ({
+                  ...tx,
+                  accountName: tx.account?.name || '-',
+                  categoryName: tx.category?.name || '-',
+                  supplierName: tx.supplier?.name || '-',
+                }))}
+                columns={EXPORT_CONFIGS.cashflow.columns}
+                exportName={EXPORT_CONFIGS.cashflow.filename}
+                title="現金交易紀錄"
+                sheetName="交易紀錄"
+              />
+            )}
+          </div>
         </div>
+
+        <ModuleGuideCard
+          title="現金流操作流程（展開查看）"
+          color="slate"
+          steps={[
+            {
+              label: '日常：以自動來源為主',
+              desc: '出納執行付款、PMS 收入匯入、民宿匯入後，系統自動產生交易，請勿重複手動補登。只有真正缺少來源的雜項才用「手動」(manual) 補記。',
+            },
+            {
+              label: '分辨「存簿對帳」vs「銀行對帳」',
+              desc: '「存簿對帳（/bank-reconciliation）」是逐筆核對銀行流水，確認系統帳目與銀行對帳單吻合；「帳戶總覽」的餘額則是系統依交易自動累加。兩者確認後才代表數字可信。',
+            },
+            {
+              label: '現金帳戶：月底盤點',
+              desc: '若有現金帳戶，每月底至「現金盤點」分頁填寫實點面額，系統自動計算差異並留存稽核紀錄。',
+            },
+            {
+              label: '損益科目：每月批次歸類',
+              desc: '至「損益科目管理」分頁，找出未分類（plLevel1 為空）的交易，批次指定科目分類，否則收支報表會有缺口。',
+              link: { href: '/manual#八現金流管理', text: '查看手冊說明' },
+            },
+          ]}
+        />
 
         {/* Tabs */}
         <div className="flex gap-1 mb-6 border-b border-gray-200">
@@ -742,6 +804,7 @@ export default function CashFlowPage() {
             fetchTransactions={fetchTransactions} formatMoney={formatMoney}
             getAccountName={getAccountName} getSupplierName={getSupplierName}
             getCategoriesForType={getCategoriesForType}
+            onUpdate={handleUpdateTransaction} onReverse={handleReverseTransaction}
           />
         )}
 
@@ -752,6 +815,8 @@ export default function CashFlowPage() {
             subjectFilter={subjectFilter} setSubjectFilter={setSubjectFilter}
             subjectData={subjectData} subjectLoading={subjectLoading}
             fetchSubjectQuery={fetchSubjectQuery} formatMoney={formatMoney}
+            noCatStats={noCatStats}
+            onGoToCategoryMgmt={() => setActiveTab('category-mgmt')}
           />
         )}
 
@@ -765,6 +830,7 @@ export default function CashFlowPage() {
             reportData={reportData}
             fetchReport={fetchReport}
             formatMoney={formatMoney}
+            onGoToCategoryMgmt={() => setActiveTab('category-mgmt')}
           />
         )}
 

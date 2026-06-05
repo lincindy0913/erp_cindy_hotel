@@ -21,8 +21,8 @@ const NAV_ITEMS = [
   { href: '/cashier', label: '出納', subtitle: '執行轉帳／匯款', linkClass: 'link-cashier', requiredPermission: 'cashier.view' },
   { href: '/employee-advances', label: '代墊款', linkClass: 'link-cashflow', requiredPermission: 'cashier.view' },
   { href: '/cashflow', label: '現金流', linkClass: 'link-cashflow', requiredPermission: 'cashflow.view' },
-  { href: '/reconciliation', label: '存簿對帳', subtitle: '存簿對帳', linkClass: 'link-reconciliation', requiredPermission: 'reconciliation.view' },
-  { href: '/bank-reconciliation', label: '存簿核對', subtitle: '網銀存簿比對', linkClass: 'link-reconciliation', requiredPermission: 'cashflow.view' },
+  { href: '/reconciliation', label: '存簿對帳', subtitle: '信用卡／OTA 核對', linkClass: 'link-reconciliation', requiredPermission: 'reconciliation.view' },
+  { href: '/bank-reconciliation', label: '存簿核對', subtitle: '銀行月結對帳單', linkClass: 'link-reconciliation', requiredPermission: 'cashflow.view' },
   { href: '/pms-income', label: 'PMS收入', linkClass: 'link-pms-income', requiredPermission: 'pms.view' },
   { href: '/bnb', label: '民宿帳', linkClass: 'link-pms-income', requiredPermission: 'bnb.view' },
   { href: '/rentals', label: '租屋管理', linkClass: 'link-rentals', requiredPermission: 'rental.view' },
@@ -58,6 +58,9 @@ const DATA_SETTINGS_ITEMS = [
   { href: '/manual', label: '📖 使用說明', linkClass: 'link-dashboard', requiredPermission: null, newTab: true },
 ];
 
+const FAVORITES_KEY = 'erpNavFavorites';
+const MAX_FAVORITES = 5;
+
 export default function Navigation({ borderColor = 'border-blue-500' }) {
   const { data: session } = useSession();
   const pathname = usePathname();
@@ -65,6 +68,32 @@ export default function Navigation({ borderColor = 'border-blue-500' }) {
   const dropdownRef = useRef(null);
   const timeoutRef = useRef(null);
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  // #14 我的最愛（localStorage）
+  const [favorites, setFavorites] = useState([]);
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem(FAVORITES_KEY) || '[]');
+      setFavorites(Array.isArray(stored) ? stored : []);
+    } catch { setFavorites([]); }
+  }, []);
+  function toggleFavorite(href) {
+    setFavorites(prev => {
+      const next = prev.includes(href)
+        ? prev.filter(h => h !== href)
+        : [...prev, href].slice(-MAX_FAVORITES);
+      try { localStorage.setItem(FAVORITES_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }
+  const allNavLinks = [
+    ...NAV_ITEMS,
+    ...CLOSE_BOOK_ITEMS,
+    ...REPORTS_ITEMS,
+  ];
+  const favoriteItems = favorites
+    .map(href => allNavLinks.find(i => i.href === href))
+    .filter(Boolean);
 
   const isAdmin = session?.user?.role === 'admin';
   const userPermissions = session?.user?.permissions || [];
