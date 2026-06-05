@@ -55,7 +55,7 @@ export async function GET(request) {
           ]);
           if (pendingWh > 0) items.push({ key: 'pending_warehouse', category: '採購', label: '待入庫進貨', count: pendingWh, href: '/inventory?tab=inbound', urgency: 'high' });
           const low = Number(lowStock[0]?.cnt || 0);
-          if (low > 0) items.push({ key: 'low_inventory', category: '採購', label: '庫存偏低品項', count: low, href: '/inventory', urgency: 'normal' });
+          if (low > 0) items.push({ key: 'low_inventory', category: '採購', label: '庫存偏低品項', count: low, href: '/inventory?lowstock=1', urgency: 'normal' });
         } catch (e) { console.error('[action-queue] 採購:', e.message); }
       })());
     }
@@ -73,7 +73,7 @@ export async function GET(request) {
           ]);
           if (draftPOs > 0) items.push({ key: 'draft_po', category: '財務', label: '草稿付款單待送出', count: draftPOs, href: '/finance?tab=draft', urgency: 'high' });
           if (rejectedPOs > 0) items.push({ key: 'rejected_po', category: '財務', label: '被退回付款單', count: rejectedPOs, href: '/finance?tab=rejected', urgency: 'urgent' });
-          if (monthInvoices > 0) items.push({ key: 'pending_invoices', category: '財務', label: '本月待核銷發票', count: monthInvoices, href: '/sales', urgency: 'normal' });
+          if (monthInvoices > 0) items.push({ key: 'pending_invoices', category: '財務', label: '本月待核銷發票', count: monthInvoices, href: '/sales?status=待核銷', urgency: 'normal' });
         } catch (e) { console.error('[action-queue] 財務:', e.message); }
       })());
     }

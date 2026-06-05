@@ -167,10 +167,16 @@ export default function InventoryPage() {
   const [inboundSelected, setInboundSelected] = useState(new Set()); // keys for batch
   const [batchConfirming, setBatchConfirming] = useState(false);
 
+  // 深連結 ?lowstock=1 → 只顯示低庫存品項
+  const [filterLowStock, setFilterLowStock] = useState(false);
+
   const { sortKey: invQKey, sortDir: invQDir, toggleSort: invQT } = useColumnSort('productName', 'asc');
   const sortedInventory = useMemo(
-    () =>
-      sortRows(inventory, invQKey, invQDir, {
+    () => {
+      const base = filterLowStock
+        ? inventory.filter(row => row.status === '偏低' || row.status === '缺貨')
+        : inventory;
+      return sortRows(base, invQKey, invQDir, {
         productName: (row) => row.product?.name || '',
         warehouseLoc: (row) => warehouse || row.product?.warehouseLocation || '',
         purchaseIn: (row) => Number(row.purchaseQty ?? row.purchaseIncr ?? 0),
@@ -180,8 +186,9 @@ export default function InventoryPage() {
         countAdjustQty: (row) => Number(row.countAdjustQty ?? 0),
         currentQty: (row) => Number(row.currentQty ?? 0),
         status: (row) => row.status || '',
-      }),
-    [inventory, warehouse, invQKey, invQDir]
+      });
+    },
+    [inventory, warehouse, invQKey, invQDir, filterLowStock]
   );
 
   const { sortKey: reqKey, sortDir: reqDir, toggleSort: reqT } = useColumnSort('requisitionDate', 'desc');
@@ -253,6 +260,7 @@ export default function InventoryPage() {
     if (tabParam && ['query', 'inbound', 'requisition', 'transfer', 'count'].includes(tabParam)) {
       setActiveTab(tabParam);
     }
+    if (params.get('lowstock') === '1') setFilterLowStock(true);
   }, []);
 
   async function fetchWarehouses() {
@@ -881,7 +889,22 @@ export default function InventoryPage() {
         {/* 庫存查詢 */}
         {activeTab === 'query' && (
           <>
-            <div className="mb-4 flex justify-end">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setFilterLowStock(v => !v)}
+                  className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors ${
+                    filterLowStock
+                      ? 'bg-orange-100 border-orange-300 text-orange-700'
+                      : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
+                  }`}
+                >
+                  {filterLowStock ? '✕ 取消篩選' : '⚠ 只看低庫存'}
+                </button>
+                {filterLowStock && (
+                  <span className="text-xs text-orange-600 font-medium">{sortedInventory.length} 項偏低／缺貨</span>
+                )}
+              </div>
               <ExportButtons
                 data={inventory.map(item => ({
                   productCode: item.product?.code || '-',

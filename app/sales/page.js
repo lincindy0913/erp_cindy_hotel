@@ -57,6 +57,7 @@ function InvoicePageInner() {
   const [searchInvoiceTitle, setSearchInvoiceTitle] = useState('');
   const [searchWarehouse, setSearchWarehouse] = useState('');
   const [searchInvoiceType, setSearchInvoiceType] = useState('');
+  const [searchStatus, setSearchStatus] = useState(''); // 深連結 ?status= 篩選
 
   // 報表 view 篩選
   const [reportDateFrom, setReportDateFrom] = useState('');
@@ -235,6 +236,7 @@ function InvoicePageInner() {
     const m = searchParams.get('month');
     const t = searchParams.get('invoiceTitle');
     const v = searchParams.get('view');
+    const s = searchParams.get('status');
     if (m) {
       setSearchDateFrom(`${m}-01`);
       const [y, mo] = m.split('-').map(Number);
@@ -242,7 +244,8 @@ function InvoicePageInner() {
       setSearchDateTo(`${m}-${String(lastDay).padStart(2, '0')}`);
     }
     if (t) setSearchInvoiceTitle(t);
-    if ((m || t) && canSalesView) {
+    if (s) setSearchStatus(s);
+    if ((m || t || s) && canSalesView) {
       setActiveView('list');
       if (v !== 'list') {
         const p = new URLSearchParams(searchParams.toString());
@@ -547,9 +550,10 @@ function InvoicePageInner() {
   // 伺服器已過濾 date/warehouse/invoiceType/invoiceTitle；廠商名稱在前端過濾目前頁面
   const filteredInvoicesForList = useMemo(
     () => invoices.filter(inv =>
-      !searchSupplier || (inv.supplierName || '').toLowerCase().includes(searchSupplier.toLowerCase())
+      (!searchSupplier || (inv.supplierName || '').toLowerCase().includes(searchSupplier.toLowerCase())) &&
+      (!searchStatus || (inv.status || '待核銷') === searchStatus)
     ),
-    [invoices, searchSupplier]
+    [invoices, searchSupplier, searchStatus]
   );
   // 折讓篩選（與發票相同的日期/館別/廠商條件，但不篩 invoiceTitle/invoiceType）
   const filteredAllowancesForList = useMemo(
