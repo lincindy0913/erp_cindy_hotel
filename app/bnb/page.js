@@ -6,6 +6,8 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Navigation from '@/components/Navigation';
 import FetchErrorBanner from '@/components/FetchErrorBanner';
+import ModuleGuideCard from '@/components/ModuleGuideCard';
+import HelpButton from '@/components/HelpButton';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
 import ExportButtons from '@/components/ExportButtons';
@@ -909,10 +911,41 @@ function BnbPage() {
       <Navigation borderColor="border-indigo-500" />
 
       <main className="max-w-[96rem] mx-auto px-4 py-8">
-        <div className="mb-6">
-          <h2 className="text-2xl font-bold text-gray-900">民宿帳</h2>
-          <p className="text-sm text-gray-500 mt-1">訂房收入、付款明細、月收支總表、旅宿網申報</p>
+        <div className="mb-6 flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">民宿帳</h2>
+            <p className="text-sm text-gray-500 mt-1">訂房收入、付款明細、月收支總表、旅宿網申報</p>
+          </div>
+          <HelpButton anchor="十五民宿帳務" className="mt-1" />
         </div>
+
+        <ModuleGuideCard
+          title="標準月底流程說明"
+          color="blue"
+          steps={[
+            {
+              label: '訂房明細',
+              desc: '逐筆登錄或批次匯入訂房記錄 → 填寫付款方式與實收金額 → 確認總額與 PMS 系統相符',
+            },
+            {
+              label: '訂金核對',
+              desc: '至「訂金核對」分頁，將銀行流水（匯款、信用卡）與訂金／尾款逐筆配對，未配對者需手動確認或補登',
+            },
+            {
+              label: 'OTA 比對',
+              desc: '上傳 Booking.com／Agoda 等對帳單 → 系統自動比對差異 → 確認佣金金額並標記已入帳',
+            },
+            {
+              label: '付款稽核',
+              desc: '至「付款稽核」分頁，查找未填款項、金額不符或已退房未收款的訂單，逐一補正',
+            },
+            {
+              label: '鎖帳與申報',
+              desc: '確認無誤後執行「鎖帳此月」→ 至分析頁確認月收支總表 → 完成旅宿網月營業額申報',
+              link: { href: '/manual#十五民宿帳務', text: '查看手冊說明' },
+            },
+          ]}
+        />
 
         {/* 出納同步失敗 banner */}
         {syncFailures.length > 0 && (
