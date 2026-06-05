@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 
 const IMPORT_TYPES = [
   { key: 'account_balance', label: '帳戶期初餘額', icon: '🏦', desc: '設定各帳戶的開帳餘額', required: ['account_code', 'opening_balance'] },
@@ -30,6 +31,7 @@ export default function SetupImportPage() {
   const { data: session } = useSession();
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(null);
   const [activeSession, setActiveSession] = useState(null);
   const [showNewForm, setShowNewForm] = useState(false);
   const [newForm, setNewForm] = useState({ openingDate: '', note: '' });
@@ -51,12 +53,14 @@ export default function SetupImportPage() {
 
   const fetchSessions = useCallback(async () => {
     setLoading(true);
+    setFetchError(null);
     try {
       const res = await fetch('/api/setup-import');
+      if (!res.ok) { setFetchError('匯入作業列表載入失敗，請稍後再試'); return; }
       const data = await res.json();
       setSessions(Array.isArray(data) ? data : []);
     } catch {
-      console.error('Failed to load sessions');
+      setFetchError('匯入作業列表載入失敗，請稍後再試');
     }
     setLoading(false);
   }, []);
@@ -214,6 +218,8 @@ export default function SetupImportPage() {
           <h2 className="text-2xl font-bold text-gray-800">期初資料匯入</h2>
           <p className="text-sm text-gray-500 mt-1">系統上線前一次性批量匯入期初資料（帳戶餘額、庫存、貸款、應付款等）</p>
         </div>
+
+        {fetchError && <FetchErrorBanner message={fetchError} onRetry={fetchSessions} />}
 
         {/* Warning banner */}
         <div className="bg-amber-100 border border-amber-300 rounded-lg p-4 mb-6 flex items-start gap-3">

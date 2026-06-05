@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import { useConfirm } from '@/context/ConfirmContext';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 
 export default function AccountingSubjectsPage() {
   const { data: session } = useSession();
@@ -166,11 +167,7 @@ export default function AccountingSubjectsPage() {
         </div>
 
         {/* 錯誤／成功訊息 */}
-        {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
-            {error}
-          </div>
-        )}
+        {error && <FetchErrorBanner message={error} onRetry={fetchSubjects} />}
         {successMsg && (
           <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-lg text-sm">
             {successMsg}
@@ -181,11 +178,7 @@ export default function AccountingSubjectsPage() {
         {showAddForm && (
           <div className="mb-6 bg-white rounded-lg shadow p-6">
             <h3 className="text-lg font-semibold mb-4">新增會計科目</h3>
-            {error && (
-              <div className="mb-3 p-2 bg-red-50 border border-red-200 text-red-700 rounded text-sm">
-                {error}
-              </div>
-            )}
+            {error && <FetchErrorBanner message={error} onRetry={fetchSubjects} />}
             <form onSubmit={handleAdd} className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div>
                 <label htmlFor="f" className="block text-sm font-medium text-gray-700 mb-1">分類</label>

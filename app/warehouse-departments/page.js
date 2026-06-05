@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Navigation from '@/components/Navigation';
 import { useConfirm } from '@/context/ConfirmContext';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 
 export default function WarehouseDepartmentsPage() {
   const confirm = useConfirm();
@@ -197,7 +198,7 @@ export default function WarehouseDepartmentsPage() {
 
         <h1 className="text-2xl font-bold text-gray-800 mb-6">館別 / 部門 / 倉庫 管理</h1>
 
-        {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">{error}</div>}
+        {error && <FetchErrorBanner message={error} onRetry={fetchData} />}
 
         {loading ? (
           <p className="text-gray-500 text-sm">載入中...</p>

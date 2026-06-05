@@ -7,6 +7,7 @@ import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort, SortableThInline } from '@/components/SortableTh';
 import { todayStr } from '@/lib/localDate';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 
 export default function EmployeeAdvancesPage() {
   const { data: session } = useSession();
@@ -16,6 +17,7 @@ export default function EmployeeAdvancesPage() {
   const [advances, setAdvances] = useState([]);
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(null);
 
   // Settlement form
   const [selectedIds, setSelectedIds] = useState(new Set());
@@ -37,16 +39,21 @@ export default function EmployeeAdvancesPage() {
 
   async function fetchAll() {
     setLoading(true);
-    const [advRes, accRes, whRes, catRes] = await Promise.all([
-      fetch('/api/employee-advances').then(r => r.json()).catch(() => []),
-      fetch('/api/cashflow/accounts').then(r => r.json()).catch(() => []),
-      fetch('/api/warehouse-departments').then(r => r.json()).catch(() => ({ list: [] })),
-      fetch('/api/settings/expense-categories').then(r => r.json()).catch(() => []),
-    ]);
-    setAdvances(Array.isArray(advRes) ? advRes : []);
-    setAccounts(Array.isArray(accRes) ? accRes : []);
-    setWarehousesList(Array.isArray(whRes?.list) ? whRes.list.filter(w => w.type === 'building') : []);
-    setExpenseCategories(Array.isArray(catRes) ? catRes : []);
+    setFetchError(null);
+    try {
+      const [advRes, accRes, whRes, catRes] = await Promise.all([
+        fetch('/api/employee-advances').then(r => r.ok ? r.json() : Promise.reject()),
+        fetch('/api/cashflow/accounts').then(r => r.json()).catch(() => []),
+        fetch('/api/warehouse-departments').then(r => r.json()).catch(() => ({ list: [] })),
+        fetch('/api/settings/expense-categories').then(r => r.json()).catch(() => []),
+      ]);
+      setAdvances(Array.isArray(advRes) ? advRes : []);
+      setAccounts(Array.isArray(accRes) ? accRes : []);
+      setWarehousesList(Array.isArray(whRes?.list) ? whRes.list.filter(w => w.type === 'building') : []);
+      setExpenseCategories(Array.isArray(catRes) ? catRes : []);
+    } catch {
+      setFetchError('代墊款資料載入失敗，請稍後再試');
+    }
     setLoading(false);
   }
 
@@ -356,6 +363,7 @@ export default function EmployeeAdvancesPage() {
             + 手動新增代墊款
           </button>
         </div>
+        {fetchError && <FetchErrorBanner message={fetchError} onRetry={fetchAll} />}
 
         {/* KPI Cards */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>

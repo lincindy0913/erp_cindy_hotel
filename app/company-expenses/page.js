@@ -8,6 +8,7 @@ import { useToast } from '@/context/ToastContext';
 import { sortRows, useColumnSort, SortableThInline } from '@/components/SortableTh';
 import ExportButtons from '@/components/ExportButtons';
 import ConfirmModal, { useConfirmDialog } from '@/components/ConfirmModal';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 
 const TABS = [
   { key: 'expenses',  label: '公司費用' },
@@ -59,6 +60,7 @@ function CompanyExpensesPageInner() {
   const [projects,   setProjects]   = useState([]);
   const [suppliers,  setSuppliers]  = useState([]);
   const [loading,    setLoading]    = useState(true);
+  const [fetchError, setFetchError] = useState(null);
   const [periodFilter, setPeriodFilter] = useState('');
   const [projectFilter, setProjectFilter] = useState('');
   const [vendorFilter,  setVendorFilter]  = useState('');
@@ -87,6 +89,7 @@ function CompanyExpensesPageInner() {
 
   async function load() {
     setLoading(true);
+    setFetchError(null);
     try {
       const [eRes, iRes, pRes, sRes] = await Promise.all([
         fetch('/api/company-expenses?type=expense'),
@@ -94,13 +97,14 @@ function CompanyExpensesPageInner() {
         fetch('/api/engineering/projects'),
         fetch('/api/suppliers?limit=500'),
       ]);
+      if (!eRes.ok || !iRes.ok) throw new Error('費用資料載入失敗');
       setExpenses(await eRes.json());
       setInvoices(await iRes.json());
-      setProjects(await pRes.json());
-      const sData = await sRes.json();
+      setProjects(pRes.ok ? await pRes.json() : []);
+      const sData = sRes.ok ? await sRes.json() : [];
       setSuppliers(Array.isArray(sData) ? sData : (sData.data || []));
     } catch (e) {
-      addToast('載入失敗：' + e.message, 'error');
+      setFetchError(e.message || '費用資料載入失敗，請稍後再試');
     } finally {
       setLoading(false);
     }
@@ -302,6 +306,8 @@ function CompanyExpensesPageInner() {
     <div className="min-h-screen bg-gray-50">
       <Navigation />
       <div className="max-w-screen-xl mx-auto px-4 py-6">
+        {fetchError && <FetchErrorBanner message={fetchError} onRetry={load} />}
+
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-2xl font-bold text-gray-900">慶豐營造工程分業</h1>

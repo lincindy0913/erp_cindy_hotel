@@ -1,7 +1,8 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import Navigation from '@/components/Navigation';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 
 const HEALTH_LABEL = { good: '健康', warning: '注意', bad: '問題' };
 const HEALTH_CLASS = {
@@ -13,14 +14,21 @@ const HEALTH_CLASS = {
 export default function PaymentHealthPage() {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(null);
   const [filter, setFilter] = useState('all'); // 'all' | 'good' | 'warning' | 'bad'
 
-  useEffect(() => {
-    fetch('/api/suppliers/payment-health')
-      .then(r => r.ok ? r.json() : [])
-      .then(d => { setData(d); setLoading(false); })
-      .catch(() => setLoading(false));
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setFetchError(null);
+    try {
+      const res = await fetch('/api/suppliers/payment-health');
+      if (!res.ok) { setFetchError('廠商付款健康度載入失敗，請稍後再試'); return; }
+      setData(await res.json());
+    } catch { setFetchError('廠商付款健康度載入失敗，請稍後再試'); }
+    finally { setLoading(false); }
   }, []);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   const filtered = filter === 'all' ? data : data.filter(r => r.health === filter);
 
@@ -39,6 +47,8 @@ export default function PaymentHealthPage() {
           <Link href="/suppliers" className="text-teal-600 hover:underline text-sm">← 廠商管理</Link>
           <h2 className="text-2xl font-bold">廠商付款條件健康度</h2>
         </div>
+
+        {fetchError && <FetchErrorBanner message={fetchError} onRetry={fetchData} />}
 
         <p className="text-sm text-gray-500 mb-6">
           依實際付款日（CashierExecution）與約定到期日（PaymentOrder.dueDate）計算延遲天數。

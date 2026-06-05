@@ -7,6 +7,7 @@ import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
 import { todayStr } from '@/lib/localDate';
 import { ALLOWANCE_STATUS } from '@/lib/allowance-statuses';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 
 export default function PurchaseAllowancesPage() {
   const { data: session } = useSession();
@@ -18,6 +19,7 @@ export default function PurchaseAllowancesPage() {
   const [warehouses, setWarehouses] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(null);
 
   // Purchase search
   const [purchaseSearch, setPurchaseSearch] = useState('');
@@ -64,16 +66,21 @@ export default function PurchaseAllowancesPage() {
 
   async function fetchAll() {
     setLoading(true);
-    const [aRes, accRes, whRes, supRes] = await Promise.all([
-      fetch('/api/purchase-allowances').then(r => r.json()).catch(() => []),
-      fetch('/api/cashflow/accounts').then(r => r.json()).catch(() => []),
-      fetch('/api/warehouse-departments').then(r => r.json()).catch(() => []),
-      fetch('/api/suppliers?all=true').then(r => r.json()).catch(() => []),
-    ]);
-    setRecords(Array.isArray(aRes) ? aRes : []);
-    setAccounts(Array.isArray(accRes) ? accRes : []);
-    setWarehouses(Array.isArray(whRes?.list) ? whRes.list.filter(w => w.type === 'building') : Array.isArray(whRes) ? whRes.filter(w => w.type === 'warehouse') : []);
-    setSuppliers(Array.isArray(supRes) ? supRes : []);
+    setFetchError(null);
+    try {
+      const [aRes, accRes, whRes, supRes] = await Promise.all([
+        fetch('/api/purchase-allowances').then(r => r.ok ? r.json() : Promise.reject()),
+        fetch('/api/cashflow/accounts').then(r => r.json()).catch(() => []),
+        fetch('/api/warehouse-departments').then(r => r.json()).catch(() => []),
+        fetch('/api/suppliers?all=true').then(r => r.json()).catch(() => []),
+      ]);
+      setRecords(Array.isArray(aRes) ? aRes : []);
+      setAccounts(Array.isArray(accRes) ? accRes : []);
+      setWarehouses(Array.isArray(whRes?.list) ? whRes.list.filter(w => w.type === 'building') : Array.isArray(whRes) ? whRes.filter(w => w.type === 'warehouse') : []);
+      setSuppliers(Array.isArray(supRes) ? supRes : []);
+    } catch {
+      setFetchError('退貨資料載入失敗，請稍後再試');
+    }
     setLoading(false);
   }
 
@@ -470,6 +477,7 @@ export default function PurchaseAllowancesPage() {
     <>
       <Navigation borderColor="border-orange-500" />
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: 24 }}>
+        {fetchError && <FetchErrorBanner message={fetchError} onRetry={fetchAll} />}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <h2 style={{ fontSize: '1.5rem', fontWeight: 700 }}>進貨退貨管理</h2>
           <div style={{ display: 'flex', gap: 8 }}>

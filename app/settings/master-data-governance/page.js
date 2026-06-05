@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import Navigation from '@/components/Navigation';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 
 const TABS = [
   { key: 'warehouse',         label: '館別',   icon: '🏢' },
@@ -28,6 +29,7 @@ export default function MasterDataGovernancePage() {
   useSession();
 
   const [loading, setLoading]     = useState(true);
+  const [fetchError, setFetchError] = useState(null);
   const [scanning, setScanning]   = useState(false);
   const [data, setData]           = useState({ warehouse: [], supplier: [], accountingSubject: [], masterWarehouses: [], masterSuppliers: [], masterSubjects: [] });
   const [activeTab, setActiveTab] = useState('warehouse');
@@ -53,12 +55,13 @@ export default function MasterDataGovernancePage() {
   useEffect(() => { fetchData(); }, []);
 
   async function fetchData() {
-    setScanning(true); setLoading(true);
+    setScanning(true); setLoading(true); setFetchError(null);
     try {
       const res  = await fetch('/api/settings/master-data/normalize');
+      if (!res.ok) { setFetchError('資料一致性掃描失敗，請稍後再試'); return; }
       const json = await res.json();
       setData(json);
-    } catch { showToast('掃描失敗，請重試', 'error'); }
+    } catch { setFetchError('資料一致性掃描失敗，請稍後再試'); }
     setScanning(false); setLoading(false);
     setSelected(new Set()); setBatchMode(false);
   }
@@ -162,6 +165,8 @@ export default function MasterDataGovernancePage() {
 
       <div className="min-h-screen bg-gray-50">
         <div className="max-w-6xl mx-auto px-4 py-8">
+
+          {fetchError && <FetchErrorBanner message={fetchError} onRetry={fetchData} />}
 
           {/* Header */}
           <div className="flex items-center justify-between mb-6">

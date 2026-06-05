@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 import OnboardingTour from '@/components/OnboardingTour';
 
 function NT(val) {
@@ -70,6 +71,7 @@ export default function Dashboard() {
   // 角色待辦佇列
   const [aqData, setAqData] = useState(null);
   const [aqLoading, setAqLoading] = useState(false);
+  const [aqError, setAqError] = useState(null);
 
   // Always fetch public summary
   useEffect(() => {
@@ -120,10 +122,12 @@ export default function Dashboard() {
 
   async function fetchActionQueue() {
     setAqLoading(true);
+    setAqError(null);
     try {
       const res = await fetch('/api/dashboard/action-queue');
       if (res.ok) setAqData(await res.json());
-    } catch (e) { console.warn('[action-queue] fetch failed:', e.message); }
+      else setAqError('待辦佇列載入失敗，請稍後再試');
+    } catch { setAqError('待辦佇列載入失敗，請稍後再試'); }
     setAqLoading(false);
   }
 
@@ -641,6 +645,10 @@ export default function Dashboard() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                   <span className="text-sm font-medium">目前無待辦事項</span>
+                </div>
+              ) : aqError ? (
+                <div className="p-4">
+                  <FetchErrorBanner message={aqError} onRetry={fetchActionQueue} />
                 </div>
               ) : (
                 <div className="px-5 py-4 text-xs text-gray-400 text-center">載入中…</div>
