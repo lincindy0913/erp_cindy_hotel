@@ -144,11 +144,28 @@ export default function ProgressClaimsTab({ projects }) {
                     <span className="font-bold text-gray-900">{project?.name}</span>
                     {project?.clientName && <span className="text-sm text-gray-500">業主：{project.clientName}</span>}
                   </div>
-                  <div className="flex gap-5 text-sm">
+                  <div className="flex flex-wrap gap-3 text-sm items-center">
                     <span className="text-gray-500">申報 <span className="font-semibold text-gray-800">{formatNum(totalClaim)}</span></span>
+                    <span className="text-gray-400">›</span>
                     <span className="text-gray-500">核定 <span className="font-semibold text-green-700">{formatNum(totalCertified)}</span></span>
-                    <span className="text-gray-500">開票 <span className="font-semibold text-blue-700">{formatNum(totalInvoiced)}</span></span>
-                    <span className="text-gray-500">收款 <span className="font-semibold text-teal-700">{formatNum(totalReceived)}</span></span>
+                    <span className="text-gray-400">›</span>
+                    <span className={`font-medium text-xs px-2 py-0.5 rounded-full ${totalInvoiced > 0 ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-400'}`}>
+                      開票 {totalInvoiced > 0 ? formatNum(totalInvoiced) : '未開票'}
+                    </span>
+                    <span className="text-gray-400">›</span>
+                    {(() => {
+                      const base = totalCertified || totalClaim;
+                      const pct = base > 0 ? Math.min(100, Math.round((totalReceived / base) * 100)) : 0;
+                      return (
+                        <span className={`font-medium text-xs px-2 py-0.5 rounded-full ${
+                          totalReceived >= base && base > 0 ? 'bg-teal-100 text-teal-700' :
+                          totalReceived > 0 ? 'bg-amber-100 text-amber-700' :
+                          'bg-gray-100 text-gray-400'
+                        }`}>
+                          收款 {totalReceived >= base && base > 0 ? '已收清' : totalReceived > 0 ? `${pct}%` : '未收款'}
+                        </span>
+                      );
+                    })()}
                   </div>
                 </div>
 
@@ -171,10 +188,17 @@ export default function ProgressClaimsTab({ projects }) {
                     </thead>
                     <tbody className="divide-y">
                       {pClaims.map(c => {
-                        const invoicedAmt = (c.outputInvoices || []).reduce((s, i) => s + i.totalAmount, 0);
-                        const receivedAmt = (c.incomes || []).reduce((s, i) => s + i.amount, 0);
-                        const certified = c.certifiedAmount ?? c.claimAmount;
+                        const invoices    = c.outputInvoices || [];
+                        const activeInv   = invoices.filter(i => i.status !== '已作廢');
+                        const voidInv     = invoices.filter(i => i.status === '已作廢');
+                        const invoicedAmt = activeInv.reduce((s, i) => s + i.totalAmount, 0);
+                        const incomes     = c.incomes || [];
+                        const receivedAmt = incomes.reduce((s, i) => s + i.amount, 0);
+                        const certified   = Number(c.certifiedAmount ?? c.claimAmount);
                         const certifiedDiff = c.certifiedAmount != null ? c.certifiedAmount - c.claimAmount : null;
+                        const recvPct     = certified > 0 ? Math.min(100, Math.round((receivedAmt / certified) * 100)) : 0;
+                        const recvDone    = certified > 0 && receivedAmt >= certified;
+                        const recvPartial = receivedAmt > 0 && !recvDone;
                         return (
                           <tr key={c.id} className="hover:bg-gray-50">
                             <td className="px-4 py-2 font-mono text-xs text-gray-500">{c.claimNo || <span className="text-gray-300">—</span>}</td>
@@ -198,36 +222,57 @@ export default function ProgressClaimsTab({ projects }) {
                                 {STATUS_LABELS[c.status] || c.status}
                               </span>
                             </td>
+
+                            {/* ── 計價（發票）欄：badge + 明細 ── */}
                             <td className="px-4 py-2">
-                              {(c.outputInvoices || []).length === 0
-                                ? <span className="text-gray-300 text-xs">未開票</span>
-                                : (
-                                  <div className="space-y-0.5">
-                                    {c.outputInvoices.map(i => (
-                                      <div key={i.id} className="text-xs text-blue-700">
-                                        {i.invoiceNo || `ID:${i.id}`} <span className="text-gray-500">{i.invoiceDate}</span> <span className="font-medium">{formatNum(i.totalAmount)}</span>
-                                        <span className={`ml-1 px-1 rounded ${i.status === '已作廢' ? 'bg-red-50 text-red-400' : 'bg-green-50 text-green-600'}`}>{i.status}</span>
-                                      </div>
-                                    ))}
-                                    <div className="text-xs text-gray-400 mt-0.5">合計 {formatNum(invoicedAmt)}</div>
+                              <div className="space-y-1">
+                                {/* 狀態 badge */}
+                                <span className={`inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full font-medium ${
+                                  activeInv.length > 0 ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-400'
+                                }`}>
+                                  {activeInv.length > 0 ? `✓ ${activeInv.length} 張` : '✗ 未開票'}
+                                </span>
+                                {/* 發票明細 */}
+                                {activeInv.map(i => (
+                                  <div key={i.id} className="text-xs text-blue-600 leading-snug">
+                                    <span className="font-mono">{i.invoiceNo || `#${i.id}`}</span>
+                                    <span className="text-gray-400 ml-1">{i.invoiceDate}</span>
+                                    <span className="ml-1 font-medium">{formatNum(i.totalAmount)}</span>
                                   </div>
-                                )
-                              }
+                                ))}
+                                {activeInv.length > 1 && (
+                                  <div className="text-xs text-gray-400">合計 {formatNum(invoicedAmt)}</div>
+                                )}
+                                {voidInv.length > 0 && (
+                                  <div className="text-xs text-red-400">已作廢 {voidInv.length} 張</div>
+                                )}
+                              </div>
                             </td>
+
+                            {/* ── 收款欄：badge + 百分比 + 明細 ── */}
                             <td className="px-4 py-2">
-                              {(c.incomes || []).length === 0
-                                ? <span className="text-gray-300 text-xs">未收款</span>
-                                : (
-                                  <div className="space-y-0.5">
-                                    {c.incomes.map(i => (
-                                      <div key={i.id} className="text-xs text-teal-700">
-                                        {i.termName} <span className="text-gray-500">{i.receivedDate}</span> <span className="font-medium">{formatNum(i.amount)}</span>
-                                      </div>
-                                    ))}
-                                    <div className="text-xs text-gray-400 mt-0.5">合計 {formatNum(receivedAmt)}</div>
+                              <div className="space-y-1">
+                                {/* 狀態 badge */}
+                                <span className={`inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full font-medium ${
+                                  recvDone    ? 'bg-teal-100 text-teal-700' :
+                                  recvPartial ? 'bg-amber-100 text-amber-700' :
+                                               'bg-gray-100 text-gray-400'
+                                }`}>
+                                  {recvDone    ? '✓ 已收清' :
+                                   recvPartial ? `~ ${recvPct}%` :
+                                                 '✗ 未收款'}
+                                </span>
+                                {/* 收款明細 */}
+                                {incomes.map(i => (
+                                  <div key={i.id} className="text-xs text-teal-700 leading-snug">
+                                    <span className="text-gray-400">{i.receivedDate}</span>
+                                    <span className="ml-1 font-medium">{formatNum(i.amount)}</span>
                                   </div>
-                                )
-                              }
+                                ))}
+                                {incomes.length > 1 && (
+                                  <div className="text-xs text-gray-400">合計 {formatNum(receivedAmt)}</div>
+                                )}
+                              </div>
                             </td>
                             <td className="px-4 py-2 text-center whitespace-nowrap">
                               <button onClick={() => openEdit(c)} className="text-indigo-600 hover:underline text-xs mr-2">編輯</button>
