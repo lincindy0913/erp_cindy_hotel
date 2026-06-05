@@ -441,6 +441,81 @@ export async function POST(request) {
       console.error('現金盤點檢查錯誤:', e);
     }
 
+    // ── 收入端對稱檢查（非阻擋，level='warning'）──────────────────────
+
+    // PMS 月結算未完成
+    try {
+      const unsettledPms = await prisma.pmsMonthlySettlement.findMany({
+        where: { settlementMonth: `${year}-${monthStr}`, status: { not: '已結算' } },
+        select: { warehouse: true, status: true },
+      });
+      if (unsettledPms.length > 0) {
+        preChecks.push({
+          name: 'PMS 月結算未完成',
+          count: unsettledPms.length,
+          passed: true,
+          level: 'warning',
+          detail: `以下館別 PMS 月結算未完成：${unsettledPms.map(s => `${s.warehouse}（${s.status}）`).join('、')}`,
+          link: '/pms-income',
+          linkText: '前往 PMS 收入',
+        });
+      }
+    } catch (e) {
+      console.error('PMS 月結算檢查錯誤:', e);
+    }
+
+    // 租屋已確認收款未入帳
+    try {
+      const unlinkedRental = await prisma.rentalIncome.count({
+        where: {
+          incomeYear: year,
+          incomeMonth: month,
+          status: 'confirmed',
+          cashTransactionId: null,
+        },
+      });
+      if (unlinkedRental > 0) {
+        preChecks.push({
+          name: '租屋已確認收款未入帳',
+          count: unlinkedRental,
+          passed: true,
+          level: 'warning',
+          detail: `${unlinkedRental} 筆已確認租金尚未建立現金流記錄，月結損益將有落差`,
+          link: '/rentals?tab=income',
+          linkText: '前往租屋收款',
+        });
+      }
+    } catch (e) {
+      console.error('租屋收款入帳檢查錯誤:', e);
+    }
+
+    // 工程估驗已核定未開票
+    try {
+      const certifiedClaims = await prisma.engineeringProgressClaim.findMany({
+        where: {
+          status: 'certified',
+          certifiedDate: { gte: periodStart, lte: periodEnd },
+        },
+        include: {
+          outputInvoices: { where: { status: { not: '已作廢' } }, select: { id: true } },
+        },
+      });
+      const uninvoiced = certifiedClaims.filter(c => c.outputInvoices.length === 0);
+      if (uninvoiced.length > 0) {
+        preChecks.push({
+          name: '工程估驗已核定未開票',
+          count: uninvoiced.length,
+          passed: true,
+          level: 'warning',
+          detail: `${uninvoiced.length} 筆已核定估驗尚未開立銷項發票`,
+          link: '/engineering?tab=progressClaims',
+          linkText: '前往估驗計價',
+        });
+      }
+    } catch (e) {
+      console.error('工程估驗發票檢查錯誤:', e);
+    }
+
     // ==========================================
     // 1c. Block on missing cash count (unless force: true)
     // ==========================================

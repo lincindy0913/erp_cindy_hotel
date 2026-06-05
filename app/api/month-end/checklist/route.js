@@ -232,6 +232,58 @@ export async function GET(request) {
       items.push({ key: 'warehouse_monthend', step: 7, label: '各館月結 → 全館月結', status: 'manual', href: '/month-end', linkText: '前往月結' });
     }
 
+    // ── 8. 租屋已確認收款未入現金流 ──────────────────────────────────
+    try {
+      const count = await prisma.rentalIncome.count({
+        where: {
+          incomeYear: year,
+          incomeMonth: month,
+          status: 'confirmed',
+          cashTransactionId: null,
+        },
+      });
+      items.push({
+        key: 'rental_income_unlinked', step: 8,
+        label: '租屋已確認收款未入帳',
+        desc: count > 0
+          ? `${count} 筆已確認租金尚未建立現金流記錄，月結損益將有落差`
+          : '當月確認收款均已連結現金流',
+        count,
+        done: count === 0,
+        status: count > 0 ? 'warning' : 'ok',
+        href: '/rentals?tab=income', linkText: '前往租屋收款',
+      });
+    } catch {
+      items.push({ key: 'rental_income_unlinked', step: 8, label: '租屋已確認收款未入帳', status: 'manual', href: '/rentals?tab=income', linkText: '前往租屋收款' });
+    }
+
+    // ── 9. 工程估驗已核定未開票 ───────────────────────────────────────
+    try {
+      const certifiedClaims = await prisma.engineeringProgressClaim.findMany({
+        where: {
+          status: 'certified',
+          certifiedDate: { gte: periodStart, lte: periodEnd },
+        },
+        include: {
+          outputInvoices: { where: { status: { not: '已作廢' } }, select: { id: true } },
+        },
+      });
+      const uninvoiced = certifiedClaims.filter(c => c.outputInvoices.length === 0);
+      items.push({
+        key: 'engineering_uninvoiced', step: 9,
+        label: '工程估驗已核定未開票',
+        desc: uninvoiced.length > 0
+          ? `${uninvoiced.length} 筆已核定估驗尚未開立銷項發票`
+          : '當月核定估驗均已開立發票（或當月無核定估驗）',
+        count: uninvoiced.length,
+        done: uninvoiced.length === 0,
+        status: uninvoiced.length > 0 ? 'warning' : 'ok',
+        href: '/engineering?tab=progressClaims', linkText: '前往估驗計價',
+      });
+    } catch {
+      items.push({ key: 'engineering_uninvoiced', step: 9, label: '工程估驗已核定未開票', status: 'manual', href: '/engineering?tab=progressClaims', linkText: '前往估驗計價' });
+    }
+
     const doneCount    = items.filter(i => i.done).length;
     const warningCount = items.filter(i => i.status === 'warning').length;
 
