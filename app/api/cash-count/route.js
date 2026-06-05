@@ -130,9 +130,6 @@ export async function POST(request) {
     if (!data.countDate) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '盤點日期為必填', 400);
     }
-    if (!data.countedByUserId) {
-      return createErrorResponse('REQUIRED_FIELD_MISSING', '清點人員為必填', 400);
-    }
     if (!data.details || !Array.isArray(data.details) || data.details.length === 0) {
       return createErrorResponse('CASH_COUNT_INVALID_INPUT', '面額明細不可為空', 400);
     }
@@ -243,7 +240,7 @@ export async function POST(request) {
           differenceType,
           systemBalance,
           actualBalance,
-          countedByUserId: parseInt(data.countedByUserId),
+          countedByUserId: parseInt(auth.session.user.id),
           countedAt: new Date(),
           note: data.note || null,
           details: {

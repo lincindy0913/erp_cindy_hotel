@@ -79,7 +79,6 @@ export default function CashCountTab({ accounts, warehouses }) {
         body: JSON.stringify({
           accountId: parseInt(selectedAccount),
           countDate,
-          countedByUserId: 1,
           details: denominations.filter(d => d.quantity > 0).map(d => ({
             denomination: d.denomination,
             quantity: d.quantity,
