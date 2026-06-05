@@ -568,6 +568,16 @@ export default function MonthEndPage() {
     yearOptions.push(y);
   }
 
+  // #3 跳月結：計算各月份是否可執行月結（需依序 1→12）
+  const closedMonthSet = new Set(
+    monthsData.filter(m => m.status === '已結帳' || m.status === '已鎖定').map(m => m.month)
+  );
+  const closedMonthCount = closedMonthSet.size;
+  function canCloseMonth(month) {
+    if (month <= 1) return true; // 1 月由 API 檢查上年度邊界
+    return closedMonthSet.has(month - 1);
+  }
+
   return (
     <div className="min-h-screen page-bg-monthend">
       <Navigation borderColor="border-slate-500" />
@@ -737,6 +747,36 @@ export default function MonthEndPage() {
           </div>
         </div>
 
+        {/* #2 年結準備度進度條 */}
+        {!loading && monthsData.length > 0 && (
+          <div className="mb-5 bg-white rounded-xl border border-slate-200 shadow-sm px-4 py-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-semibold text-slate-700">{selectedYear} 年結準備度</span>
+              <span className={`text-xs font-medium ${closedMonthCount === 12 ? 'text-green-700' : 'text-slate-500'}`}>
+                {closedMonthCount === 12
+                  ? '✓ 12/12 月完成，可執行年結'
+                  : `${closedMonthCount}/12 月完成，還差 ${12 - closedMonthCount} 個月`}
+              </span>
+            </div>
+            <div className="w-full bg-slate-100 rounded-full h-2 mb-2">
+              <div
+                className={`h-2 rounded-full transition-all ${closedMonthCount === 12 ? 'bg-green-500' : 'bg-slate-400'}`}
+                style={{ width: `${(closedMonthCount / 12) * 100}%` }}
+              />
+            </div>
+            {closedMonthCount === 12 && selectedYear === currentYear && (
+              <Link href="/year-end" className="inline-flex items-center text-xs text-green-700 hover:underline font-medium">
+                前往執行 {selectedYear} 年結 →
+              </Link>
+            )}
+            {closedMonthCount < 12 && (
+              <p className="text-xs text-slate-400">
+                須完成全部 12 個月月結、VAT 申報及 12 月銀行核對後，方可執行年結
+              </p>
+            )}
+          </div>
+        )}
+
         {/* Loading state */}
         {loading && (
           <div className="flex items-center justify-center py-20">
@@ -812,15 +852,26 @@ export default function MonthEndPage() {
 
                   {/* Actions */}
                   <div className="px-4 py-3 border-t border-gray-100 flex gap-2 flex-wrap">
-                    {isOpen && (
-                      <button
-                        onClick={() => handleStartClose(md.month)}
-                        disabled={preCheckLoading}
-                        className="flex-1 text-xs bg-slate-600 text-white px-3 py-1.5 rounded-lg hover:bg-slate-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {preCheckLoading ? '執行中...' : '開始月結'}
-                      </button>
-                    )}
+                    {isOpen && (() => {
+                      const ok = canCloseMonth(md.month);
+                      const prevName = md.month > 1 ? `${MONTH_NAMES[md.month - 2]}` : '上年度 12 月';
+                      return (
+                        <button
+                          onClick={() => ok && handleStartClose(md.month)}
+                          disabled={preCheckLoading || !ok}
+                          title={!ok ? `請先完成 ${prevName}月結（須依序 1→12 月）` : '執行月結'}
+                          className={`flex-1 text-xs px-3 py-1.5 rounded-lg transition-colors font-medium ${
+                            ok
+                              ? 'bg-slate-600 text-white hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed'
+                              : 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200'
+                          }`}
+                        >
+                          {preCheckLoading && preCheckMonth === md.month
+                            ? '執行中...'
+                            : ok ? '開始月結' : `須先完成 ${prevName}`}
+                        </button>
+                      );
+                    })()}
                     {isClosed && (
                       <>
                         <button
@@ -981,46 +1032,59 @@ export default function MonthEndPage() {
                   <div>
                     <h4 className="text-sm font-semibold text-slate-700 mb-3">前置檢查結果</h4>
                     <div className="space-y-2">
-                      {preCheckResults.preChecks?.map((check, i) => (
+                      {preCheckResults.preChecks?.map((check, i) => {
+                        // #4 以 level 欄位決定顯示樣式（非單純 passed/failed）
+                        const isPass    = check.passed && check.level !== 'warning';
+                        const isWarn    = check.level === 'warning' || (!check.passed && check.level !== 'critical');
+                        const isWarehouseCheck = check.name === '館別未完成個別月結';
+                        const bgCls = isPass
+                          ? 'bg-green-50 border-green-200'
+                          : isWarehouseCheck
+                            ? 'bg-orange-50 border-orange-300'
+                            : 'bg-amber-50 border-amber-200';
+                        const textCls = isPass ? 'text-green-700' : isWarehouseCheck ? 'text-orange-800' : 'text-amber-800';
+                        const countCls = isPass ? 'text-green-600' : isWarehouseCheck ? 'text-orange-700 font-bold' : 'text-amber-700';
+                        return (
                         <div
                           key={i}
-                          className={`flex items-center justify-between p-3 rounded-lg border ${
-                            check.passed
-                              ? 'bg-green-50 border-green-200'
-                              : 'bg-yellow-50 border-yellow-200'
-                          }`}
+                          className={`flex items-start justify-between p-3 rounded-lg border ${bgCls}`}
                         >
-                          <div className="flex items-center gap-2">
-                            {check.passed ? (
-                              <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <div className="flex items-start gap-2 flex-1">
+                            {isPass ? (
+                              <svg className="w-5 h-5 text-green-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                               </svg>
                             ) : (
-                              <svg className="w-5 h-5 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <svg className={`w-5 h-5 mt-0.5 shrink-0 ${isWarehouseCheck ? 'text-orange-500' : 'text-amber-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.268 16.5c-.77.833.192 2.5 1.732 2.5z" />
                               </svg>
                             )}
-                            <span className={`text-sm ${check.passed ? 'text-green-700' : 'text-yellow-700'}`}>
-                              {check.name}
-                            </span>
+                            <div>
+                              <span className={`text-sm font-medium ${textCls}`}>{check.name}</span>
+                              {isWarehouseCheck && !isPass && (
+                                <p className="text-xs text-orange-600 mt-0.5">請先至各館完成個別月結，再執行全館月結</p>
+                              )}
+                              {check.detail && !isPass && (
+                                <p className={`text-xs mt-0.5 ${isWarehouseCheck ? 'text-orange-600' : 'text-amber-600'}`}>{check.detail}</p>
+                              )}
+                            </div>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <span className={`text-sm font-medium ${
-                              check.passed ? 'text-green-600' : 'text-yellow-600'
-                            }`}>
-                              {check.passed ? '通過' : `${check.count} 筆待處理`}
+                          <div className="flex items-center gap-2 shrink-0 ml-3">
+                            <span className={`text-sm ${countCls}`}>
+                              {isPass ? '通過' : `${check.count} 筆待處理`}
                             </span>
-                            {!check.passed && check.link && (
+                            {!isPass && check.link && (
                               <Link
                                 href={check.link}
-                                className="text-xs px-2 py-0.5 bg-yellow-600 text-white rounded hover:bg-yellow-700 whitespace-nowrap"
+                                className={`text-xs px-2 py-0.5 rounded whitespace-nowrap text-white ${isWarehouseCheck ? 'bg-orange-600 hover:bg-orange-700' : 'bg-amber-600 hover:bg-amber-700'}`}
                               >
                                 {check.linkText || '前往處理'} →
                               </Link>
                             )}
                           </div>
                         </div>
-                      ))}
+                      );
+                      })}
                     </div>
                   </div>
 
