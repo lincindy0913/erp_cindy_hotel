@@ -19,13 +19,18 @@ export async function GET(request) {
     const where = projectId ? { projectId: parseInt(projectId) } : {};
     const materials = await prisma.engineeringMaterial.findMany({
       where,
-      include: { project: true, product: true, contract: true, term: true },
+      include: {
+        project: true, product: true, contract: true, term: true,
+        requisition: { select: { id: true, requisitionNo: true, requisitionDate: true } },
+      },
       orderBy: [{ projectId: 'asc' }, { usedAt: 'desc' }, { id: 'desc' }],
     });
     return NextResponse.json(materials.map(m => ({
       ...serializeMaterial(m),
       contractNo: m.contract?.contractNo ?? null,
       termName: m.term?.termName ?? null,
+      requisitionNo: m.requisition?.requisitionNo ?? null,
+      requisitionDate: m.requisition?.requisitionDate ?? null,
     })));
   } catch (e) {
     return handleApiError(e);
@@ -64,6 +69,7 @@ export async function POST(request) {
           unitPrice: parseFloat(data.unitPrice) || 0,
           usedAt: data.usedAt || null,
           note: data.note?.trim() || null,
+          requisitionId: data.requisitionId ? parseInt(data.requisitionId) : null,
         },
         include: { project: true, product: true },
       });

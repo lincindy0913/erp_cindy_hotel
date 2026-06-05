@@ -1284,7 +1284,8 @@ model InventoryRequisition {
   sourceRecordId Int?     @map("source_record_id")
   createdAt      DateTime @default(now()) @map("created_at")
 
-  product Product @relation(fields: [productId], references: [id])
+  product              Product               @relation(fields: [productId], references: [id])
+  engineeringMaterials EngineeringMaterial[]
 
   @@index([warehouse])
   @@index([requisitionDate])
@@ -2908,22 +2909,25 @@ model EngineeringMaterial {
   unit        String?  @db.VarChar(20)
   unitPrice   Decimal  @map("unit_price") @db.Decimal(12, 2)
   totalAmount Decimal? @map("total_amount") @db.Decimal(12, 2)
-  usedAt      String?  @map("used_at") @db.VarChar(20)
-  note        String?  @db.Text
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  usedAt        String?  @map("used_at") @db.VarChar(20)
+  note          String?  @db.Text
+  requisitionId Int?     @map("requisition_id") // 連結庫存領料單（Phase 1）
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
 
-  project    EngineeringProject        @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  contract   EngineeringContract?      @relation(fields: [contractId], references: [id], onDelete: SetNull)
-  term       EngineeringContractTerm?  @relation(fields: [termId], references: [id], onDelete: SetNull)
-  product    Product?                  @relation(fields: [productId], references: [id])
-  returns    EngineeringMaterialReturn[]
-  countItems EngineeringStockCountItem[]
+  project     EngineeringProject        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  contract    EngineeringContract?      @relation(fields: [contractId], references: [id], onDelete: SetNull)
+  term        EngineeringContractTerm?  @relation(fields: [termId], references: [id], onDelete: SetNull)
+  product     Product?                  @relation(fields: [productId], references: [id])
+  requisition InventoryRequisition?     @relation(fields: [requisitionId], references: [id], onDelete: SetNull)
+  returns     EngineeringMaterialReturn[]
+  countItems  EngineeringStockCountItem[]
 
   @@index([projectId])
   @@index([contractId])
   @@index([termId])
   @@index([productId])
+  @@index([requisitionId])
   @@map("engineering_materials")
 }
 

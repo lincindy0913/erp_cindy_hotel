@@ -33,6 +33,8 @@ function ProjectDetailInner() {
   const [incomes, setIncomes] = useState([]);
   const [inputInvoices, setInputInvoices] = useState([]);
   const [outputInvoices, setOutputInvoices] = useState([]);
+  const [progressClaims, setProgressClaims] = useState([]);
+  const [unassignedInvCount, setUnassignedInvCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('contracts');
@@ -47,7 +49,10 @@ function ProjectDetailInner() {
       fetch(`/api/engineering/income?projectId=${id}`).then(r => r.json()),
       fetch(`/api/engineering/input-invoices?projectId=${id}`).then(r => r.json()),
       fetch(`/api/engineering/output-invoices?projectId=${id}`).then(r => r.json()),
-    ]).then(([proj, pos, inc, inInvs, outInvs]) => {
+      fetch(`/api/engineering/progress-claims?projectId=${id}`).then(r => r.json()).catch(() => []),
+      fetch('/api/notifications/calculate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+        .then(r => r.ok ? r.json() : null).catch(() => null),
+    ]).then(([proj, pos, inc, inInvs, outInvs, claims, ntf]) => {
       if (proj?.error) { setError(proj.error?.message || '找不到工程案'); return; }
       setProject(proj);
       const termIds = new Set(
@@ -57,6 +62,9 @@ function ProjectDetailInner() {
       setIncomes(Array.isArray(inc) ? inc : []);
       setInputInvoices(Array.isArray(inInvs) ? inInvs : []);
       setOutputInvoices(Array.isArray(outInvs) ? outInvs : []);
+      setProgressClaims(Array.isArray(claims) ? claims : []);
+      const n17 = ntf?.notifications?.find(n => n.code === 'N17');
+      setUnassignedInvCount(n17?.count || 0);
     }).catch(e => setError(e.message || '載入失敗')).finally(() => setLoading(false));
   }, [id]);
 
@@ -81,6 +89,19 @@ function ProjectDetailInner() {
 
   const sumOutputInv = useMemo(() =>
     outputInvoices.reduce((s, i) => s + Number(i.totalAmount || 0), 0), [outputInvoices]);
+
+  // 未付期數
+  const unpaidTerms = useMemo(() =>
+    contracts.flatMap(c => (c.terms || []).filter(t =>
+      !['paid', 'cancelled', 'void'].includes(t.status)
+    )), [contracts]);
+  const unpaidTermsAmount = useMemo(() =>
+    unpaidTerms.reduce((s, t) => s + Number(t.amount || 0), 0), [unpaidTerms]);
+
+  // 估驗計價合計
+  const totalClaimed    = useMemo(() => progressClaims.reduce((s, c) => s + Number(c.claimAmount || 0), 0), [progressClaims]);
+  const totalCertified  = useMemo(() => progressClaims.filter(c => c.certifiedAmount != null).reduce((s, c) => s + Number(c.certifiedAmount || 0), 0), [progressClaims]);
+  const totalClaimRecvd = useMemo(() => progressClaims.reduce((s, c) => s + (c.incomes || []).reduce((ss, i) => ss + Number(i.amount || 0), 0), 0), [progressClaims]);
 
   const retentionStats = useMemo(() => {
     let totalRetained = 0;
@@ -148,8 +169,18 @@ function ProjectDetailInner() {
       });
     }
 
+    // 未分配分業進項發票
+    if (unassignedInvCount > 0) {
+      steps.push({
+        level: 'warning',
+        msg: `系統中有 ${unassignedInvCount} 張未分配分業進項發票，可能屬於本工程案`,
+        action: { label: '前往進項發票', tab: 'inputInvoices' },
+        extra: { label: '前往分配', href: '/company-expenses?tab=invoices' },
+      });
+    }
+
     return steps;
-  }, [project, contracts, paymentOrders, incomes]);
+  }, [project, contracts, paymentOrders, incomes, unassignedInvCount]);
 
   if (loading) {
     return (
@@ -258,6 +289,11 @@ function ProjectDetailInner() {
               <p className="font-bold text-teal-700">NT$ {formatNum(totalIncome)}</p>
               {incomes.length > 0 && <p className="text-xs text-teal-400 mt-0.5">{incomes.length} 筆</p>}
             </button>
+            <button type="button" onClick={() => setActiveTab('contracts')} className="text-left hover:bg-red-50 rounded-lg px-2 -mx-2 transition-colors">
+              <p className="text-xs text-red-500 mb-0.5">未付期數</p>
+              <p className={`font-bold text-sm ${unpaidTerms.length > 0 ? 'text-red-600' : 'text-gray-400'}`}>{unpaidTerms.length} 期</p>
+              {unpaidTerms.length > 0 && <p className="text-xs text-red-400 mt-0.5">NT$ {formatNum(unpaidTermsAmount)}</p>}
+            </button>
             <div className="flex gap-2">
               <button type="button" onClick={() => setActiveTab('inputInvoices')} className="flex-1 text-left hover:bg-blue-50 rounded-lg px-2 -mx-1 transition-colors">
                 <p className="text-xs text-blue-600 mb-0.5">進項發票</p>
@@ -298,6 +334,52 @@ function ProjectDetailInner() {
               )}
             </div>
           )}
+        </div>
+
+        {/* 財務一覽 */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm mb-5 overflow-hidden">
+          <div className="px-5 py-3 border-b border-gray-100 bg-gray-50">
+            <h3 className="text-sm font-semibold text-gray-700">財務一覽</h3>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-gray-100">
+            {/* 收入端 */}
+            <div className="px-5 py-4 space-y-2">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">收入端</p>
+              {[
+                { label: '業主合約額', val: Number(project.clientContractAmount || 0), color: 'text-indigo-700', bold: true },
+                { label: '估驗申報', val: totalClaimed, color: 'text-gray-700', sub: progressClaims.length > 0 ? `${progressClaims.length} 期` : null },
+                { label: '已核定', val: totalCertified, color: 'text-green-700' },
+                { label: '收款累計', val: totalIncome, color: 'text-teal-700', bold: true },
+                { label: '應收未收', val: Math.max(0, totalCertified - totalIncome), color: totalCertified > totalIncome ? 'text-orange-600' : 'text-gray-400' },
+                { label: '銷項發票', val: sumOutputInv, color: 'text-green-600' },
+              ].map(({ label, val, color, bold, sub }) => (
+                <div key={label} className="flex items-baseline justify-between">
+                  <span className="text-xs text-gray-500">{label}{sub && <span className="ml-1 text-gray-400">({sub})</span>}</span>
+                  <span className={`text-sm tabular-nums ${bold ? 'font-bold' : 'font-medium'} ${color}`}>
+                    {val > 0 ? `NT$ ${formatNum(val)}` : <span className="text-gray-300">—</span>}
+                  </span>
+                </div>
+              ))}
+            </div>
+            {/* 支出端 */}
+            <div className="px-5 py-4 space-y-2">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">支出端</p>
+              {[
+                { label: '廠商發包合計', val: totalContracted, color: 'text-amber-700', bold: true },
+                { label: '已付款', val: totalPaid, color: 'text-green-700' },
+                { label: `未付期數（${unpaidTerms.length} 期）`, val: unpaidTermsAmount, color: unpaidTerms.length > 0 ? 'text-red-600' : 'text-gray-400' },
+                { label: '保留款餘額', val: retentionStats.balance, color: retentionStats.balance > 0 ? 'text-orange-600' : 'text-gray-400' },
+                { label: '進項發票', val: sumInputInv, color: 'text-blue-600' },
+              ].map(({ label, val, color, bold }) => (
+                <div key={label} className="flex items-baseline justify-between">
+                  <span className="text-xs text-gray-500">{label}</span>
+                  <span className={`text-sm tabular-nums ${bold ? 'font-bold' : 'font-medium'} ${color}`}>
+                    {val > 0 ? `NT$ ${formatNum(val)}` : <span className="text-gray-300">—</span>}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
 
         {/* 下一步建議 */}
@@ -495,6 +577,7 @@ function ProjectDetailInner() {
                       <th className="px-4 py-3 text-right font-medium">單價</th>
                       <th className="px-4 py-3 text-right font-medium">小計</th>
                       <th className="px-4 py-3 text-left font-medium">使用日</th>
+                      <th className="px-4 py-3 text-left font-medium">領料單</th>
                       <th className="px-4 py-3 text-left font-medium">備註</th>
                     </tr>
                   </thead>
@@ -511,6 +594,11 @@ function ProjectDetailInner() {
                           <td className="px-4 py-2.5 text-right">{formatNum(m.unitPrice)}</td>
                           <td className="px-4 py-2.5 text-right font-medium">NT$ {formatNum(sub)}</td>
                           <td className="px-4 py-2.5 text-gray-500">{m.usedAt || '－'}</td>
+                          <td className="px-4 py-2.5">
+                            {m.requisitionNo
+                              ? <span className="text-xs bg-blue-50 border border-blue-200 text-blue-700 px-1.5 py-0.5 rounded font-mono">{m.requisitionNo}</span>
+                              : <span className="text-xs text-gray-300">未連結</span>}
+                          </td>
                           <td className="px-4 py-2.5 text-xs text-gray-400">{m.note || '－'}</td>
                         </tr>
                       );
@@ -522,7 +610,7 @@ function ProjectDetailInner() {
                       <td className="px-4 py-2.5 text-right font-bold text-gray-800">
                         NT$ {formatNum(materials.reduce((s, m) => s + Number(m.quantity) * Number(m.unitPrice), 0))}
                       </td>
-                      <td colSpan={2} />
+                      <td colSpan={3} />
                     </tr>
                   </tfoot>
                 </table>
