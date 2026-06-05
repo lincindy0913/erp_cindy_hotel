@@ -29,6 +29,7 @@ const NOTIFICATION_DEFS = {
   N15: { type: '逾期租金未收', level: 'urgent', title: '逾期租金未收', targetUrl: '/rentals?tab=analytics&sub=overdue' },
   N16: { type: '工程逾期期數', level: 'urgent', title: '工程合約期數逾期', targetUrl: '/engineering?tab=contracts' },
   N17: { type: '分業發票未分配', level: 'warning', title: '工程進項發票未分配專案', targetUrl: '/company-expenses?tab=invoices' },
+  N18: { type: '民宿出納同步失敗', level: 'urgent', title: '民宿出納同步失敗', targetUrl: '/bnb' },
 };
 
 export async function POST(request) {
@@ -668,6 +669,28 @@ export async function POST(request) {
       }
     } catch (err) {
       console.error('N17 calculation error:', err.message);
+    }
+
+    // ==============================
+    // N18: 民宿出納同步失敗 - Unresolved BnB cashier sync failures
+    // ==============================
+    try {
+      const syncFailures = await prisma.bnbSyncFailure.count({ where: { resolved: false } });
+      if (syncFailures > 0) {
+        const def = NOTIFICATION_DEFS.N18;
+        notifications.push({
+          code: 'N18',
+          type: def.type,
+          level: def.level,
+          title: def.title,
+          message: `${syncFailures} 筆民宿訂房出納同步失敗，帳務可能不一致，請至民宿帳逐筆重試`,
+          count: syncFailures,
+          targetUrl: def.targetUrl,
+          metadata: null,
+        });
+      }
+    } catch (err) {
+      console.error('N18 calculation error:', err.message);
     }
 
     // Sort by level priority: critical > urgent > warning
