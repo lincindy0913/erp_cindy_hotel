@@ -69,6 +69,11 @@ export default function MonthEndPage() {
   const [lockLoading, setLockLoading] = useState(false);
   const [monthDataError, setMonthDataError] = useState(null);
 
+  // Dynamic checklist state
+  const [checklistData, setChecklistData] = useState(null);
+  const [checklistLoading, setChecklistLoading] = useState(false);
+  const [checklistMonth, setChecklistMonth] = useState(new Date().getMonth() + 1);
+
   useEffect(() => {
     fetchMonthData();
   }, [selectedYear]);
@@ -86,6 +91,18 @@ export default function MonthEndPage() {
       setMonthDataError('月結資料載入失敗，請重試。');
     }
     setLoading(false);
+  }
+
+  async function fetchChecklist(month = checklistMonth) {
+    setChecklistLoading(true);
+    try {
+      const res = await fetch(`/api/month-end/checklist?year=${selectedYear}&month=${month}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setChecklistData(await res.json());
+    } catch (error) {
+      console.error('載入清單失敗:', error);
+    }
+    setChecklistLoading(false);
   }
 
   // Reconciliation continuity check state
@@ -572,34 +589,117 @@ export default function MonthEndPage() {
           ]}
         />
 
-        {/* 月結前確認清單 */}
-        <details className="mb-5 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <summary className="flex items-center justify-between px-4 py-3 cursor-pointer select-none text-sm font-medium text-slate-700 hover:bg-slate-50 border-b border-slate-100 list-none">
-            <span>📋 月結前確認清單（點擊展開）</span>
-            <span className="text-slate-400 text-xs">執行月結前請逐項確認</span>
-          </summary>
-          <div className="px-4 py-3 space-y-2">
-            {[
-              { label: '所有進貨單已入庫確認', desc: '未入庫的進貨單不計入月結庫存', href: '/purchasing', linkText: '前往進貨' },
-              { label: '所有發票已登錄完成', desc: '未登錄的進項發票無法計入成本', href: '/sales', linkText: '前往發票登錄' },
-              { label: '付款單已送出並由出納執行', desc: '停留在草稿或待出納的付款單會被標記', href: '/cashier', linkText: '前往出納' },
-              { label: '現金帳戶餘額已確認', desc: '若帳戶餘額與實際不符，月結後損益會有誤差', href: '/cashflow', linkText: '前往現金流' },
-              { label: '現金盤點已完成', desc: '月底盤點未完成會阻擋月結（可強制跳過）', href: '/cashflow?tab=cash-count', linkText: '前往盤點' },
-            ].map((item, i) => (
-              <div key={i} className="flex items-start gap-3 p-2.5 rounded-lg bg-slate-50 border border-slate-100">
-                <input type="checkbox" className="mt-0.5 rounded text-slate-600 cursor-pointer" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-slate-700">{item.label}</p>
-                  <p className="text-xs text-slate-400 mt-0.5">{item.desc}</p>
-                </div>
-                <a href={item.href} className="shrink-0 text-xs px-2 py-1 bg-white border border-slate-300 text-slate-600 rounded hover:bg-slate-100 whitespace-nowrap">
-                  {item.linkText} →
-                </a>
-              </div>
-            ))}
-            <p className="text-xs text-slate-400 pt-1">勾選狀態不會儲存，僅供當次操作確認用。</p>
+        {/* 月結前確認清單（動態版） */}
+        <div className="mb-5 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-slate-700">月結前確認清單</span>
+              {checklistData && (
+                checklistData.warningCount > 0
+                  ? <span className="text-xs px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 font-medium">{checklistData.warningCount} 項待處理</span>
+                  : <span className="text-xs px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">全部完成</span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {/* Month selector */}
+              <select
+                value={checklistMonth}
+                onChange={e => setChecklistMonth(Number(e.target.value))}
+                className="text-xs border border-slate-300 rounded px-2 py-1 text-slate-600"
+              >
+                {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
+                  <option key={m} value={m}>{selectedYear}/{String(m).padStart(2, '0')}</option>
+                ))}
+              </select>
+              <button
+                onClick={() => fetchChecklist(checklistMonth)}
+                disabled={checklistLoading}
+                className="text-xs px-2.5 py-1 bg-slate-600 text-white rounded hover:bg-slate-700 disabled:opacity-50 whitespace-nowrap"
+              >
+                {checklistLoading ? '載入中…' : checklistData ? '重新整理' : '載入清單'}
+              </button>
+            </div>
           </div>
-        </details>
+
+          {/* Body */}
+          {checklistLoading ? (
+            <div className="px-4 py-3 space-y-2">
+              {[...Array(7)].map((_, i) => (
+                <div key={i} className="h-10 bg-slate-100 rounded-lg animate-pulse" />
+              ))}
+            </div>
+          ) : checklistData ? (
+            <div className="px-4 py-3 space-y-2">
+              {checklistData.items.map((item) => {
+                const isOk     = item.status === 'ok';
+                const isWarn   = item.status === 'warning';
+                const isManual = item.status === 'manual';
+                return (
+                  <div
+                    key={item.key}
+                    className={`flex items-start gap-3 p-2.5 rounded-lg border ${
+                      isOk     ? 'bg-green-50 border-green-100'
+                      : isWarn ? 'bg-orange-50 border-orange-200'
+                      : 'bg-slate-50 border-slate-100'
+                    }`}
+                  >
+                    {/* Step badge */}
+                    <div className={`mt-0.5 w-5 h-5 rounded-full flex items-center justify-center shrink-0 text-xs font-bold ${
+                      isOk   ? 'bg-green-500 text-white'
+                      : isWarn ? 'bg-orange-400 text-white'
+                      : 'bg-slate-300 text-white'
+                    }`}>
+                      {isOk ? '✓' : item.step}
+                    </div>
+
+                    {/* Text */}
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-sm font-medium ${
+                        isOk ? 'text-green-800' : isWarn ? 'text-orange-800' : 'text-slate-700'
+                      }`}>
+                        {item.label}
+                        {item.count > 0 && (
+                          <span className="ml-1.5 text-xs font-bold text-orange-600">（{item.count} 筆）</span>
+                        )}
+                        {isManual && (
+                          <span className="ml-1.5 text-xs text-slate-400">（請人工確認）</span>
+                        )}
+                      </p>
+                      {item.desc && <p className="text-xs text-slate-400 mt-0.5">{item.desc}</p>}
+                      {item.detail && <p className="text-xs text-orange-600 mt-0.5">{item.detail}</p>}
+                    </div>
+
+                    {/* Action link */}
+                    <Link
+                      href={item.href}
+                      className={`shrink-0 text-xs px-2 py-1 rounded whitespace-nowrap font-medium transition-colors ${
+                        isWarn
+                          ? 'bg-orange-500 text-white hover:bg-orange-600'
+                          : 'bg-white border border-slate-300 text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      {item.linkText} →
+                    </Link>
+                  </div>
+                );
+              })}
+              <p className="text-xs text-slate-400 pt-1">
+                {selectedYear}年{checklistMonth}月 即時狀態，資料截至查詢時間。
+              </p>
+            </div>
+          ) : (
+            <div className="px-4 py-6 text-center">
+              <p className="text-sm text-slate-400 mb-3">點擊「載入清單」查詢本月月結前各項狀態</p>
+              <button
+                onClick={() => fetchChecklist(checklistMonth)}
+                className="text-sm px-4 py-1.5 bg-slate-600 text-white rounded-lg hover:bg-slate-700"
+              >
+                載入清單
+              </button>
+            </div>
+          )}
+        </div>
 
         {/* Page header */}
         <div className="flex items-start justify-between mb-6">
