@@ -14,6 +14,7 @@ export default function OtherIncomeTab({
   // 其他收入
   oiRows,
   oiLoading,
+  oiError,
   fetchOtherIncome,
   oiMonth,
   setOiMonth,
@@ -213,6 +214,7 @@ export default function OtherIncomeTab({
           </div>
 
           {/* 資料表格 */}
+          {oiError && <FetchErrorBanner message={oiError} onRetry={fetchOtherIncome} />}
           {oiLoading && <div className="text-center py-20 text-gray-400">載入中…</div>}
           {!oiLoading && oiRows.length === 0 && (
             <div className="text-center py-20 text-gray-400">請選擇月份後按「查詢」，或按「+ 新增其他收入」</div>
