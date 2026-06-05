@@ -333,9 +333,7 @@ function EngineeringPageInner() {
         {activeTab === 'projects' && !loading && projectsError && (
           <FetchErrorBanner message={projectsError} onRetry={fetchProjects} />
         )}
-        {activeTab === 'contracts' && contractsError && (
-          <FetchErrorBanner message={contractsError} onRetry={() => fetchContracts(filterProjectId || undefined)} />
-        )}
+        {/* contractsError 現在傳入 ContractsTab 內部顯示 */}
         {activeTab === 'payments' && paymentOrdersError && (
           <FetchErrorBanner message={paymentOrdersError} onRetry={fetchPaymentOrders} />
         )}
@@ -360,6 +358,8 @@ function EngineeringPageInner() {
             onUnmarkTermPaid={openUnmarkTermPaid}
             onRefresh={() => fetchContracts(filterProjectId || undefined)}
             session={session}
+            contractsError={contractsError}
+            onRetryContracts={() => fetchContracts(filterProjectId || undefined)}
           />
         )}
 

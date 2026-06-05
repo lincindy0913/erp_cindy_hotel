@@ -14,6 +14,7 @@ export default function ContractsTab({
   filterProjectId, onFilterChange,
   onMarkTermPaid, onUnmarkTermPaid,
   onRefresh, session,
+  contractsError, onRetryContracts,
 }) {
   const [showContractModal, setShowContractModal] = useState(false);
   const [editingContract, setEditingContract] = useState(null);
@@ -296,6 +297,9 @@ export default function ContractsTab({
 
   return (
     <>
+      {contractsError && (
+        <FetchErrorBanner message={contractsError} onRetry={onRetryContracts} className="mb-4" />
+      )}
       <div className="flex gap-3 mb-4 items-center">
         <label htmlFor="con-f-1" className="text-sm text-gray-600">篩選工程案</label>
         <select id="con-f-1" value={filterProjectId} onChange={e => onFilterChange?.(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm">

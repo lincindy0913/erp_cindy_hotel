@@ -7,17 +7,12 @@ import Navigation from '@/components/Navigation';
 import FetchErrorBanner from '@/components/FetchErrorBanner';
 import ModuleGuideCard from '@/components/ModuleGuideCard';
 import HelpButton from '@/components/HelpButton';
-import { formatNum0 as formatNumber } from '@/lib/format-utils';
+import { formatNum0 as formatNumber, formatCurrency } from '@/lib/format-utils';
 
 const MONTH_NAMES = [
   '一月', '二月', '三月', '四月', '五月', '六月',
   '七月', '八月', '九月', '十月', '十一月', '十二月'
 ];
-
-function formatCurrency(num) {
-  if (num == null || isNaN(num)) return '$0';
-  return '$' + Number(num).toLocaleString('zh-TW');
-}
 
 export default function YearEndPage() {
   const { data: session } = useSession();

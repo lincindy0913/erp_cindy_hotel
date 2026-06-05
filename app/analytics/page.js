@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import ModuleGuideCard from '@/components/ModuleGuideCard';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 import { useToast } from '@/context/ToastContext';
 
 // ── Hooks ──────────────────────────────────────────────────────
@@ -255,7 +256,7 @@ function AnalyticsPageContent() {
         {activeTab === 'overview' && (
           overviewLoading ? <Loading text="載入經營總覽..." /> :
           overview ? <OverviewTab data={overview} onTabSwitch={selectTab} /> :
-          <div className="text-center py-12 text-gray-400">無法載入資料</div>
+          <FetchErrorBanner message="經營總覽資料載入失敗，請重試。" onRetry={fetchOverview} />
         )}
 
         {/* ══ 館別損益 ═══════════════════════════════════════════ */}

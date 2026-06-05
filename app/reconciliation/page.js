@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Navigation from '@/components/Navigation';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 import { sortRows, SortableTh } from '@/components/SortableTh';
 import { useDashboardTab } from '@/components/reconciliation/useDashboardTab';
 import { useAccountTab } from '@/components/reconciliation/useAccountTab';
@@ -983,10 +984,11 @@ function ReconciliationPageInner() {
         </div>
 
         {/* Message */}
-        {message.text && (
-          <div className={`mb-4 px-4 py-3 rounded-lg text-sm font-medium ${
-            message.type === 'error' ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-green-50 text-green-700 border border-green-200'
-          }`}>
+        {message.text && message.type === 'error' && (
+          <FetchErrorBanner message={message.text} className="mb-4" />
+        )}
+        {message.text && message.type !== 'error' && (
+          <div className="mb-4 px-4 py-3 rounded-lg text-sm font-medium bg-green-50 text-green-700 border border-green-200">
             {message.text}
           </div>
         )}
