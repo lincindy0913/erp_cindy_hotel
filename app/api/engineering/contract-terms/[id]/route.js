@@ -51,6 +51,24 @@ export async function PUT(request, { params }) {
       return createErrorResponse('VALIDATION_FAILED', '已付款的期數不可修改，如需修改請先取消付款狀態', 400);
     }
 
+    // 手動標記 paid 必須有出納執行記錄，或填寫帳外付款說明
+    if (data.status === 'paid' && existing.status !== 'paid') {
+      const execCount = await prisma.cashierExecution.count({
+        where: { paymentOrder: { sourceType: 'engineering', sourceRecordId: id } },
+      });
+      if (execCount === 0) {
+        if (!data.manualNote?.trim()) {
+          return createErrorResponse(
+            'MANUAL_PAYMENT_BLOCKED',
+            '此期數尚無出納執行記錄。應透過「付款單→出納執行」流程完成付款，系統將自動核銷期數。如確為帳外付款，請填寫帳外付款說明。',
+            400
+          );
+        }
+        // 帳外付款：將說明寫入 note 供稽核
+        data.note = `[帳外付款] ${data.manualNote.trim()}${data.note ? ` | ${data.note}` : ''}`;
+      }
+    }
+
     // 結構性欄位異動才快照（不含付款狀態更新）
     const TERM_STRUCTURAL = ['amount', 'retentionAmount', 'termName', 'termType', 'content', 'dueDate', 'note'];
     if (TERM_STRUCTURAL.some(f => data[f] !== undefined)) {

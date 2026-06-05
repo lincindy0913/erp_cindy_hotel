@@ -380,11 +380,12 @@ export async function POST(request) {
         if (order.sourceType === 'engineering' && order.sourceRecordId) {
           const linkedTerm = termBySourceId.get(order.sourceRecordId) ?? null;
           if (linkedTerm && linkedTerm.status !== 'paid') {
-            const allPOs = await tx.paymentOrder.findMany({
-              where: { sourceType: 'engineering', sourceRecordId: linkedTerm.id, status: '已執行' },
-              select: { amount: true },
+            // Use actualAmount from executions (consistent with frontend KPI, avoids double-count)
+            const allExecutions = await tx.cashierExecution.findMany({
+              where: { paymentOrder: { sourceType: 'engineering', sourceRecordId: linkedTerm.id } },
+              select: { actualAmount: true },
             });
-            const totalPaid = allPOs.reduce((s, po) => s + Number(po.amount), 0) + Number(order.amount);
+            const totalPaid = allExecutions.reduce((s, e) => s + Math.round(Number(e.actualAmount) * 100), 0) / 100;
             const termAmount = Number(linkedTerm.amount);
 
             if (totalPaid >= termAmount) {

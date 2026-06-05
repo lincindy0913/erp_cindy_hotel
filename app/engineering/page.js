@@ -247,7 +247,8 @@ function EngineeringPageInner() {
     setTermForm({
       termName: term.termName || '', amount: String(term.amount), dueDate: term.dueDate || '',
       content: term.content || '', status: 'paid', paidAt: todayStr(),
-      paymentOrderId: term.paymentOrderId ? String(term.paymentOrderId) : '', note: term.note || '',
+      paymentOrderId: term.paymentOrderId ? String(term.paymentOrderId) : '',
+      note: term.note || '', manualNote: '',
     });
     setShowTermModal(true);
   }
@@ -272,6 +273,7 @@ function EngineeringPageInner() {
           paymentOrderId: termForm.paymentOrderId ? parseInt(termForm.paymentOrderId) : null,
           termName: termForm.termName || null, amount: termForm.amount ? parseFloat(termForm.amount) : undefined,
           dueDate: termForm.dueDate || null, content: termForm.content || null, note: termForm.note || null,
+          manualNote: termForm.manualNote || null,
         }),
       });
       if (!res.ok) { const d = await res.json(); showToast(d.error?.message || '更新失敗', 'error'); setTermSaving(false); return; }
@@ -436,6 +438,18 @@ function EngineeringPageInner() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowTermModal(false)}>
           <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 p-6" onClick={e => e.stopPropagation()}>
             <h3 className="text-lg font-bold mb-4">{termForm.status === 'paid' ? '標記期數已付款' : '取消付款標記'}</h3>
+
+            {/* 手動標記警示 */}
+            {termForm.status === 'paid' && (
+              <div className="mb-4 p-3 bg-amber-50 border border-amber-300 rounded-lg">
+                <p className="text-xs font-semibold text-amber-800 mb-1">⚠ 注意：建議使用出納流程</p>
+                <p className="text-xs text-amber-700">
+                  正常流程：建立付款單 → 出納執行 → 期數自動核銷（可建立現金流紀錄）。
+                  手動標記不會建立現金流，帳務可能與實際不符，稽核時需填寫帳外付款說明。
+                </p>
+              </div>
+            )}
+
             <div className="space-y-3">
               <div><label htmlFor="f-59" className="block text-xs text-gray-500 mb-1">期別</label><input id="f-59" value={termForm.termName} onChange={e => setTermForm(f => ({ ...f, termName: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" disabled={termForm.status === 'pending'} /></div>
               <div><label htmlFor="f-60" className="block text-xs text-gray-500 mb-1">金額</label><input id="f-60" type="number" value={termForm.amount} onChange={e => setTermForm(f => ({ ...f, amount: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" step="0.01" disabled={termForm.status === 'pending'} /></div>
@@ -443,7 +457,20 @@ function EngineeringPageInner() {
               <div><label htmlFor="f-62" className="block text-xs text-gray-500 mb-1">內容</label><input id="f-62" value={termForm.content || ''} onChange={e => setTermForm(f => ({ ...f, content: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="付款內容" /></div>
               {termForm.status === 'paid' && (<>
                 <div><label htmlFor="f-63" className="block text-xs text-gray-500 mb-1">付款日期</label><input id="f-63" type="date" value={termForm.paidAt} onChange={e => setTermForm(f => ({ ...f, paidAt: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
-                <div><label htmlFor="id" className="block text-xs text-gray-500 mb-1">付款單 ID（選填）</label><input id="id" type="number" value={termForm.paymentOrderId} onChange={e => setTermForm(f => ({ ...f, paymentOrderId: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
+                <div>
+                  <label htmlFor="f-manual-note" className="block text-xs text-gray-500 mb-1">
+                    帳外付款說明
+                    <span className="ml-1 text-amber-600 font-medium">（無出納紀錄時必填）</span>
+                  </label>
+                  <input
+                    id="f-manual-note"
+                    value={termForm.manualNote || ''}
+                    onChange={e => setTermForm(f => ({ ...f, manualNote: e.target.value }))}
+                    className="w-full border border-amber-300 rounded-lg px-3 py-2 text-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                    placeholder="例：現金直付廠商、銀行匯款已完成但未建付款單…"
+                  />
+                </div>
+                <div><label htmlFor="id" className="block text-xs text-gray-500 mb-1">關聯付款單 ID（選填）</label><input id="id" type="number" value={termForm.paymentOrderId} onChange={e => setTermForm(f => ({ ...f, paymentOrderId: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
               </>)}
               {termForm.status === 'pending' && <p className="text-sm text-gray-600 bg-yellow-50 p-3 rounded-lg">取消此期的付款標記後，合約狀態也會同步更新為「進行中」</p>}
               <div><label htmlFor="f-64" className="block text-xs text-gray-500 mb-1">備註</label><input id="f-64" value={termForm.note} onChange={e => setTermForm(f => ({ ...f, note: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>

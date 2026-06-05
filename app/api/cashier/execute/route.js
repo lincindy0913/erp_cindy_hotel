@@ -208,13 +208,17 @@ export async function POST(request) {
           include: { contract: { include: { terms: true } } },
         });
         if (linkedTerm && linkedTerm.status !== 'paid') {
-          // Sum all executed payment orders for this term (including this one)
-          const allPOs = await tx.paymentOrder.findMany({
-            where: { sourceType: 'engineering', sourceRecordId: linkedTerm.id, status: '已執行' },
-            select: { amount: true },
+          // Sum actualAmount from all CashierExecutions for this term's payment orders.
+          // The current execution (just created in step 3) is already included.
+          // Using actualAmount (not po.amount) keeps this consistent with the frontend KPI.
+          const allExecutions = await tx.cashierExecution.findMany({
+            where: {
+              paymentOrder: { sourceType: 'engineering', sourceRecordId: linkedTerm.id },
+            },
+            select: { actualAmount: true },
           });
           // Use cents-based arithmetic to avoid floating-point accumulation errors
-          const totalPaidCents = allPOs.reduce((s, po) => s + Math.round(Number(po.amount) * 100), 0) + Math.round(Number(order.amount) * 100);
+          const totalPaidCents = allExecutions.reduce((s, e) => s + Math.round(Number(e.actualAmount) * 100), 0);
           const termAmountCents = Math.round(Number(linkedTerm.amount) * 100);
           const totalPaid = totalPaidCents / 100;
           const termAmount = termAmountCents / 100;
