@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import ModuleGuideCard from '@/components/ModuleGuideCard';
+import HelpButton from '@/components/HelpButton';
 import FetchErrorBanner from '@/components/FetchErrorBanner';
 import { useToast } from '@/context/ToastContext';
 
@@ -223,9 +224,12 @@ function AnalyticsPageContent() {
       <Navigation borderColor="border-cyan-500" />
 
       <main className="max-w-[96rem] mx-auto px-4 py-8">
-        <div className="mb-6">
-          <h2 className="text-2xl font-bold text-gray-900">決策分析</h2>
-          <p className="text-sm text-gray-500 mt-1">整合現金流、損益、採購與帳齡的即時分析儀表板</p>
+        <div className="mb-6 flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">決策分析</h2>
+            <p className="text-sm text-gray-500 mt-1">整合現金流、損益、採購與帳齡的即時分析儀表板</p>
+          </div>
+          <HelpButton anchor="二十分析報表" className="mt-1" />
         </div>
 
         <ModuleGuideCard

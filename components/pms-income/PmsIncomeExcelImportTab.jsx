@@ -18,6 +18,227 @@ function detectWarehouse(filename, warehouses) {
   return warehouses[0] || '';
 }
 
+const SOURCE_BADGE = {
+  'OTA-Agoda':   'bg-red-100 text-red-700',
+  'OTA-Booking': 'bg-blue-100 text-blue-700',
+  'OTA-Expedia': 'bg-yellow-100 text-yellow-800',
+  'OTA-易遊網':  'bg-green-100 text-green-700',
+  'OTA-MOMO':    'bg-pink-100 text-pink-700',
+  'T/S':         'bg-purple-100 text-purple-700',
+  '月租':        'bg-teal-100 text-teal-700',
+  '現場':        'bg-gray-100 text-gray-600',
+  '電話':        'bg-gray-100 text-gray-500',
+};
+
+/**
+ * 科目對應預覽：在確認匯入前顯示各 PMS 欄位對應到的科目代碼與金額
+ * 若有欄位未對應（accountingCode 為空）且有金額，標示警告
+ */
+function AccountingPreview({ records }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const nonZero = records.filter(r => {
+    const v = parseFloat(r.amount);
+    return !isNaN(v) && v !== 0;
+  });
+  const unmapped = nonZero.filter(r => !r.accountingCode);
+
+  if (nonZero.length === 0) return null;
+
+  const preview = expanded ? nonZero : nonZero.slice(0, 6);
+
+  return (
+    <div className="border border-gray-100 rounded-xl bg-gray-50/50 p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold text-gray-700">科目對應摘要（{nonZero.length} 筆有金額）</span>
+        <button onClick={() => setExpanded(v => !v)} className="text-xs text-gray-500 hover:underline">
+          {expanded ? '收合' : '顯示全部'}
+        </button>
+      </div>
+
+      {unmapped.length > 0 && (
+        <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+          ⚠ 以下 {unmapped.length} 個 Excel 欄位<strong>無科目代碼對應</strong>，金額將照樣匯入但無法歸帳：
+          {unmapped.map(r => (
+            <span key={r.pmsColumnName} className="ml-1 font-mono bg-amber-100 px-1 rounded">{r.pmsColumnName}</span>
+          ))}
+        </div>
+      )}
+
+      <div className="overflow-x-auto rounded-lg border border-gray-100">
+        <table className="w-full text-xs">
+          <thead className="bg-gray-100/60 text-gray-500">
+            <tr>
+              <th className="px-2 py-1.5 text-left">科別</th>
+              <th className="px-2 py-1.5 text-left">PMS 欄位</th>
+              <th className="px-2 py-1.5 text-left">科目代碼</th>
+              <th className="px-2 py-1.5 text-right">金額</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50">
+            {preview.map((r, i) => (
+              <tr key={i} className={`${!r.accountingCode ? 'bg-amber-50' : 'bg-white'} hover:bg-gray-50/60`}>
+                <td className="px-2 py-1">
+                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${r.entryType === '貸方' ? 'bg-teal-100 text-teal-700' : 'bg-amber-100 text-amber-700'}`}>
+                    {r.entryType}
+                  </span>
+                </td>
+                <td className="px-2 py-1 text-gray-700">{r.pmsColumnName}</td>
+                <td className="px-2 py-1">
+                  {r.accountingCode
+                    ? <span className="font-mono text-gray-600">{r.accountingCode}</span>
+                    : <span className="text-amber-600 font-medium">⚠ 未對應</span>}
+                </td>
+                <td className="px-2 py-1 text-right tabular-nums font-medium text-gray-800">
+                  {Number(r.amount).toLocaleString('zh-TW')}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {!expanded && nonZero.length > 6 && (
+        <p className="text-xs text-center text-gray-400">顯示前 6 筆，共 {nonZero.length} 筆</p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 資料異常偵測：在確認匯入前標出可疑記錄
+ * - checkIn > checkOut（日期顛倒）
+ * - totalRevenue = 0 但付款欄位 > 0（收款科目有填，收入欄空白）
+ */
+function ReservationAnomalies({ rows }) {
+  if (!rows || rows.length === 0) return null;
+
+  const inverted = rows.filter(r => r.checkIn && r.checkOut && r.checkIn > r.checkOut);
+  const zeroRev  = rows.filter(r => {
+    if (r.roomType === '訂金') return false; // 訂金列收入為 0 是正常
+    const paid = (r.cash || 0) + (r.creditCard || 0) + (r.wireTransfer || 0);
+    return (r.totalRevenue || 0) === 0 && paid > 0;
+  });
+
+  if (inverted.length === 0 && zeroRev.length === 0) return null;
+
+  return (
+    <div className="border border-red-200 rounded-xl bg-red-50/50 p-3 space-y-2">
+      <span className="text-xs font-semibold text-red-800">⚠ 偵測到 {inverted.length + zeroRev.length} 筆資料異常（可繼續匯入，建議事先確認）</span>
+
+      {inverted.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-xs text-red-700 font-medium">日期顛倒（遷入 &gt; 遷出）— {inverted.length} 筆</p>
+          {inverted.slice(0, 4).map((r, i) => (
+            <div key={i} className="text-xs text-red-600 bg-white rounded px-2 py-0.5">
+              {r.guestName || '—'} · {r.checkIn} → {r.checkOut}
+            </div>
+          ))}
+          {inverted.length > 4 && <p className="text-xs text-red-400">…還有 {inverted.length - 4} 筆</p>}
+        </div>
+      )}
+
+      {zeroRev.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-xs text-red-700 font-medium">收入為 0 但付款有值 — {zeroRev.length} 筆</p>
+          {zeroRev.slice(0, 4).map((r, i) => (
+            <div key={i} className="text-xs text-red-600 bg-white rounded px-2 py-0.5">
+              {r.guestName || '—'} · 現金 {r.cash || 0} 刷卡 {r.creditCard || 0} 轉帳 {r.wireTransfer || 0}
+            </div>
+          ))}
+          {zeroRev.length > 4 && <p className="text-xs text-red-400">…還有 {zeroRev.length - 4} 筆</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 訂房明細預覽：在確認匯入前顯示來源分布 + 前 8 筆預覽
+ * 讓使用者確認 OTA 來源是否正確識別、有無發票號碼
+ */
+function ReservationPreview({ rows }) {
+  const [expanded, setExpanded] = useState(false);
+
+  // 來源分布
+  const bySource = {};
+  for (const r of rows) {
+    const src = r.source || '電話';
+    bySource[src] = (bySource[src] || 0) + 1;
+  }
+  const allPhone = Object.keys(bySource).every(k => k === '電話');
+  const hasInvoice = rows.some(r => r.invoiceNo);
+  const preview = expanded ? rows : rows.slice(0, 8);
+
+  return (
+    <div className="border border-blue-100 rounded-xl bg-blue-50/50 p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold text-blue-800">訂房明細預覽（{rows.length} 筆）</span>
+        <button onClick={() => setExpanded(v => !v)} className="text-xs text-blue-600 hover:underline">
+          {expanded ? '收合' : '顯示全部'}
+        </button>
+      </div>
+
+      {/* 來源分布 */}
+      <div className="flex flex-wrap gap-1.5">
+        {Object.entries(bySource).sort((a,b) => b[1]-a[1]).map(([src, cnt]) => (
+          <span key={src} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${SOURCE_BADGE[src] || 'bg-gray-100 text-gray-600'}`}>
+            {src} <strong>{cnt}</strong>
+          </span>
+        ))}
+      </div>
+
+      {/* 警告：全部來源是「電話」可能代表 OTA 欄位未識別 */}
+      {allPhone && rows.length > 3 && (
+        <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+          ⚠ 所有訂房來源皆為「電話」，若應有 OTA 訂單請確認 Excel 欄位名稱是否包含「來源名稱」欄位。
+        </div>
+      )}
+
+      {/* 明細表格 */}
+      <div className="overflow-x-auto rounded-lg border border-blue-100">
+        <table className="w-full text-xs">
+          <thead className="bg-blue-100/60 text-blue-900">
+            <tr>
+              <th className="px-2 py-1.5 text-left">住客</th>
+              <th className="px-2 py-1.5 text-center">來源</th>
+              <th className="px-2 py-1.5 text-right">房費</th>
+              <th className="px-2 py-1.5 text-right">刷卡</th>
+              <th className="px-2 py-1.5 text-right">現金</th>
+              <th className="px-2 py-1.5 text-center">發票號</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-blue-50">
+            {preview.map((r, i) => (
+              <tr key={i} className="bg-white hover:bg-blue-50/30">
+                <td className="px-2 py-1 max-w-[100px] truncate" title={r.guestName}>{r.guestName || '—'}</td>
+                <td className="px-2 py-1 text-center">
+                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${SOURCE_BADGE[r.source] || 'bg-gray-100 text-gray-500'}`}>
+                    {(r.source || '電話').replace('OTA-', '')}
+                  </span>
+                </td>
+                <td className="px-2 py-1 text-right tabular-nums">{r.totalRevenue ? Number(r.totalRevenue).toLocaleString('zh-TW') : '—'}</td>
+                <td className="px-2 py-1 text-right tabular-nums text-purple-700">{r.creditCard > 0 ? Number(r.creditCard).toLocaleString('zh-TW') : '—'}</td>
+                <td className="px-2 py-1 text-right tabular-nums text-green-700">{r.cash > 0 ? Number(r.cash).toLocaleString('zh-TW') : '—'}</td>
+                <td className="px-2 py-1 text-center font-mono text-[10px]">
+                  {r.invoiceNo
+                    ? <span className="text-indigo-600">{r.invoiceNo}</span>
+                    : <span className="text-gray-300">—</span>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {!expanded && rows.length > 8 && (
+        <p className="text-xs text-center text-blue-400">顯示前 8 筆，共 {rows.length} 筆</p>
+      )}
+      {hasInvoice && (
+        <p className="text-xs text-indigo-600">✓ 已偵測到發票號碼，匯入後可在「發票查詢」分頁核對</p>
+      )}
+    </div>
+  );
+}
+
 function MonthCalendar({ importedDates, month }) {
   const [year, mon] = month.split('-').map(Number);
   const today = new Date().toISOString().slice(0, 10);
@@ -476,6 +697,19 @@ export default function PmsIncomeExcelImportTab({ WAREHOUSES, setActiveTab }) {
             <div className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">
               貸借不平衡，請點「展開詳細核對」確認各欄位金額。
             </div>
+          )}
+
+          {/* ── 科目對應摘要 ── */}
+          {records.length > 0 && <AccountingPreview records={records} />}
+
+          {/* ── 資料異常偵測 ── */}
+          {parsed?.reservationRows?.length > 0 && (
+            <ReservationAnomalies rows={parsed.reservationRows} />
+          )}
+
+          {/* ── 訂房明細預覽 ── */}
+          {parsed?.reservationRows?.length > 0 && (
+            <ReservationPreview rows={parsed.reservationRows} />
           )}
 
           {duplicateWarning && (

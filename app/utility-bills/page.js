@@ -48,7 +48,10 @@ export default function UtilityBillsPage() {
   const [summary, setSummary] = useState(null);
   const [formRecords, setFormRecords] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [meta, setMeta] = useState({ warehouse: '', year: '', month: '', billType: '電費' });
+  const [meta, setMeta] = useState(() => {
+    const now = new Date();
+    return { warehouse: '', year: String(now.getFullYear() - 1911), month: String(now.getMonth() + 1), billType: '電費' };
+  });
   const fileInputRef = useRef(null);
   const isWater = activeTab === 'water';
   const [ocrRecords, setOcrRecords] = useState([]);

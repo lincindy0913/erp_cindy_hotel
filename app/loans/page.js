@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useEscKey } from '@/lib/hooks/useEscKey';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import NotificationBanner from '@/components/NotificationBanner';
@@ -10,6 +11,7 @@ import { EXPORT_CONFIGS } from '@/lib/export-columns';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
+import HelpButton from '@/components/HelpButton';
 import { todayStr, parseLocalDate } from '@/lib/localDate';
 import ReportTab    from './_tabs/ReportTab';
 import AnnualTab    from './_tabs/AnnualTab';
@@ -109,6 +111,17 @@ export default function LoansPage() {
   const [showBatchModal, setShowBatchModal] = useState(false);
   const [batchLoanIds, setBatchLoanIds] = useState([]);
   const [showTransferModal, setShowTransferModal] = useState(false);
+
+  // Esc 鍵：依優先序關閉最上層 modal
+  useEscKey(useCallback(() => {
+    if (showTransferModal)    { setShowTransferModal(false);    return; }
+    if (showBatchModal)       { setShowBatchModal(false);       return; }
+    if (showConfirmModal)     { setShowConfirmModal(false);     return; }
+    if (showAnnualPrintModal) { setShowAnnualPrintModal(false); return; }
+    if (showLoanModal)        { setShowLoanModal(false);        return; }
+    if (showLoansPrintModal)  { setShowLoansPrintModal(false);  return; }
+  }, [showTransferModal, showBatchModal, showConfirmModal, showAnnualPrintModal, showLoanModal, showLoansPrintModal]));
+
   const [transferForm, setTransferForm] = useState({
     sourceAccountId: '', amount: '', description: '', transactionDate: ''
   });
@@ -373,6 +386,10 @@ export default function LoansPage() {
   async function confirmPayment() {
     if (!confirmForm.actualPrincipal || !confirmForm.actualInterest) {
       showToast('請填寫實際本金和利息', 'error');
+      return;
+    }
+    if (parseFloat(confirmForm.actualPrincipal) < 0 || parseFloat(confirmForm.actualInterest) < 0) {
+      showToast('本金與利息不可為負數', 'error');
       return;
     }
     try {
@@ -793,16 +810,19 @@ export default function LoansPage() {
             <h2 className="text-2xl font-bold text-gray-800">貸款利息管理</h2>
             <p className="text-sm text-gray-500 mt-1">管理公司與個人貸款、月還款追蹤與核實</p>
           </div>
-          <ExportButtons
-            data={filteredLoans.map(l => ({
-              ...l,
-              balance: l.currentBalance ?? l.loanAmount,
-            }))}
-            columns={EXPORT_CONFIGS.loans.columns}
-            exportName={EXPORT_CONFIGS.loans.filename}
-            title="貸款利息管理"
-            sheetName="貸款清單"
-          />
+          <div className="flex items-center gap-3">
+            <HelpButton anchor="十一貸款管理" />
+            <ExportButtons
+              data={filteredLoans.map(l => ({
+                ...l,
+                balance: l.currentBalance ?? l.loanAmount,
+              }))}
+              columns={EXPORT_CONFIGS.loans.columns}
+              exportName={EXPORT_CONFIGS.loans.filename}
+              title="貸款利息管理"
+              sheetName="貸款清單"
+            />
+          </div>
         </div>
 
         {/* Tabs */}
@@ -1072,7 +1092,7 @@ export default function LoansPage() {
     }
 
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 no-print-loans">
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 no-print-loans" onClick={() => setShowAnnualPrintModal(false)}>
         <div className="bg-white rounded-xl shadow-2xl max-w-6xl w-full mx-4 max-h-[90vh] overflow-y-auto no-print-loans" onClick={e => e.stopPropagation()}>
           <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
             <h3 className="text-lg font-bold text-gray-800">{annualYear} 年度貸款利息費用報表</h3>
@@ -1193,8 +1213,8 @@ export default function LoansPage() {
 
   function renderLoanModal() {
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowLoanModal(false)}>
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
           <div className="sticky top-0 bg-white border-b px-6 py-4 rounded-t-2xl">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold text-gray-800">
@@ -1511,8 +1531,8 @@ export default function LoansPage() {
     const balanceAfter = acctBalance - actualTotal;
 
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowConfirmModal(false)}>
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
           <div className="border-b px-6 py-4">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold text-gray-800">核實還款</h3>
@@ -1645,8 +1665,8 @@ export default function LoansPage() {
     const allSelected = activeLoansForBatch.length > 0 && activeLoansForBatch.every(l => batchLoanIds.includes(l.id));
 
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] overflow-y-auto">
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowBatchModal(false)}>
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
           <div className="sticky top-0 bg-white border-b px-6 py-4 rounded-t-2xl">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold text-gray-800">批次建立並推送出納</h3>
@@ -1718,8 +1738,8 @@ export default function LoansPage() {
     const targetAfter = targetBalance + transferAmt;
 
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowTransferModal(false)}>
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
           <div className="border-b px-6 py-4">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold text-gray-800">快速預存款</h3>

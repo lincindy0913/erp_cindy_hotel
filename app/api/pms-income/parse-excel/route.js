@@ -11,53 +11,112 @@ export const dynamic = 'force-dynamic';
  * Hardcoded Excel column → accounting code mapping.
  * Excel columns come from the hotel daily report (日營業報表).
  * Multiple Excel columns mapping to the same code get summed.
+ * Includes aliases for different hotels' column naming conventions.
  *
  * 收訂金 is in 本日貸方 section but maps to 借方 預收款 (2131).
  */
 const EXCEL_TO_ACCOUNTING = [
   // ── 貸方 (Credit) ── from 本日貸方 section
-  { excelCol: '住宿金額', section: '本日貸方', entryType: '貸方', code: '4111', name: '住房收入' },
-  { excelCol: '月租金額', section: '本日貸方', entryType: '貸方', code: '4111', name: '住房收入' },
-  { excelCol: '休息金額', section: '本日貸方', entryType: '貸方', code: '4111', name: '住房收入' },
-  { excelCol: '餐飲部',   section: '本日貸方', entryType: '貸方', code: '4112', name: '餐飲收入' },
-  { excelCol: '其他收入', section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' },
-  { excelCol: '延時費',   section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' },
-  { excelCol: '加床費',   section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' },
-  { excelCol: '電話費',   section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' },
-  { excelCol: '傳真費',   section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' },
-  { excelCol: '精品櫃',   section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' },
-  { excelCol: '旅遊行程', section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' },
-  { excelCol: '娛樂收入', section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' },
-  { excelCol: '娛樂費',   section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' },
-  { excelCol: '售禮券',     section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' },
-  { excelCol: '服務費',     section: '本日貸方', entryType: '貸方', code: '4114', name: '服務費收入' },
-  { excelCol: '未設定4207', section: '本日貸方', entryType: '貸方', code: '4207', name: '未設定4207' },
-  { excelCol: '未設定4208', section: '本日貸方', entryType: '貸方', code: '4208', name: '未設定4208' },
-  { excelCol: '其他未設定', section: '本日貸方', entryType: '貸方', code: '4209', name: '其他未設定' },
-  // 收訂金 is in 本日貸方 but maps to 借方
-  { excelCol: '收訂金',     section: '本日貸方', entryType: '借方', code: '2131', name: '預收款' },
+  // 住房收入 (4111) — 各飯店欄位名稱不同，全部合計到同一科目
+  { excelCol: '住宿金額',     section: '本日貸方', entryType: '貸方', code: '4111', name: '住房收入' },
+  { excelCol: '月租金額',     section: '本日貸方', entryType: '貸方', code: '4111', name: '住房收入' },
+  { excelCol: '休息金額',     section: '本日貸方', entryType: '貸方', code: '4111', name: '住房收入' },
+  { excelCol: '房租收入',     section: '本日貸方', entryType: '貸方', code: '4111', name: '住房收入' },  // 金旭
+  { excelCol: '住宿收入',     section: '本日貸方', entryType: '貸方', code: '4111', name: '住房收入' },
+  { excelCol: '住宿+延退',    section: '本日貸方', entryType: '貸方', code: '4111', name: '住房收入' },
+  { excelCol: '租金收入',     section: '本日貸方', entryType: '貸方', code: '4111', name: '住房收入' },  // 月租類
+  // 餐飲收入 (4112)
+  { excelCol: '餐飲部',       section: '本日貸方', entryType: '貸方', code: '4112', name: '餐飲收入' },
+  { excelCol: '餐飲收',       section: '本日貸方', entryType: '貸方', code: '4112', name: '餐飲收入' },
+  { excelCol: '餐飲收入',     section: '本日貸方', entryType: '貸方', code: '4112', name: '餐飲收入' },
+  { excelCol: '早餐收入',     section: '本日貸方', entryType: '貸方', code: '4112', name: '餐飲收入' },  // 金旭
+  { excelCol: '早餐',         section: '本日貸方', entryType: '貸方', code: '4112', name: '餐飲收入' },
+  { excelCol: '晚餐收入',     section: '本日貸方', entryType: '貸方', code: '4112', name: '餐飲收入' },  // 金旭
+  { excelCol: '餐飲其他收入', section: '本日貸方', entryType: '貸方', code: '4112', name: '餐飲收入' },  // 金旭
+  // 其他營業收入 (4113)
+  { excelCol: '其他收入',     section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' },
+  { excelCol: '其他收入(管理)', section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' }, // 金旭
+  { excelCol: '延時費',       section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' },
+  { excelCol: '加床費',       section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' },
+  { excelCol: '加人費',       section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' },
+  { excelCol: '電話費',       section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' },
+  { excelCol: '傳真費',       section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' },
+  { excelCol: '精品櫃',       section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' },
+  { excelCol: '精品櫃收入',   section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' }, // 金旭
+  { excelCol: '旅遊行程',     section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' },
+  { excelCol: '行程收入',     section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' }, // 金旭
+  { excelCol: '娛樂收入',     section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' },
+  { excelCol: '娛樂費',       section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' },
+  { excelCol: '飲料收入',     section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' }, // 金旭
+  { excelCol: '飲料費',       section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' },
+  { excelCol: '場租收入',     section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' }, // 金旭
+  { excelCol: '洗衣費',       section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' },
+  { excelCol: '賠償收入',     section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' }, // 金旭
+  { excelCol: '售禮券',       section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' },
+  // 服務費 (4114)
+  { excelCol: '服務費',       section: '本日貸方', entryType: '貸方', code: '4114', name: '服務費收入' },
+  // 銷項稅額 → 代收款-稅金 (2171)，部分飯店在貸方列示
+  { excelCol: '銷項稅額',     section: '本日貸方', entryType: '貸方', code: '2171', name: '代收款-稅金' }, // 金旭
+  // 未設定科目
+  { excelCol: '未設定4207',   section: '本日貸方', entryType: '貸方', code: '4207', name: '未設定4207' },
+  { excelCol: '未設定4208',   section: '本日貸方', entryType: '貸方', code: '4208', name: '未設定4208' },
+  { excelCol: '其他未設定',   section: '本日貸方', entryType: '貸方', code: '4209', name: '其他未設定' },
+  // 收訂金 在貸方區但實質是借方（預收款）
+  { excelCol: '收訂金',         section: '本日貸方', entryType: '借方', code: '2131', name: '預收款' },
+  { excelCol: '預收訂金(貸方)', section: '本日貸方', entryType: '借方', code: '2131', name: '預收款' }, // 金旭
 
   // ── 借方 (Debit) ── from 本日借方 section
-  { excelCol: '現金',     section: '本日借方', entryType: '借方', code: '1111', name: '現金收入' },
-  { excelCol: '信用卡',   section: '本日借方', entryType: '借方', code: '1141', name: '信用卡收入' },
-  { excelCol: '應收帳款', section: '本日借方', entryType: '借方', code: '1131', name: '應收帳款' },
-  { excelCol: '網訂',     section: '本日借方', entryType: '借方', code: '1112', name: '轉帳收入' },
-  { excelCol: '電匯',     section: '本日借方', entryType: '借方', code: '1112', name: '轉帳收入' },
-  { excelCol: '票據',     section: '本日借方', entryType: '借方', code: '1112', name: '轉帳收入' },
-  { excelCol: '匯票',     section: '本日借方', entryType: '借方', code: '1112', name: '轉帳收入' },
-  { excelCol: '劃撥',     section: '本日借方', entryType: '借方', code: '1112', name: '轉帳收入' },
-  { excelCol: 'ATM',      section: '本日借方', entryType: '借方', code: '1112', name: '轉帳收入' },
-  { excelCol: '禮券',     section: '本日借方', entryType: '借方', code: '1112', name: '轉帳收入' },
-  { excelCol: '折讓',     section: '本日借方', entryType: '借方', code: '4901', name: '銷售折讓' },
-  { excelCol: '佣金',     section: '本日借方', entryType: '借方', code: '6101', name: '佣金費用' },
-  { excelCol: '招待',     section: '本日借方', entryType: '借方', code: '6201', name: '招待費' },
-  { excelCol: '其他',     section: '本日借方', entryType: '借方', code: '1112', name: '轉帳收入' },
-  { excelCol: '扣抵積點', section: '本日借方', entryType: '借方', code: '1112', name: '轉帳收入' },
-  { excelCol: '沖訂金',   section: '本日借方', entryType: '借方', code: '2131', name: '預收款' },
+  // 現金 (1111)
+  { excelCol: '現金',           section: '本日借方', entryType: '借方', code: '1111', name: '現金收入' },
+  { excelCol: '庫存現金-台幣',  section: '本日借方', entryType: '借方', code: '1111', name: '現金收入' }, // 金旭
+  { excelCol: '台幣現金',       section: '本日借方', entryType: '借方', code: '1111', name: '現金收入' },
+  { excelCol: '現金收入',       section: '本日借方', entryType: '借方', code: '1111', name: '現金收入' },
+  // 信用卡收入 (1141) — 含 OTA 刷卡、現場刷卡、網路刷卡
+  { excelCol: '信用卡',         section: '本日借方', entryType: '借方', code: '1141', name: '信用卡收入' },
+  { excelCol: '應收帳款-信用卡',section: '本日借方', entryType: '借方', code: '1141', name: '信用卡收入' }, // 金旭
+  { excelCol: '網刷',           section: '本日借方', entryType: '借方', code: '1141', name: '信用卡收入' }, // 網路刷卡=信用卡
+  { excelCol: '信用卡收入',     section: '本日借方', entryType: '借方', code: '1141', name: '信用卡收入' },
+  // 應收帳款 (1131) — 旅行社、沖帳等
+  { excelCol: '應收帳款',       section: '本日借方', entryType: '借方', code: '1131', name: '應收帳款' },
+  { excelCol: '應收帳款-T/S',   section: '本日借方', entryType: '借方', code: '1131', name: '應收帳款-旅行社' }, // 金旭
+  { excelCol: '應收帳款-沖帳',  section: '本日借方', entryType: '借方', code: '1131', name: '應收帳款-沖帳' },   // 金旭
+  { excelCol: '應收帳款-其他',  section: '本日借方', entryType: '借方', code: '1131', name: '應收帳款-其他' },   // 金旭
+  // OTA 應收帳款 (1141) — OTA 平台代收後再匯款給飯店，性質同信用卡
+  { excelCol: '應收帳款-OTA',   section: '本日借方', entryType: '借方', code: '1141', name: 'OTA應收帳款' },     // 金旭
+  // 轉帳/匯款/ATM (1112)
+  { excelCol: '網訂',           section: '本日借方', entryType: '借方', code: '1112', name: '轉帳收入' },
+  { excelCol: '電匯',           section: '本日借方', entryType: '借方', code: '1112', name: '轉帳收入' },
+  { excelCol: '票據',           section: '本日借方', entryType: '借方', code: '1112', name: '轉帳收入' },
+  { excelCol: '匯票',           section: '本日借方', entryType: '借方', code: '1112', name: '轉帳收入' },
+  { excelCol: '劃撥',           section: '本日借方', entryType: '借方', code: '1112', name: '轉帳收入' },
+  { excelCol: 'ATM',            section: '本日借方', entryType: '借方', code: '1112', name: '轉帳收入' },
+  { excelCol: '台灣',           section: '本日借方', entryType: '借方', code: '1112', name: '轉帳收入' }, // 台灣銀行匯款
+  { excelCol: '帳號存款4207',   section: '本日借方', entryType: '借方', code: '1112', name: '轉帳收入' }, // 指定帳戶
+  { excelCol: '帳號存款4208',   section: '本日借方', entryType: '借方', code: '1112', name: '轉帳收入' }, // 指定帳戶
+  { excelCol: '其他帳號存款',   section: '本日借方', entryType: '借方', code: '1112', name: '轉帳收入' }, // 指定帳戶
+  // 禮券/住宿卷 (1112)
+  { excelCol: '禮券',           section: '本日借方', entryType: '借方', code: '1112', name: '轉帳收入' },
+  { excelCol: '禮券收款',       section: '本日借方', entryType: '借方', code: '1112', name: '轉帳收入' },
+  { excelCol: '預收住宿卷',     section: '本日借方', entryType: '借方', code: '1112', name: '轉帳收入' },   // 金旭
+  { excelCol: '其他',           section: '本日借方', entryType: '借方', code: '1112', name: '轉帳收入' },
+  { excelCol: '扣抵積點',       section: '本日借方', entryType: '借方', code: '1112', name: '轉帳收入' },
+  // 折讓 (4901)
+  { excelCol: '折讓',           section: '本日借方', entryType: '借方', code: '4901', name: '銷售折讓' },
+  // 佣金費用 (6101)
+  { excelCol: '佣金',           section: '本日借方', entryType: '借方', code: '6101', name: '佣金費用' },
+  // 招待費 (6201)
+  { excelCol: '招待',           section: '本日借方', entryType: '借方', code: '6201', name: '招待費' },
+  { excelCol: '招待費',         section: '本日借方', entryType: '借方', code: '6201', name: '招待費' },         // 金旭
+  // 業務推廣費 (6310) — 金旭特有科目
+  { excelCol: '業務推廣費',     section: '本日借方', entryType: '借方', code: '6310', name: '業務推廣費' },     // 金旭
+  // 沖訂金/預收訂金 (2131)
+  { excelCol: '沖訂金',         section: '本日借方', entryType: '借方', code: '2131', name: '預收款' },
+  { excelCol: '預收訂金(借方)', section: '本日借方', entryType: '借方', code: '2131', name: '預收款' },         // 金旭
 ];
 
 const SKIP_COLS = new Set([
   '貸方合計', '借方合計', '營業總額', '營業淨額', '營業額', '本日貸方', '本日借方',
+  '2貸方', '1借方', '小計', // 金旭等飯店使用的區段標記
 ]);
 
 
@@ -72,6 +131,52 @@ function toNum(v) {
 function norm(str) {
   if (str == null) return '';
   return String(str).replace(/\s/g, '').trim();
+}
+
+/**
+ * 從「公司名稱或專案」欄位判斷訂房來源。
+ * 優先以 companyName 比對；若無，再看 bookingRef 前綴。
+ * 回傳值對應 PmsReservationRecord.source 欄位。
+ */
+function detectOtaSource(companyName, bookingRef) {
+  const c = (companyName || '').toLowerCase();
+  const r = (bookingRef  || '').toLowerCase();
+
+  // ── OTA 平台 ──
+  if (/agoda/.test(c))                              return 'OTA-Agoda';
+  if (/booking\.com|booking com/.test(c))           return 'OTA-Booking';
+  if (/expedia/.test(c))                            return 'OTA-Expedia';
+  if (/airbnb/.test(c))                             return 'OTA-Airbnb';
+  if (/易遊網|eztravel|ez\s*travel/.test(c))        return 'OTA-易遊網';
+  if (/momo|富邦媒/.test(c))                        return 'OTA-MOMO';
+  if (/klook/.test(c))                              return 'OTA-Klook';
+  if (/kkday/.test(c))                              return 'OTA-KKday';
+  if (/雄獅|lion\s*travel/.test(c))                 return 'OTA-雄獅';
+  if (/可樂旅遊|colla/.test(c))                     return 'OTA-可樂旅遊';
+  if (/lifetour|鳳凰/.test(c))                      return 'OTA-鳳凰';
+  if (/hotels\.com|hotelscom/.test(c))              return 'OTA-Hotels.com';
+  if (/trip\.com|ctrip|攜程/.test(c))               return 'OTA-Trip.com';
+  if (/trivago/.test(c))                            return 'OTA-Trivago';
+  if (/google\s*hotel|google\s*hotel\s*ads/.test(c)) return 'OTA-Google';
+
+  // ── 旅行社 / 代訂 ──
+  if (/旅行社|travel\s*agency|t\/s|ts訂/.test(c))   return 'T/S';
+  if (/代訂|代理|代購/.test(c))                      return '代訂中心';
+
+  // ── 月租 / 包棟 ──
+  if (/月租|月結|包棟|長住|長期/.test(c))             return '月租';
+
+  // ── 現場 / 自訂 ──
+  if (/現場|walk.?in|散客|直客/.test(c))             return '現場';
+  if (/官網|直訂|直接訂/.test(c))                    return '官網直訂';
+  if (/企業|公司|corporate/.test(c))                 return '企業';
+
+  // ── bookingRef 前綴輔助判斷（companyName 未能識別時）──
+  if (/^bj\d/i.test(r))                             return 'OTA-Booking'; // BJ88201280
+  if (/agoda/i.test(r))                             return 'OTA-Agoda';
+
+  // 預設：電話訂房
+  return '電話';
 }
 
 function cellStr(val) {
@@ -235,14 +340,13 @@ export async function POST(request) {
         return -1;
       };
 
-      // 發票號碼：先精確比對，再用「包含『發票』且不是稅額/日期」的欄位做 fallback
+      // 發票號碼：先精確比對，再用「包含『發票』且不是稅額/日期/2』的欄位做 fallback
       const invoiceNoIdx = (() => {
         const exact = hIdxAny(
           '發票號碼', '發票號', '統一發票號碼', '發票1號', '發票字號',
-          '電子發票號碼', '統一發票', '發票編號', '發票',
+          '電子發票號碼', '統一發票', '發票編號', '發票1', '發票',
         );
         if (exact >= 0) return exact;
-        // fallback：搜尋 headers 中包含「發票」且不含「稅額」「日期」「2」的欄位
         for (let i = 0; i < headers.length; i++) {
           const h = headers[i];
           if (h.includes('發票') && !h.includes('稅額') && !h.includes('日期') && !h.includes('2')) return i;
@@ -251,16 +355,17 @@ export async function POST(request) {
       })();
 
       const colMap = {
-        reservationNo:  hIdxAny('住房序號', '序號'),
+        reservationNo:  hIdxAny('住房序號', '序號', '訂單編號'),
         bookingNo:      hIdxAny('訂房序號', '訂單號', '訂單號碼'),
+        bookingRef:     hIdxAny('訂房來源編號', '來源訂單編號', '來源單號'),  // NET-XXXX / BJ格式
         roomNo:         hIdxAny('房號', '房間號'),
-        roomType:       hIdxAny('住休', '房型', '房間類型'),
-        guestName:      hIdxAny('姓名', '住客姓名', '客人姓名'),
-        companyName:    hIdxAny('公司名稱或專案', '公司名稱', '公司'),
+        roomType:       hIdxAny('住休', '房型', '房間類型', '狀態'),
+        guestName:      hIdxAny('姓名', '住客姓名', '客人姓名', '旅客姓名'),
+        companyName:    hIdxAny('公司名稱或專案', '來源名稱及專案', '來源名稱', '來源', '公司名稱', '公司'),
         discountName:   hIdxAny('折扣名稱', '優待碼', '折讓名稱', '優惠碼'),
-        checkIn:        hIdxAny('遷入日期', '入住日期', '到達日期', '住宿日期'),
-        checkOut:       hIdxAny('遷出日期', '退房日期', '離開日期'),
-        roomRate:       hIdxAny('房租', '住宿金額', '房費'),
+        checkIn:        hIdxAny('遷入日期', '入住日期', '到達日期', '住宿日期', '入住日期時間'),
+        checkOut:       hIdxAny('遷出日期', '退房日期', '離開日期', '退房日期時間'),
+        roomRate:       hIdxAny('房租', '住宿金額', '房費', '上限定額'),
         serviceFee:     hIdxAny('服務費'),
         cash:           hIdxAny('現金'),
         creditCard:     hIdxAny('信用卡'),
@@ -316,13 +421,18 @@ export async function POST(request) {
                              getNum(colMap.otherChargesC) + getNum(colMap.otherChargesD) +
                              getNum(colMap.otherChargesE);
 
+        const companyRaw = get(colMap.companyName);
+        const bookingRef = get(colMap.bookingRef);
+
         reservationRows.push({
           reservationNo:  get(colMap.reservationNo) || c0 || c1 || (isDepositRow ? `訂金-${r}` : `列${r}`),
           bookingNo:      get(colMap.bookingNo),
+          bookingRef:     bookingRef || null,
           roomNo:         get(colMap.roomNo),
           roomType:       get(colMap.roomType),
           guestName:      get(colMap.guestName),
-          companyName:    get(colMap.companyName),
+          companyName:    companyRaw,
+          source:         detectOtaSource(companyRaw, bookingRef),
           discountName:   get(colMap.discountName),
           checkIn:        getDate(colMap.checkIn),
           checkOut:       getDate(colMap.checkOut),

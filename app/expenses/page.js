@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react';
 import { useSearchParams } from 'next/navigation';
 import Navigation from '@/components/Navigation';
 import FetchErrorBanner from '@/components/FetchErrorBanner';
+import HelpButton from '@/components/HelpButton';
 import ExportButtons from '@/components/ExportButtons';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
@@ -125,12 +126,12 @@ function ExpensesPageInner() {
     entryLines: [],
     items: [],
     invoiceNo: '',
-    invoiceDate: '',
+    invoiceDate: todayStr(),
     invoiceTitle: '',
     taxType: '',
     department: '',
     warehouseAmounts: [],
-    checkIssueDate: '',
+    checkIssueDate: todayStr(),
     checkDate: '',
     checkNo: '',
     checkAccountId: '',
@@ -1025,7 +1026,7 @@ function ExpensesPageInner() {
           setExecuteForm(prev => ({
             ...prev,
             entryLines: [],
-            checkIssueDate: '',
+            checkIssueDate: todayStr(),
             checkDate: '',
             checkNo: '',
             checkAccountId: '',
@@ -1064,7 +1065,10 @@ function ExpensesPageInner() {
     <div style={{ minHeight: '100vh', background: '#f4f6f9' }}>
       <Navigation />
       <div style={{ maxWidth: 1400, margin: '0 auto', padding: '24px 16px' }}>
-        <h1 style={{ fontSize: 26, fontWeight: 700, marginBottom: 16 }}>費用管理</h1>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <h1 style={{ fontSize: 26, fontWeight: 700, margin: 0 }}>費用管理</h1>
+          <HelpButton anchor="十二費用管理" />
+        </div>
         {expensesError && <div className="mb-4"><FetchErrorBanner message={expensesError} onRetry={fetchAll} /></div>}
         {recordsError && subTab === 'records' && <div className="mb-4"><FetchErrorBanner message={recordsError} onRetry={fetchRecords} /></div>}
 

@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import { useToast } from '@/context/ToastContext';
+import { useConfirm } from '@/context/ConfirmContext';
 import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 import PropertyModal from '@/components/PropertyModal';
@@ -62,6 +63,7 @@ function SummaryCard({ label, value, sub, color = 'gray', small = false }) {
 function AssetsPageInner() {
   const { data: session } = useSession();
   const { showToast } = useToast();
+  const confirm = useConfirm();
   const router = useRouter();
   const searchParams = useSearchParams();
   const linkOpenedRef = useRef(false);
@@ -126,6 +128,8 @@ function AssetsPageInner() {
 
   async function handleBatchStatusChange() {
     if (!selectedPropIds.size || !batchStatus) return;
+    const label = PROPERTY_STATUS_LABEL[batchStatus] || batchStatus;
+    if (!(await confirm(`確定要將已選 ${selectedPropIds.size} 筆物業狀態改為「${label}」？`, { title: '批次狀態變更', danger: false }))) return;
     setBatchSavingProps(true);
     try {
       const results = await Promise.all([...selectedPropIds].map(id =>

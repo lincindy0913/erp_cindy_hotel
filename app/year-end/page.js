@@ -1206,6 +1206,12 @@ export default function YearEndPage() {
 
                       <div className="flex gap-3">
                         <button
+                          onClick={() => { setStep(1); setValidationResult(null); }}
+                          className="px-4 py-2 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 text-sm"
+                        >
+                          ← 上一步
+                        </button>
+                        <button
                           onClick={handleReset}
                           className="px-4 py-2 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 text-sm"
                         >

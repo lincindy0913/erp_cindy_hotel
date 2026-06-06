@@ -3,11 +3,18 @@
 import { useState, useEffect } from 'react';
 
 const CHIPS = [
-  { key: 'ccPending',      label: n => `信用卡未核對 ${n} 筆`, tab: 'creditCardStatement', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 border-purple-200' },
-  { key: 'depositPending', label: n => `訂金待入帳 ${n} 筆`,   tab: 'depositRecon',        color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 border-amber-200' },
-  { key: 'depositOverdue', label: n => `訂金逾期 ${n} 筆`,     tab: 'depositRecon',        color: 'bg-orange-100 text-orange-700 hover:bg-orange-200 border-orange-200' },
-  { key: 'noInvoice',      label: n => `發票未開 ${n} 筆`,     tab: 'invoiceQuery',        color: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 border-indigo-200' },
-  { key: 'apPending',      label: n => `廠商應付未結 ${n} 筆`, tab: 'vendorBilling',       color: 'bg-red-100 text-red-700 hover:bg-red-200 border-red-200' },
+  { key: 'ccPending',      label: (n, d) => `信用卡未核對 ${n} 筆`, tab: 'creditCardStatement', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 border-purple-200' },
+  {
+    key: 'depositPending',
+    label: (n, d) => `訂金待入帳 ${n} 筆${d?.depositOldestDays > 7 ? `（最舊 ${d.depositOldestDays} 天）` : ''}`,
+    tab: 'depositRecon',
+    color: (n, d) => d?.depositOldestDays > 7
+      ? 'bg-red-100 text-red-700 hover:bg-red-200 border-red-300'
+      : 'bg-amber-100 text-amber-700 hover:bg-amber-200 border-amber-200',
+  },
+  { key: 'depositOverdue', label: (n, d) => `訂金逾期 ${n} 筆`,     tab: 'depositRecon',        color: () => 'bg-orange-100 text-orange-700 hover:bg-orange-200 border-orange-200' },
+  { key: 'noInvoice',      label: (n, d) => `退房逾3天未開發票 ${n} 筆`, tab: 'invoiceQuery',    color: () => 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 border-indigo-200' },
+  { key: 'apPending',      label: (n, d) => `廠商應付未結 ${n} 筆`, tab: 'vendorBilling',       color: () => 'bg-red-100 text-red-700 hover:bg-red-200 border-red-200' },
 ];
 
 export default function PmsIncomeDailyTodoBar({ WAREHOUSES = [], setActiveTab }) {
@@ -48,9 +55,9 @@ export default function PmsIncomeDailyTodoBar({ WAREHOUSES = [], setActiveTab })
             <button
               key={c.key}
               onClick={() => setActiveTab(c.tab)}
-              className={`px-2.5 py-1 rounded-full border font-medium transition-colors cursor-pointer ${c.color}`}
+              className={`px-2.5 py-1 rounded-full border font-medium transition-colors cursor-pointer ${typeof c.color === 'function' ? c.color(data[c.key], data) : c.color}`}
             >
-              {c.label(data[c.key])}
+              {c.label(data[c.key], data)}
             </button>
           ))}
         </>

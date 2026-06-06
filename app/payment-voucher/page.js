@@ -573,6 +573,7 @@ export default function PaymentVoucherListPage() {
                 <button
                   onClick={batchPrintMonthlyVouchers}
                   disabled={selectedSupplierIds.size === 0 || monthlyBatchPrinting}
+                  title={selectedSupplierIds.size === 0 ? '請先勾選左方供應商再列印' : ''}
                   className="px-5 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors flex items-center gap-2"
                 >
                   {monthlyBatchPrinting ? (

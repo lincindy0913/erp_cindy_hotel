@@ -15,26 +15,40 @@ export default function PmsIncomeStatisticsTab({
 }) {
   const [showCompare, setShowCompare] = useState(false);
   const [compareYear, setCompareYear] = useState(statsYear - 1);
-  const [compareData, setCompareData] = useState(null);
+  const [compareData, setCompareData] = useState(null); // full-year or single-month YoY
+  const [momData,     setMomData]     = useState(null); // previous-month (MoM, single-month only)
   const [compareLoading, setCompareLoading] = useState(false);
 
   const fetchCompareData = useCallback(async () => {
-    if (!showCompare) { setCompareData(null); return; }
+    if (!showCompare) { setCompareData(null); setMomData(null); return; }
     setCompareLoading(true);
     try {
-      let url = `/api/pms-income/monthly-summary?year=${compareYear}`;
-      if (statsMonth) url += `&month=${statsMonth}`;
-      const res = await fetch(url);
-      const data = await res.json();
-      setCompareData(data);
-    } catch { setCompareData(null); }
+      // YoY: compare year (user-selected or year-1), same month if single-month view
+      const yoyUrl = statsMonth
+        ? `/api/pms-income/monthly-summary?year=${compareYear}&month=${statsMonth}`
+        : `/api/pms-income/monthly-summary?year=${compareYear}`;
+      const yoyRes = await fetch(yoyUrl);
+      setCompareData(yoyRes.ok ? await yoyRes.json() : null);
+
+      // MoM: previous month (single-month view only)
+      if (statsMonth) {
+        const m = parseInt(statsMonth);
+        const prevYear  = m === 1 ? statsYear - 1 : statsYear;
+        const prevMonth = m === 1 ? 12 : m - 1;
+        const momUrl = `/api/pms-income/monthly-summary?year=${prevYear}&month=${prevMonth}`;
+        const momRes = await fetch(momUrl);
+        setMomData(momRes.ok ? await momRes.json() : null);
+      } else {
+        setMomData(null);
+      }
+    } catch { setCompareData(null); setMomData(null); }
     setCompareLoading(false);
-  }, [showCompare, compareYear, statsMonth]);
+  }, [showCompare, compareYear, statsYear, statsMonth]);
 
   useEffect(() => { fetchCompareData(); }, [fetchCompareData]);
-  useEffect(() => { if (!showCompare) setCompareData(null); }, [showCompare]);
+  useEffect(() => { if (!showCompare) { setCompareData(null); setMomData(null); } }, [showCompare]);
 
-  // Build a lookup map: compareYear monthly data by month index
+  // Build a lookup map: compareYear monthly data by month index (full-year view)
   const compareByMonth = Array.isArray(compareData)
     ? Object.fromEntries(compareData.map(m => [m.month, m]))
     : {};
@@ -114,44 +128,104 @@ export default function PmsIncomeStatisticsTab({
           {statsMonth && statsData.byAccountingCode && (
             <div className="bg-white rounded-lg shadow-sm border p-4">
               <h3 className="text-sm font-bold text-gray-700 mb-3">科目明細</h3>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 text-left">
-                    <th className="px-3 py-2 font-medium">科目代碼</th>
-                    <th className="px-3 py-2 font-medium">科目名稱</th>
-                    <th className="px-3 py-2 font-medium text-right">貸方金額</th>
-                    <th className="px-3 py-2 font-medium text-right">借方金額</th>
-                    <th className="px-3 py-2 font-medium text-right">淨額</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {statsData.byAccountingCode.map((item, i) => (
-                    <tr key={i} className="border-t hover:bg-gray-50">
-                      <td className="px-3 py-2 font-mono text-xs">{item.accountingCode}</td>
-                      <td className="px-3 py-2">{item.accountingName}</td>
-                      <td className="px-3 py-2 text-right text-teal-700">{formatNumber(item.credit)}</td>
-                      <td className="px-3 py-2 text-right text-amber-700">{formatNumber(item.debit)}</td>
-                      <td
-                        className={`px-3 py-2 text-right font-medium ${item.net >= 0 ? 'text-teal-700' : 'text-red-600'}`}
-                      >
-                        {formatNumber(item.net)}
-                      </td>
-                    </tr>
-                  ))}
-                  <tr className="border-t-2 border-gray-300 font-bold">
-                    <td className="px-3 py-2" colSpan={2}>
-                      合計
+              {(() => {
+                // 單月模式：同期比較輔助變數
+                // compareData 是去年同月的 summary object（非陣列）
+                const yoy = (!Array.isArray(compareData) && compareData) ? compareData : null;
+                const mom = momData && !Array.isArray(momData) ? momData : null;
+                const yoyByCode = yoy
+                  ? Object.fromEntries((yoy.byAccountingCode || []).map(i => [`${i.accountingCode}|${i.accountingName}`, i]))
+                  : null;
+                const momByCode = mom
+                  ? Object.fromEntries((mom.byAccountingCode || []).map(i => [`${i.accountingCode}|${i.accountingName}`, i]))
+                  : null;
+                const showYoy = showCompare && yoyByCode;
+                const showMom = showCompare && momByCode;
+
+                // MoM 期間標籤
+                const m = parseInt(statsMonth);
+                const prevMonthLabel = m === 1 ? `${statsYear - 1}/12月` : `${m - 1}月`;
+                const yoyLabel = `${compareYear}/${m}月`;
+
+                const pctContent = (cur, refNet, extraCls = '') => {
+                  if (!refNet) return <td className={`px-2 py-1.5 text-right text-gray-300 text-xs ${extraCls}`}>—</td>;
+                  const pct = Math.round((cur - refNet) / Math.abs(refNet) * 100);
+                  return (
+                    <td className={`px-2 py-1.5 text-right text-xs font-medium ${pct >= 0 ? 'text-green-600' : 'text-red-500'} ${extraCls}`}>
+                      {pct >= 0 ? '+' : ''}{pct}%
                     </td>
-                    <td className="px-3 py-2 text-right text-teal-700">
-                      {formatNumber(statsData.byAccountingCode.reduce((s, i) => s + i.credit, 0))}
-                    </td>
-                    <td className="px-3 py-2 text-right text-amber-700">
-                      {formatNumber(statsData.byAccountingCode.reduce((s, i) => s + i.debit, 0))}
-                    </td>
-                    <td className="px-3 py-2 text-right text-teal-800">{formatNumber(statsData.total)}</td>
-                  </tr>
-                </tbody>
-              </table>
+                  );
+                };
+
+                return (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm min-w-[520px]">
+                      <thead>
+                        <tr className="bg-gray-50 text-left">
+                          <th className="px-3 py-2 font-medium">科目代碼</th>
+                          <th className="px-3 py-2 font-medium">科目名稱</th>
+                          <th className="px-3 py-2 font-medium text-right">本月淨額</th>
+                          {showYoy && <>
+                            <th className="px-2 py-2 font-medium text-right text-indigo-500 text-xs">{yoyLabel}</th>
+                            <th className="px-2 py-2 font-medium text-right text-indigo-400 text-xs">YoY</th>
+                          </>}
+                          {showMom && <>
+                            <th className="px-2 py-2 font-medium text-right text-purple-500 text-xs hidden md:table-cell">{prevMonthLabel}</th>
+                            <th className="px-2 py-2 font-medium text-right text-purple-400 text-xs hidden md:table-cell">MoM</th>
+                          </>}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {statsData.byAccountingCode.map((item, i) => {
+                          const codeKey = `${item.accountingCode}|${item.accountingName}`;
+                          const yoyItem = yoyByCode?.[codeKey];
+                          const momItem = momByCode?.[codeKey];
+                          return (
+                            <tr key={i} className="border-t hover:bg-gray-50">
+                              <td className="px-3 py-2 font-mono text-xs">{item.accountingCode}</td>
+                              <td className="px-3 py-2">{item.accountingName}</td>
+                              <td className={`px-3 py-2 text-right font-medium ${item.net >= 0 ? 'text-teal-700' : 'text-red-600'}`}>
+                                {formatNumber(item.net)}
+                              </td>
+                              {showYoy && <>
+                                <td className="px-2 py-1.5 text-right text-xs text-indigo-400 tabular-nums">
+                                  {yoyItem ? formatNumber(yoyItem.net) : '—'}
+                                </td>
+                                {pctContent(item.net, yoyItem?.net)}
+                              </>}
+                              {showMom && <>
+                                <td className="px-2 py-1.5 text-right text-xs text-purple-400 tabular-nums hidden md:table-cell">
+                                  {momItem ? formatNumber(momItem.net) : '—'}
+                                </td>
+                                {pctContent(item.net, momItem?.net, 'hidden md:table-cell')}
+                              </>}
+                            </tr>
+                          );
+                        })}
+                        <tr className="border-t-2 border-gray-300 font-bold bg-gray-50">
+                          <td className="px-3 py-2" colSpan={2}>合計</td>
+                          <td className="px-3 py-2 text-right text-teal-800">{formatNumber(statsData.total)}</td>
+                          {showYoy && <>
+                            <td className="px-2 py-2 text-right text-xs text-indigo-500">{yoy ? formatNumber(yoy.total) : '—'}</td>
+                            {pctContent(statsData.total, yoy?.total)}
+                          </>}
+                          {showMom && <>
+                            <td className="px-2 py-2 text-right text-xs text-purple-500 hidden md:table-cell">{mom ? formatNumber(mom.total) : '—'}</td>
+                            {pctContent(statsData.total, mom?.total, 'hidden md:table-cell')}
+                          </>}
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
+
+              {/* 同期比較提示（未開啟時） */}
+              {!showCompare && (
+                <p className="text-xs text-gray-400 mt-2">
+                  點擊上方「同期比較」可顯示去年同月（YoY）與上個月（MoM）的對比欄位。
+                </p>
+              )}
 
               {Object.keys(statsData.byWarehouse || {}).length > 0 && (
                 <div className="mt-6">

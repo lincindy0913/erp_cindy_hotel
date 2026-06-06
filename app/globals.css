@@ -472,3 +472,27 @@ thead.bg-white     th { background-color: #ffffff; }
   body { background: #fff; }
   table thead th { position: static; }
 }
+
+/* ── 統一按鈕系統 ──────────────────────────────────────────────── */
+/* 主要操作：儲存、確認、送出 → indigo-600 */
+@layer components {
+  .btn-primary {
+    @apply px-4 py-2 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors font-medium;
+  }
+  /* 新增、建立 → emerald-600 */
+  .btn-create {
+    @apply px-4 py-2 text-sm rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 transition-colors font-medium;
+  }
+  /* 危險操作：刪除、作廢 → red-600 */
+  .btn-danger {
+    @apply px-4 py-2 text-sm rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors font-medium;
+  }
+  /* 次要：取消、返回 → border gray */
+  .btn-secondary {
+    @apply px-4 py-2 text-sm rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors;
+  }
+  /* 警告操作：鎖帳、強制覆蓋 → slate-700 */
+  .btn-warning {
+    @apply px-4 py-2 text-sm rounded-lg bg-slate-700 text-white hover:bg-slate-800 disabled:opacity-50 transition-colors font-medium;
+  }
+}

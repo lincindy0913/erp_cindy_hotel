@@ -134,7 +134,23 @@ export default function CashCountTab({ accounts, warehouses }) {
 
       {showForm && (
         <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow-sm p-6 mb-4">
-          <h4 className="font-semibold mb-4">新增現金盤點</h4>
+          <div className="flex items-center justify-between mb-4">
+            <h4 className="font-semibold">新增現金盤點</h4>
+            {(() => {
+              const lastCount = cashCounts.find(c => c.account?.id === parseInt(selectedAccount) && c.details?.length > 0);
+              if (!lastCount) return null;
+              return (
+                <button type="button"
+                  onClick={() => {
+                    const map = Object.fromEntries(lastCount.details.map(d => [d.denomination, d.quantity]));
+                    setDenominations(prev => prev.map(d => ({ ...d, quantity: map[d.denomination] ?? 0 })));
+                  }}
+                  className="text-xs px-3 py-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-50">
+                  延用上次（{lastCount.countDate}）
+                </button>
+              );
+            })()}
+          </div>
           <div className="grid grid-cols-3 gap-4 mb-4">
             <div>
               <label htmlFor="f-33" className="block text-sm text-gray-600 mb-1">帳戶</label>

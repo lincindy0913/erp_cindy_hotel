@@ -7,6 +7,7 @@ export default function PmsIncomeAddRecordModal({
   setAddForm,
   error,
   handleAddRecord,
+  addRecordSaving,
   WAREHOUSES,
 }) {
   if (!showAddModal) return null;
@@ -123,8 +124,9 @@ export default function PmsIncomeAddRecordModal({
             <button type="button" onClick={onClose} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">
               取消
             </button>
-            <button type="button" onClick={handleAddRecord} className="px-6 py-2 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700">
-              確認新增
+            <button type="button" onClick={handleAddRecord} disabled={addRecordSaving}
+              className="px-6 py-2 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed">
+              {addRecordSaving ? '新增中...' : '確認新增'}
             </button>
           </div>
         </div>

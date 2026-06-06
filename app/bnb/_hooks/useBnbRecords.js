@@ -62,10 +62,11 @@ export function useBnbRecords() {
   );
 
   // ── 訂房明細 fetch ────────────────────────────────────────────
-  const fetchRecords = useCallback(async (page = 1) => {
+  const fetchRecords = useCallback(async (page = 1, pageSizeOverride) => {
     setRecLoading(true);
     try {
-      const p = new URLSearchParams({ month: filterMonth, page: String(page), pageSize: String(pageSize) });
+      const effectivePageSize = pageSizeOverride ?? pageSize;
+      const p = new URLSearchParams({ month: filterMonth, page: String(page), pageSize: String(effectivePageSize) });
       if (filterSource)    p.set('source', filterSource);
       if (filterStatus)    p.set('status', filterStatus);
       if (filterWarehouse) p.set('warehouse', filterWarehouse);
@@ -95,7 +96,7 @@ export function useBnbRecords() {
       setRecError(`載入訂房記錄失敗：${e.message}`);
     }
     finally { setRecLoading(false); }
-  }, [filterMonth, filterSource, filterStatus, filterWarehouse, filterPayment]);
+  }, [filterMonth, filterSource, filterStatus, filterWarehouse, filterPayment, pageSize]);
 
   // ── 批次套用 ──────────────────────────────────────────────────
   async function handleBatchApply() {

@@ -51,7 +51,7 @@ export async function PATCH(request, { params }) {
     const body = await request.json();
     const allowed = [
       'sourceOverride', 'note', 'invoiceNo',
-      'cashStatus', 'wireStatus', 'commissionStatus', 'depositStatus', 'creditCardStatus',
+      'cashStatus', 'wireStatus', 'commissionStatus', 'depositStatus', 'depositBankDate', 'depositBankRef', 'creditCardStatus',
       'ccFeeRate', 'ccFeeAmount', 'ccNetAmount', 'ccActualNet', 'ccDiff', 'ccSettleDate',
       'vendorBillingId',
       // Amount fields — allowed for manual correction

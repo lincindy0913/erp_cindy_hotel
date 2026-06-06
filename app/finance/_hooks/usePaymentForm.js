@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useToast } from '@/context/ToastContext';
+import { todayStr } from '@/lib/localDate';
 
 const FINANCE_LAST_CHECK_KEY = 'finance_lastCheck';
 
@@ -58,7 +59,7 @@ export function usePaymentForm({
     note: '',
     discount: '',
     paymentAmount: '',
-    paymentDate: '',
+    paymentDate: todayStr(),
     accountId: '',
     advancedBy: '',
     advancePaymentMethod: '',
@@ -85,11 +86,10 @@ export function usePaymentForm({
   useEffect(() => {
     if (selectedInvoiceIds && selectedInvoiceIds.size > 0) {
       const total = parseFloat(calculateTotalForSet(selectedInvoiceIds, unpaidInvoices)) || 0;
-      const discountNum = parseFloat(formData.discount) || 0;
-      setFormData(prev => ({
-        ...prev,
-        paymentAmount: (total - discountNum).toFixed(2)
-      }));
+      setFormData(prev => {
+        const discountNum = parseFloat(prev.discount) || 0;
+        return { ...prev, paymentAmount: Math.max(0, total - discountNum).toFixed(2) };
+      });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedInvoiceIds]);
@@ -171,7 +171,7 @@ export function usePaymentForm({
       note: '',
       discount: '',
       paymentAmount: '',
-      paymentDate: '',
+      paymentDate: todayStr(),
       accountId: ''
     });
   }

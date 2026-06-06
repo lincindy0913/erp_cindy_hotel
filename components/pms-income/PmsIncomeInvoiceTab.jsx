@@ -24,9 +24,26 @@ function downloadCsv(rows) {
   URL.revokeObjectURL(url);
 }
 
+/** 判斷是否為 BJ 格式（Booking.com POS 收據編號） */
+function isBjInvoice(invoiceNo) {
+  return /^BJ\d{8}/i.test((invoiceNo || '').trim());
+}
+
+/** 計算稅額（含稅金額 → 未稅 + 稅） */
+function splitTax(inclTax) {
+  const total  = Math.round(Number(inclTax) || 0);
+  const excl   = Math.round(total / 1.05);
+  const tax    = total - excl;
+  return { total, excl, tax };
+}
+
 function downloadTaxReport(rows, yearMonth, showToast) {
-  const invoiced = rows.filter(r => r.invoiceNo);
-  if (invoiced.length === 0) { showToast('尚無已開發票資料可申報', 'info'); return; }
+  // 只統計非 BJ 格式的統一發票（BJ 是 Booking.com 收據號，非台灣統編）
+  const invoiced = rows.filter(r => r.invoiceNo && !isBjInvoice(r.invoiceNo));
+  if (invoiced.length === 0) {
+    showToast('尚無台灣統一發票資料可申報（BJ 格式為 Booking.com 收據號，不計入）', 'info');
+    return;
+  }
 
   // Group by 字軌 (first 2 chars of invoice number)
   const byPrefix = {};
@@ -44,13 +61,11 @@ function downloadTaxReport(rows, yearMonth, showToast) {
   const cols = ['字軌', '起始號碼', '結束號碼', '使用張數', '銷售額（含稅）', '應稅銷售額（未稅）', '稅額（5%）', '免稅銷售額'];
   const lines = [cols.join(',')];
   for (const d of Object.values(byPrefix)) {
-    const sorted      = d.nums.filter(n => n > 0).sort((a, b) => a - b);
-    const start       = sorted.length ? String(sorted[0]).padStart(8, '0') : '00000000';
-    const end         = sorted.length ? String(sorted[sorted.length - 1]).padStart(8, '0') : '00000000';
-    const inclTax     = Math.round(d.totalInclTax);
-    const exclTax     = Math.round(inclTax / 1.05);
-    const taxAmt      = inclTax - exclTax;
-    lines.push([d.prefix, start, end, d.count, inclTax, exclTax, taxAmt, 0].join(','));
+    const sorted = d.nums.filter(n => n > 0).sort((a, b) => a - b);
+    const start  = sorted.length ? String(sorted[0]).padStart(8, '0') : '00000000';
+    const end    = sorted.length ? String(sorted[sorted.length - 1]).padStart(8, '0') : '00000000';
+    const { total, excl, tax } = splitTax(d.totalInclTax);
+    lines.push([d.prefix, start, end, d.count, total, excl, tax, 0].join(','));
   }
 
   const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
@@ -111,10 +126,16 @@ export default function PmsIncomeInvoiceTab({ WAREHOUSES }) {
 
   const withInvoice    = useMemo(() => filtered.filter(r => r.invoiceNo), [filtered]);
   const withoutInvoice = useMemo(() => filtered.filter(r => !r.invoiceNo), [filtered]);
+  // BJ = Booking.com POS 收據號（非台灣統一發票）
+  const bjInvoices     = useMemo(() => withInvoice.filter(r => isBjInvoice(r.invoiceNo)), [withInvoice]);
+  const twInvoices     = useMemo(() => withInvoice.filter(r => !isBjInvoice(r.invoiceNo)), [withInvoice]);
 
   // 月報彙總
   const invoiceAmount   = useMemo(() => withInvoice.reduce((s, r) => s + (r.totalRevenue || 0), 0), [withInvoice]);
   const noInvoiceAmount = useMemo(() => withoutInvoice.reduce((s, r) => s + (r.totalRevenue || 0), 0), [withoutInvoice]);
+  const twInvoiceAmount = useMemo(() => twInvoices.reduce((s, r) => s + (r.totalRevenue || 0), 0), [twInvoices]);
+  const twExclTax       = useMemo(() => Math.round(twInvoiceAmount / 1.05), [twInvoiceAmount]);
+  const twTaxAmount     = useMemo(() => twInvoiceAmount - twExclTax, [twInvoiceAmount, twExclTax]);
 
   // 來源分布（已開發票）
   const bySource = useMemo(() => {
@@ -198,20 +219,24 @@ export default function PmsIncomeInvoiceTab({ WAREHOUSES }) {
         {/* KPI 卡片 */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3">
-            <div className="text-xs text-indigo-600 mb-1">已開發票張數</div>
-            <div className="text-xl font-bold text-indigo-700">{withInvoice.length} 張</div>
+            <div className="text-xs text-indigo-600 mb-1">統一發票（台灣）</div>
+            <div className="text-xl font-bold text-indigo-700">{twInvoices.length} 張</div>
+            <div className="text-xs text-indigo-500 mt-1">NT$ {fmt(twInvoiceAmount)}</div>
           </div>
           <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3">
-            <div className="text-xs text-indigo-600 mb-1">已開發票金額</div>
-            <div className="text-xl font-bold text-indigo-700">NT$ {fmt(invoiceAmount)}</div>
+            <div className="text-xs text-indigo-600 mb-1">申報稅額（5%）</div>
+            <div className="text-xl font-bold text-indigo-700">NT$ {fmt(twTaxAmount)}</div>
+            <div className="text-xs text-indigo-400 mt-1">未稅 NT$ {fmt(twExclTax)}</div>
+          </div>
+          <div className="bg-sky-50 border border-sky-200 rounded-lg p-3">
+            <div className="text-xs text-sky-600 mb-1">BJ 收據（Booking.com）</div>
+            <div className="text-xl font-bold text-sky-700">{bjInvoices.length} 張</div>
+            <div className="text-xs text-sky-400 mt-1">不計入稅申報</div>
           </div>
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-            <div className="text-xs text-amber-600 mb-1">未開發票張數</div>
+            <div className="text-xs text-amber-600 mb-1">未開發票</div>
             <div className="text-xl font-bold text-amber-700">{withoutInvoice.length} 張</div>
-          </div>
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-            <div className="text-xs text-amber-600 mb-1">未開發票金額</div>
-            <div className="text-xl font-bold text-amber-700">NT$ {fmt(noInvoiceAmount)}</div>
+            <div className="text-xs text-amber-500 mt-1">NT$ {fmt(noInvoiceAmount)}</div>
           </div>
         </div>
 
@@ -266,28 +291,37 @@ export default function PmsIncomeInvoiceTab({ WAREHOUSES }) {
                 <th className="px-3 py-2 text-left text-xs text-gray-500">日期</th>
                 <th className="px-3 py-2 text-left text-xs text-gray-500">館別</th>
                 <th className="px-3 py-2 text-left text-xs text-gray-500">住客</th>
-                <th className="px-3 py-2 text-left text-xs text-gray-500">公司</th>
-                <th className="px-3 py-2 text-left text-xs text-gray-500">來源</th>
-                <th className="px-3 py-2 text-right text-xs text-gray-500">住宿金額</th>
-                <th className="px-3 py-2 text-center text-xs text-gray-500 w-44">
+                <th className="px-3 py-2 text-left text-xs text-gray-500">公司/來源</th>
+                <th className="px-3 py-2 text-right text-xs text-gray-500">含稅金額</th>
+                <th className="px-3 py-2 text-right text-xs text-gray-500">未稅額</th>
+                <th className="px-3 py-2 text-right text-xs text-gray-500">稅額(5%)</th>
+                <th className="px-3 py-2 text-center text-xs text-gray-500 w-48">
                   發票號碼 <span className="text-gray-400 font-normal">（點擊編輯）</span>
                 </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {filtered.map(r => (
+              {filtered.map(r => {
+                const isBj = isBjInvoice(r.invoiceNo);
+                const { total, excl, tax } = splitTax(r.totalRevenue);
+                return (
                 <tr key={r.id} className={`hover:bg-blue-50/30 ${r.invoiceNo ? '' : 'bg-amber-50/20'}`}>
                   <td className="px-3 py-1.5 whitespace-nowrap text-xs text-gray-500">{r.businessDate}</td>
                   <td className="px-3 py-1.5 text-xs text-gray-500">{r.warehouse}</td>
                   <td className="px-3 py-1.5 font-medium text-gray-800 max-w-[120px] truncate" title={r.guestName}>
                     {r.guestName || '—'}
                   </td>
-                  <td className="px-3 py-1.5 text-xs text-gray-400 max-w-[100px] truncate" title={r.companyName}>
-                    {r.companyName || ''}
+                  <td className="px-3 py-1.5 text-xs text-gray-500 max-w-[100px] truncate" title={r.companyName}>
+                    {r.companyName || r.source || ''}
                   </td>
-                  <td className="px-3 py-1.5 text-xs text-gray-500">{r.source}</td>
-                  <td className="px-3 py-1.5 text-right tabular-nums text-gray-700">
-                    {r.totalRevenue ? r.totalRevenue.toLocaleString('zh-TW') : '—'}
+                  <td className="px-3 py-1.5 text-right tabular-nums text-gray-700 text-xs">
+                    {total ? total.toLocaleString('zh-TW') : '—'}
+                  </td>
+                  <td className="px-3 py-1.5 text-right tabular-nums text-gray-400 text-xs">
+                    {r.invoiceNo && !isBj ? excl.toLocaleString('zh-TW') : '—'}
+                  </td>
+                  <td className="px-3 py-1.5 text-right tabular-nums text-gray-400 text-xs">
+                    {r.invoiceNo && !isBj ? tax.toLocaleString('zh-TW') : '—'}
                   </td>
                   <td className="px-3 py-1.5 text-center">
                     {editingId === r.id ? (
@@ -303,15 +337,22 @@ export default function PmsIncomeInvoiceTab({ WAREHOUSES }) {
                       />
                     ) : (
                       <span onClick={() => { setEditingId(r.id); setEditVal(r.invoiceNo || ''); }}
-                        className={`cursor-pointer inline-block px-2 py-0.5 rounded text-xs font-mono
-                          ${r.invoiceNo ? 'text-indigo-700 bg-indigo-50 hover:bg-indigo-100' : 'text-gray-300 hover:text-indigo-400 hover:underline'}`}
-                        title="點擊輸入/修改發票號碼">
-                        {r.invoiceNo || '+ 輸入發票'}
+                        className={`cursor-pointer inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono
+                          ${r.invoiceNo
+                            ? isBj
+                              ? 'text-sky-700 bg-sky-50 hover:bg-sky-100'
+                              : 'text-indigo-700 bg-indigo-50 hover:bg-indigo-100'
+                            : 'text-gray-300 hover:text-indigo-400 hover:underline'}`}
+                        title={isBj ? 'BJ：Booking.com 收據號（非台灣統一發票）' : '點擊輸入/修改發票號碼'}>
+                        {r.invoiceNo
+                          ? <>{r.invoiceNo}{isBj && <span className="ml-1 text-[10px] text-sky-400">BJ</span>}</>
+                          : '+ 輸入發票'}
                       </span>
                     )}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

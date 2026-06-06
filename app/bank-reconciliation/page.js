@@ -1,8 +1,10 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import Navigation from '@/components/Navigation';
 import FetchErrorBanner from '@/components/FetchErrorBanner';
+import ModuleGuideCard from '@/components/ModuleGuideCard';
+import HelpButton from '@/components/HelpButton';
 import { useConfirm } from '@/context/ConfirmContext';
 import { RECON_STATUS, RECON_LINE_STATUS } from '@/lib/recon-statuses';
 
@@ -38,6 +40,7 @@ export default function BankReconciliationPage() {
   // 新增存摺明細的表單狀態
   const [lineForm, setLineForm]   = useState({ txDate: '', description: '', creditAmount: '', debitAmount: '', runningBalance: '', note: '' });
   const [addingLine, setAddingLine] = useState(false);
+  const lineDateRef = useRef(null);
 
   // 補建現金流 modal
   const [buildModal, setBuildModal] = useState(null); // { line } or null
@@ -136,6 +139,7 @@ export default function BankReconciliationPage() {
       setLineForm({ txDate: '', description: '', creditAmount: '', debitAmount: '', runningBalance: '', note: '' });
       setSuccess('已新增明細');
       await loadDetail(detail.id);
+      setTimeout(() => lineDateRef.current?.focus(), 50);
     } else {
       const d = await res.json(); setError(d.error?.message || '新增失敗');
     }
@@ -230,7 +234,33 @@ export default function BankReconciliationPage() {
             <h1 className="text-2xl font-bold text-gray-800">存簿核對（銀行調節表）</h1>
             <p className="text-sm text-gray-500 mt-1">銀行存款帳戶月結調節表；<strong className="text-red-600">12 月份未完成將擋住年結。</strong>信用卡／OTA 對帳請至 <Link href="/reconciliation" className="text-violet-600 hover:underline">存簿對帳 →</Link></p>
           </div>
+          <HelpButton anchor="九銀行對帳" />
         </div>
+
+        <ModuleGuideCard
+          title="銀行對帳流程說明"
+          color="slate"
+          storageKey="guide:bank-recon"
+          steps={[
+            {
+              label: '建立月份調節表',
+              desc: '選擇帳戶與月份 → 點擊「新增月份調節表」。系統自動帶入期初餘額（上月期末）與當月系統交易合計。',
+            },
+            {
+              label: '輸入銀行結單數字',
+              desc: '對照銀行寄來的月結對帳單，填入「銀行期末餘額」。差異欄位若非 0 代表有未核對項目。',
+            },
+            {
+              label: '新增未達帳項目',
+              desc: '若有已記帳但銀行尚未入帳（或反之）的項目，在「未達帳項目」區新增說明與金額，直到調節後餘額歸零。',
+            },
+            {
+              label: '確認對帳完成',
+              desc: '差異為 0 後點擊「確認完成」。12 月份必須完成，否則年結被擋。',
+              link: { href: '/manual#九銀行對帳', text: '查看手冊說明' },
+            },
+          ]}
+        />
 
         {/* Legacy system warning */}
         <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
@@ -323,7 +353,7 @@ export default function BankReconciliationPage() {
                 <div className="p-3 border-b bg-gray-50">
                   <p className="text-xs text-gray-500 mb-2">新增存摺行</p>
                   <div className="grid grid-cols-3 gap-2">
-                    <input type="date" value={lineForm.txDate} onChange={e => setLineForm(p => ({ ...p, txDate: e.target.value }))}
+                    <input ref={lineDateRef} type="date" value={lineForm.txDate} onChange={e => setLineForm(p => ({ ...p, txDate: e.target.value }))}
                       className="border rounded px-2 py-1 text-xs" placeholder="日期" />
                     <input type="text" value={lineForm.description} onChange={e => setLineForm(p => ({ ...p, description: e.target.value }))}
                       className="border rounded px-2 py-1 text-xs" placeholder="說明" />

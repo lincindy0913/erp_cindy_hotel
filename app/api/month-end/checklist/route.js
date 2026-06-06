@@ -413,6 +413,48 @@ export async function GET(request) {
       items.push({ key: 'balance_mismatch', step: 14, label: '帳戶餘額與交易不一致', status: 'manual', href: '/fund-management', linkText: '前往資金管理' });
     }
 
+    // ── 15. PMS 信用卡核對 ────────────────────────────────────────
+    try {
+      const count = await prisma.pmsReservationRecord.count({
+        where: {
+          businessDate: { gte: periodStart, lte: periodEnd },
+          creditCard: { gt: 0 },
+          creditCardStatus: { notIn: ['已核對', '已建帳', 'cc_已建帳'] },
+        },
+      });
+      items.push({
+        key: 'pms_cc_recon', step: 15,
+        label: 'PMS 信用卡核對',
+        desc: count > 0
+          ? `當月有 ${count} 筆刷卡收款尚未核對，月結前請先完成信用卡對帳`
+          : '當月 PMS 信用卡收款已全數核對',
+        count, done: count === 0,
+        status: count > 0 ? 'warning' : 'ok',
+        href: '/pms-income?tab=creditCardStatement', linkText: '前往信用卡核對',
+      });
+    } catch {
+      items.push({ key: 'pms_cc_recon', step: 15, label: 'PMS 信用卡核對', status: 'manual', href: '/pms-income?tab=creditCardStatement', linkText: '前往信用卡核對' });
+    }
+
+    // ── 16. PMS 訂金逾期未入（跨月） ─────────────────────────────
+    try {
+      const count = await prisma.pmsReservationRecord.count({
+        where: { depositIn: { gt: 0 }, depositStatus: '逾期未入' },
+      });
+      items.push({
+        key: 'pms_deposit_overdue', step: 16,
+        label: 'PMS 訂金逾期未入',
+        desc: count > 0
+          ? `有 ${count} 筆訂金標記為「逾期未入」（跨月累計），請於月結前確認是否已入帳或處理`
+          : '無訂金逾期未入',
+        count, done: count === 0,
+        status: count > 0 ? 'warning' : 'ok',
+        href: '/pms-income?tab=depositRecon', linkText: '前往訂金核對',
+      });
+    } catch {
+      items.push({ key: 'pms_deposit_overdue', step: 16, label: 'PMS 訂金逾期未入', status: 'manual', href: '/pms-income?tab=depositRecon', linkText: '前往訂金核對' });
+    }
+
     const doneCount    = items.filter(i => i.done).length;
     const warningCount = items.filter(i => i.status === 'warning').length;
 

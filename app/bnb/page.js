@@ -808,7 +808,7 @@ function BnbPage() {
             },
             {
               label: 'OTA 比對',
-              desc: '上傳 Booking.com 對帳單（Agoda／Expedia 開發中）→ 系統自動比對差異 → 確認後至「OTA傭金」分頁送出佣金',
+              desc: '上傳 Booking.com 對帳單 → 系統自動比對差異 → 確認後至「OTA傭金」分頁送出佣金。目前僅支援 Booking.com。',
             },
             {
               label: '付款稽核',
@@ -882,7 +882,7 @@ function BnbPage() {
                   ? 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100'
                   : 'border-green-300 bg-green-50 text-green-700 hover:bg-green-100'
               } disabled:opacity-50`}>
-              {lockLoading ? '處理中…' : isLocked ? '解鎖此月' : '鎖帳此月'}
+              {lockLoading ? `${getActiveLockContext().month} 處理中…` : isLocked ? '解鎖此月' : '鎖帳此月'}
             </button>
             <button onClick={() => { const { month, warehouse } = getActiveLockContext(); fetchLockAudits(month, warehouse); setShowLockHistory(true); }}
               className="px-3 py-1.5 text-xs rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50">

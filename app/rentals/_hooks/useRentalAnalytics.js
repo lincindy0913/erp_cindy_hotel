@@ -30,7 +30,7 @@ export function useRentalAnalytics({ accounts = [], properties = [] } = {}) {
 
   // ── Quick-pay modal ────────────────────────────────────────────
   const [quickPayIncome,  setQuickPayIncome]  = useState(null);
-  const [quickPayForm,    setQuickPayForm]    = useState({ actualAmount: '', actualDate: '', accountId: '', paymentMethod: '匯款' });
+  const [quickPayForm,    setQuickPayForm]    = useState({ actualAmount: '', actualDate: todayStr(), accountId: '', paymentMethod: '匯款' });
   const [quickPaySaving,  setQuickPaySaving]  = useState(false);
 
   // ── 空置率 ────────────────────────────────────────────────────

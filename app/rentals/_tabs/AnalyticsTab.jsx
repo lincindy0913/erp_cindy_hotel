@@ -330,7 +330,7 @@ export default function AnalyticsTab({
                         }}
                         className="border rounded px-2 py-1.5 text-sm min-w-[160px]">
                         <option value="">-- 選擇帳戶 --</option>
-                        {accounts.map(a => <option key={a.id} value={String(a.id)}>{a.name}</option>)}
+                        {accounts.filter(a => a.isActive !== false).map(a => <option key={a.id} value={String(a.id)}>{a.name}</option>)}
                       </select>
                     </div>
                     <div>

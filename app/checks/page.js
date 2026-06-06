@@ -106,6 +106,7 @@ export default function ChecksPage() {
 
   // Modal states
   const [showAddModal, setShowAddModal] = useState(false);
+  const [deletingCheckId, setDeletingCheckId] = useState(null);
   const [showClearModal, setShowClearModal] = useState(false);
   const [showBounceModal, setShowBounceModal] = useState(false);
   const [showVoidModal, setShowVoidModal] = useState(false);
@@ -419,6 +420,7 @@ export default function ChecksPage() {
 
   const handleDelete = async (check) => {
     if (!(await confirm(`確定要刪除支票 ${check.checkNumber}？`, { title: '刪除確認', danger: true }))) return;
+    setDeletingCheckId(check.id);
     try {
       const res = await fetch(`/api/checks/${check.id}`, { method: 'DELETE' });
       if (!res.ok) {
@@ -429,6 +431,7 @@ export default function ChecksPage() {
       fetchChecks(activeTab === 'pending' ? {} : { checkType: activeTab });
       fetchSummary();
     } catch (e) { showToast('刪除失敗: ' + e.message, 'error'); }
+    finally { setDeletingCheckId(null); }
   };
 
   const openBatchClearModal = () => {
@@ -801,8 +804,10 @@ export default function ChecksPage() {
                       </>
                     )}
                     {c.status === 'pending' && (
-                      <button onClick={() => handleDelete(c)}
-                        className="px-2 py-1 text-sm bg-red-50 text-red-600 rounded hover:bg-red-100">刪除</button>
+                      <button onClick={() => handleDelete(c)} disabled={deletingCheckId === c.id}
+                        className="px-2 py-1 text-sm bg-red-50 text-red-600 rounded hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed">
+                        {deletingCheckId === c.id ? '刪除中…' : '刪除'}
+                      </button>
                     )}
                   </div>
                 </td>

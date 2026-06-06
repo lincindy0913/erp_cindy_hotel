@@ -36,6 +36,7 @@ import PmsIncomeDailyTodoBar from '@/components/pms-income/PmsIncomeDailyTodoBar
 import { usePmsIncomeOverview } from '@/components/pms-income/usePmsIncomeOverview';
 import { usePmsIncomeRecords } from '@/components/pms-income/usePmsIncomeRecords';
 import { usePmsIncomeSettlement } from '@/components/pms-income/usePmsIncomeSettlement';
+import HelpButton from '@/components/HelpButton';
 import { todayStr } from '@/lib/localDate';
 
 const VALID_TAB_KEYS = new Set(TABS.map(t => t.key));
@@ -85,6 +86,7 @@ function PmsIncomePage() {
 
   // Manual add record modal
   const [showAddModal, setShowAddModal] = useState(false);
+  const [addRecordSaving, setAddRecordSaving] = useState(false);
   const [addForm, setAddForm] = useState({
     warehouse: '麗格', businessDate: todayStr(),
     entryType: '貸方', pmsColumnName: '', amount: '', accountingCode: '', accountingName: '', note: ''
@@ -417,6 +419,8 @@ function PmsIncomePage() {
   // Add record handler
   // ========================
   const handleAddRecord = async () => {
+    if (addRecordSaving) return;
+    setAddRecordSaving(true);
     setError('');
     try {
       const res = await fetch('/api/pms-income', {
@@ -440,6 +444,8 @@ function PmsIncomePage() {
       incomeRecords.fetchRecords();
     } catch (err) {
       setError(err.message);
+    } finally {
+      setAddRecordSaving(false);
     }
   };
 
@@ -470,15 +476,18 @@ function PmsIncomePage() {
             <h2 className="text-2xl font-bold text-teal-800">PMS 收入管理</h2>
             <p className="text-sm text-gray-600 mt-1">管理飯店 PMS 系統日報表的匯入與收入記錄</p>
           </div>
-          {activeTab === 'records' && (
-            <ExportButtons
-              data={incomeRecords.records}
-              columns={EXPORT_CONFIGS.pmsIncome.columns}
-              exportName={EXPORT_CONFIGS.pmsIncome.filename}
-              title="PMS 收入記錄"
-              sheetName="收入記錄"
-            />
-          )}
+          <div className="flex items-center gap-3">
+            <HelpButton anchor="十四pms-收入飯店" />
+            {activeTab === 'records' && (
+              <ExportButtons
+                data={incomeRecords.records}
+                columns={EXPORT_CONFIGS.pmsIncome.columns}
+                exportName={EXPORT_CONFIGS.pmsIncome.filename}
+                title="PMS 收入記錄"
+                sheetName="收入記錄"
+              />
+            )}
+          </div>
         </div>
 
         {/* Success/Error messages */}
@@ -774,6 +783,7 @@ function PmsIncomePage() {
         setAddForm={setAddForm}
         error={error}
         handleAddRecord={handleAddRecord}
+        addRecordSaving={addRecordSaving}
         WAREHOUSES={WAREHOUSES}
       />
 

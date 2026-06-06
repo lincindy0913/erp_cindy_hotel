@@ -27,7 +27,8 @@ export default function PmsIncomeMonthCloseTab({ WAREHOUSES = [] }) {
   const [loading, setLoading] = useState(false);
   const [saving,  setSaving]  = useState(false);
   const [msg,     setMsg]     = useState('');
-  const [note,    setNote]    = useState('');
+  const [note,      setNote]      = useState('');
+  const [savedNote, setSavedNote] = useState('');
   const [history, setHistory] = useState([]);
   const [histLoading, setHistLoading] = useState(false);
 
@@ -41,7 +42,9 @@ export default function PmsIncomeMonthCloseTab({ WAREHOUSES = [] }) {
         const data = await res.json();
         const found = data.find(c => c.yearMonth === yearMonth && c.warehouse === warehouse) || null;
         setRecord(found);
-        setNote(found?.note || '');
+        const serverNote = found?.note || '';
+        setNote(serverNote);
+        setSavedNote(serverNote);
       }
     } finally {
       setLoading(false);
@@ -113,13 +116,19 @@ export default function PmsIncomeMonthCloseTab({ WAREHOUSES = [] }) {
       <div className="flex flex-wrap gap-3 items-end">
         <div>
           <label className="block text-xs text-gray-500 mb-1">館別</label>
-          <select className="border rounded px-2 py-1 text-sm" value={warehouse} onChange={e => setWarehouse(e.target.value)}>
+          <select className="border rounded px-2 py-1 text-sm" value={warehouse} onChange={async e => {
+            if (note !== savedNote && !(await confirm('備註尚未儲存，切換館別將會遺失，確定繼續？', { title: '備註未儲存' }))) return;
+            setWarehouse(e.target.value);
+          }}>
             {WAREHOUSES.map(w => <option key={w} value={w}>{w}</option>)}
           </select>
         </div>
         <div>
           <label className="block text-xs text-gray-500 mb-1">月份</label>
-          <input type="month" className="border rounded px-2 py-1 text-sm" value={yearMonth} onChange={e => setYearMonth(e.target.value)} />
+          <input type="month" className="border rounded px-2 py-1 text-sm" value={yearMonth} onChange={async e => {
+            if (note !== savedNote && !(await confirm('備註尚未儲存，切換月份將會遺失，確定繼續？', { title: '備註未儲存' }))) return;
+            setYearMonth(e.target.value);
+          }} />
         </div>
         <button onClick={calculate} disabled={saving || isLocked} className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
           {saving ? '計算中...' : '重新計算月結'}
@@ -287,7 +296,7 @@ export default function PmsIncomeMonthCloseTab({ WAREHOUSES = [] }) {
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ warehouse, yearMonth, note }),
                 });
-                if (res.ok) setMsg('備註已儲存');
+                if (res.ok) { setMsg('備註已儲存'); setSavedNote(note); }
               }} className="mt-1 text-xs text-blue-600 hover:underline">儲存備註</button>
             )}
           </div>

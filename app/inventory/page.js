@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
+import HelpButton from '@/components/HelpButton';
 import FetchErrorBanner from '@/components/FetchErrorBanner';
 import ExportButtons from '@/components/ExportButtons';
 import { EXPORT_CONFIGS } from '@/lib/export-columns';
@@ -658,6 +659,7 @@ export default function InventoryPage() {
             )}
           </div>
           <div className="flex items-center gap-2">
+            <HelpButton anchor="四採購與庫存" />
             <WarehouseSelect
               value={warehouse}
               onChange={setWarehouse}

@@ -11,6 +11,16 @@ function isoDate(d) {
   return d.toISOString().split('T')[0];
 }
 
+function pendingDays(businessDate) {
+  if (!businessDate) return null;
+  const diff = new Date().getTime() - new Date(businessDate).getTime();
+  return Math.max(0, Math.floor(diff / 86400000));
+}
+
+// 館別 → 存簿帳戶名稱（土地銀行分公司）
+const DEPOSIT_BANK = { '麗格': '土格', '麗軒': '土軒' };
+function getBankName(wh) { return DEPOSIT_BANK[wh] || wh || '存簿'; }
+
 function getWeekRange() {
   const today = new Date();
   const day = today.getDay(); // 0=Sun
@@ -51,6 +61,17 @@ export default function PmsIncomeDepositReconTab({ WAREHOUSES = [] }) {
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState('全部');
+
+  // 「已入存簿」確認流程：逐筆
+  const [confirmingId, setConfirmingId] = useState(null);
+  const [confirmDate,  setConfirmDate]  = useState('');
+  const [confirmRef,   setConfirmRef]   = useState(''); // 流水號（可選）
+
+  // 批次「已入存簿」
+  const [selectedIds,  setSelectedIds]  = useState(new Set());
+  const [batchDate,    setBatchDate]    = useState('');
+  const [batchRef,     setBatchRef]     = useState('');
+  const [batchSaving,  setBatchSaving]  = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -125,15 +146,73 @@ export default function PmsIncomeDepositReconTab({ WAREHOUSES = [] }) {
     return r.depositStatus === statusFilter;
   });
 
-  async function setStatus(id, depositStatus) {
+  async function setStatus(id, depositStatus, depositBankDate, depositBankRef) {
+    const body = { depositStatus };
+    if (depositBankDate) body.depositBankDate = depositBankDate;
+    if (depositBankRef)  body.depositBankRef  = depositBankRef;
     const res = await fetch(`/api/pms-income/reservations/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ depositStatus }),
+      body: JSON.stringify(body),
     });
     if (res.ok) {
       const updated = await res.json();
       setRows(prev => prev.map(r => r.id === id ? { ...r, ...updated } : r));
+    }
+    setConfirmingId(null);
+    setConfirmDate('');
+    setConfirmRef('');
+  }
+
+  // 點「已入存簿」→ 開啟 inline 確認框
+  function startConfirmBook(r) {
+    setConfirmingId(r.id);
+    setConfirmDate(isoDate(new Date()));
+    setConfirmRef('');
+  }
+
+  // 批次標記已入存簿
+  async function applyBatch() {
+    if (!batchDate || selectedIds.size === 0) return;
+    setBatchSaving(true);
+    const ids = [...selectedIds];
+    await Promise.all(ids.map(id =>
+      fetch(`/api/pms-income/reservations/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          depositStatus: '已入存簿',
+          depositBankDate: batchDate,
+          ...(batchRef ? { depositBankRef: batchRef } : {}),
+        }),
+      }).then(r => r.ok ? r.json() : null)
+        .then(updated => updated && setRows(prev => prev.map(r => r.id === id ? { ...r, ...updated } : r)))
+    ));
+    setSelectedIds(new Set());
+    setBatchDate('');
+    setBatchRef('');
+    setBatchSaving(false);
+  }
+
+  function toggleSelect(id) {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  // 可批次選取的 rows：depositIn > 0 且尚未入帳
+  const selectableIds = new Set(
+    displayed.filter(r => r.depositIn > 0 && r.depositStatus !== '已入存簿' && r.depositStatus !== '已核對').map(r => r.id)
+  );
+  const allSelected = selectableIds.size > 0 && [...selectableIds].every(id => selectedIds.has(id));
+
+  function toggleSelectAll() {
+    if (allSelected) {
+      setSelectedIds(prev => { const n = new Set(prev); selectableIds.forEach(id => n.delete(id)); return n; });
+    } else {
+      setSelectedIds(prev => { const n = new Set(prev); selectableIds.forEach(id => n.add(id)); return n; });
     }
   }
 
@@ -243,6 +322,30 @@ export default function PmsIncomeDepositReconTab({ WAREHOUSES = [] }) {
         ))}
       </div>
 
+      {/* ── 批次操作列 ── */}
+      {selectedIds.size > 0 && (
+        <div className="flex flex-wrap items-center gap-3 bg-green-50 border border-green-200 rounded-lg px-4 py-2.5">
+          <span className="text-sm font-semibold text-green-800">已選 {selectedIds.size} 筆</span>
+          <div className="flex items-center gap-1.5 text-xs text-gray-600">
+            <span className="shrink-0">存簿日期 *</span>
+            <input type="date" value={batchDate} onChange={e => setBatchDate(e.target.value)}
+              className="border border-green-300 rounded px-2 py-0.5 text-xs focus:ring-1 focus:ring-green-400 w-34" />
+          </div>
+          <div className="flex items-center gap-1.5 text-xs text-gray-600">
+            <span className="shrink-0">流水號</span>
+            <input type="text" value={batchRef} onChange={e => setBatchRef(e.target.value)}
+              placeholder="可選" maxLength={20}
+              className="border border-gray-200 rounded px-2 py-0.5 text-xs w-24" />
+          </div>
+          <button onClick={applyBatch} disabled={!batchDate || batchSaving}
+            className="px-3 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-40 font-medium">
+            {batchSaving ? '儲存中…' : '批次標記已入存簿'}
+          </button>
+          <button onClick={() => setSelectedIds(new Set())}
+            className="px-3 py-1 text-xs border border-gray-300 text-gray-500 rounded hover:bg-gray-50">取消選取</button>
+        </div>
+      )}
+
       {/* ── 表格 ── */}
       {loading ? (
         <div className="text-center py-8 text-gray-400">載入中...</div>
@@ -255,12 +358,19 @@ export default function PmsIncomeDepositReconTab({ WAREHOUSES = [] }) {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 text-gray-600 text-xs">
               <tr>
+                <th className="px-2 py-2 text-center w-8">
+                  {selectableIds.size > 0 && (
+                    <input type="checkbox" checked={allSelected} onChange={toggleSelectAll}
+                      className="cursor-pointer" title="全選可勾選項目" />
+                  )}
+                </th>
                 <th className="px-3 py-2 text-left">日期</th>
                 <th className="px-3 py-2 text-left">住客</th>
                 <th className="px-3 py-2 text-left hidden sm:table-cell">公司 / 來源</th>
                 <th className="px-3 py-2 text-right">收訂金</th>
                 <th className="px-3 py-2 text-right">沖訂金</th>
                 <th className="px-3 py-2 text-right hidden sm:table-cell">淨額</th>
+                <th className="px-3 py-2 text-center hidden md:table-cell">待入帳天數</th>
                 <th className="px-3 py-2 text-center">狀態</th>
                 <th className="px-3 py-2 text-center min-w-[160px]">操作</th>
               </tr>
@@ -271,7 +381,13 @@ export default function PmsIncomeDepositReconTab({ WAREHOUSES = [] }) {
                 const st = r.depositStatus || '待確認';
                 const badgeCls = STATUS_BADGE[st] || 'bg-gray-100 text-gray-600';
                 return (
-                  <tr key={r.id} className={`hover:bg-gray-50 ${st === '逾期未入' ? 'bg-orange-50/30' : ''}`}>
+                  <tr key={r.id} className={`hover:bg-gray-50 ${st === '逾期未入' ? 'bg-orange-50/30' : ''} ${selectedIds.has(r.id) ? 'bg-green-50/60' : ''}`}>
+                    <td className="px-2 py-2 text-center">
+                      {selectableIds.has(r.id) && (
+                        <input type="checkbox" checked={selectedIds.has(r.id)} onChange={() => toggleSelect(r.id)}
+                          className="cursor-pointer" />
+                      )}
+                    </td>
                     <td className="px-3 py-2">{r.businessDate}</td>
                     <td className="px-3 py-2">{r.guestName || '-'}</td>
                     <td className="px-3 py-2 text-xs text-gray-500 hidden sm:table-cell">
@@ -282,29 +398,98 @@ export default function PmsIncomeDepositReconTab({ WAREHOUSES = [] }) {
                     <td className="px-3 py-2 text-right font-medium hidden sm:table-cell tabular-nums">
                       {netAmt !== 0 ? netAmt.toLocaleString('zh-TW') : '-'}
                     </td>
+                    <td className="px-3 py-2 text-center hidden md:table-cell">
+                      {r.depositIn > 0 && st !== '已入存簿' && st !== '已核對' ? (() => {
+                        const days = pendingDays(r.businessDate);
+                        return (
+                          <span className={`px-1.5 py-0.5 rounded text-xs font-medium tabular-nums ${days > 7 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}>
+                            {days} 天
+                          </span>
+                        );
+                      })() : <span className="text-gray-300">—</span>}
+                    </td>
                     <td className="px-3 py-2 text-center">
-                      <span className={`px-1.5 py-0.5 rounded text-xs ${badgeCls}`}>{st}</span>
+                      <div className="flex flex-col items-center gap-0.5">
+                        <span className={`px-1.5 py-0.5 rounded text-xs ${badgeCls}`}>{st}</span>
+                        {/* 已入存簿：顯示入帳日期 + 存簿連結 */}
+                        {st === '已入存簿' && r.depositBankDate && (
+                          <a
+                            href={`/bank-reconciliation?date=${r.depositBankDate}`}
+                            target="_blank"
+                            className="text-[10px] text-green-600 hover:underline tabular-nums"
+                            title={`${getBankName(r.warehouse)} ${r.depositBankDate}${r.depositBankRef ? ' #' + r.depositBankRef : ''}`}
+                          >
+                            {getBankName(r.warehouse)} {r.depositBankDate}
+                            {r.depositBankRef && <span className="ml-1 text-gray-400">#{r.depositBankRef}</span>}
+                          </a>
+                        )}
+                      </div>
                     </td>
                     <td className="px-3 py-2 text-center text-xs">
-                      {st !== '已入存簿' && (
-                        <button onClick={() => setStatus(r.id, '已入存簿')}
-                          className="text-green-600 hover:underline mr-1.5">已入存簿</button>
-                      )}
-                      {st !== '已核對' && (
-                        <button onClick={() => setStatus(r.id, '已核對')}
-                          className="text-blue-600 hover:underline mr-1.5">已核對</button>
-                      )}
-                      {st !== '逾期未入' && r.depositIn > 0 && (
-                        <button onClick={() => setStatus(r.id, '逾期未入')}
-                          className="text-orange-500 hover:underline mr-1.5">逾期未入</button>
-                      )}
-                      {st !== '差異' && (
-                        <button onClick={() => setStatus(r.id, '差異')}
-                          className="text-red-500 hover:underline mr-1.5">差異</button>
-                      )}
-                      {st !== '待確認' && (
-                        <button onClick={() => setStatus(r.id, '待確認')}
-                          className="text-gray-400 hover:underline">重設</button>
+                      {/* 「已入存簿」需填寫入帳日期 */}
+                      {confirmingId === r.id ? (
+                        <div className="flex flex-col gap-1 items-start">
+                          <div className="flex items-center gap-1 text-[10px] text-gray-500">
+                            <span className="shrink-0">{getBankName(r.warehouse)}</span>
+                            <input
+                              type="date"
+                              value={confirmDate}
+                              onChange={e => setConfirmDate(e.target.value)}
+                              className="border border-green-300 rounded px-1 py-0.5 text-xs w-32 focus:outline-none focus:ring-1 focus:ring-green-400"
+                            />
+                          </div>
+                          <div className="flex items-center gap-1 text-[10px] text-gray-500">
+                            <span className="shrink-0">流水號</span>
+                            <input
+                              type="text"
+                              value={confirmRef}
+                              onChange={e => setConfirmRef(e.target.value)}
+                              placeholder="可選"
+                              maxLength={20}
+                              className="border border-gray-200 rounded px-1 py-0.5 text-xs w-20"
+                            />
+                          </div>
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => setStatus(r.id, '已入存簿', confirmDate, confirmRef)}
+                              disabled={!confirmDate}
+                              className="px-2 py-0.5 text-[10px] bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-40"
+                            >
+                              確認入帳
+                            </button>
+                            <button onClick={() => { setConfirmingId(null); setConfirmDate(''); }}
+                              className="px-2 py-0.5 text-[10px] border border-gray-300 text-gray-500 rounded hover:bg-gray-50">
+                              取消
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          {st !== '已入存簿' && (
+                            <button onClick={() => startConfirmBook(r)}
+                              className="text-green-600 hover:underline mr-1.5">已入存簿</button>
+                          )}
+                          {st === '已入存簿' && !r.depositBankDate && (
+                            <button onClick={() => startConfirmBook(r)}
+                              className="text-green-500 hover:underline mr-1.5 text-[10px]">補填日期</button>
+                          )}
+                          {st !== '已核對' && (
+                            <button onClick={() => setStatus(r.id, '已核對')}
+                              className="text-blue-600 hover:underline mr-1.5">已核對</button>
+                          )}
+                          {st !== '逾期未入' && r.depositIn > 0 && (
+                            <button onClick={() => setStatus(r.id, '逾期未入')}
+                              className="text-orange-500 hover:underline mr-1.5">逾期未入</button>
+                          )}
+                          {st !== '差異' && (
+                            <button onClick={() => setStatus(r.id, '差異')}
+                              className="text-red-500 hover:underline mr-1.5">差異</button>
+                          )}
+                          {st !== '待確認' && (
+                            <button onClick={() => setStatus(r.id, '待確認')}
+                              className="text-gray-400 hover:underline">重設</button>
+                          )}
+                        </>
                       )}
                     </td>
                   </tr>
@@ -313,7 +498,7 @@ export default function PmsIncomeDepositReconTab({ WAREHOUSES = [] }) {
             </tbody>
             <tfoot className="bg-gray-50 text-xs font-semibold">
               <tr>
-                <td colSpan={2} className="px-3 py-2 text-gray-600">合計（{displayed.length} 筆）</td>
+                <td colSpan={3} className="px-3 py-2 text-gray-600">合計（{displayed.length} 筆）</td>
                 <td className="hidden sm:table-cell" />
                 <td className="px-3 py-2 text-right text-green-700 tabular-nums">
                   {displayed.reduce((s, r) => s + (r.depositIn || 0), 0).toLocaleString('zh-TW')}
@@ -321,7 +506,7 @@ export default function PmsIncomeDepositReconTab({ WAREHOUSES = [] }) {
                 <td className="px-3 py-2 text-right text-red-600 tabular-nums">
                   {displayed.reduce((s, r) => s + (r.depositOut || 0), 0).toLocaleString('zh-TW')}
                 </td>
-                <td colSpan={3} />
+                <td colSpan={4} />
               </tr>
             </tfoot>
           </table>

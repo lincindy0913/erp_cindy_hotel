@@ -1553,26 +1553,19 @@ function InvoicePageInner() {
               <div className="flex justify-end gap-3">
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={async () => {
+                    const isDirty = !!editingInvoice || selectedItems.length > 0 || !!formData.invoiceNo.trim() || !!formData.invoiceAmount.toString().trim();
+                    if (isDirty && !(await confirm('表單尚有未儲存的內容，確定要離開？', { title: '放棄變更', danger: true }))) return;
                     setShowAddForm(false);
                     setEditingInvoice(null);
                     setSelectedItems([]);
                     setAvailableItems([]);
                     setSalesSaving(false);
-                    setFilterData({
-                      yearMonth: '',
-                      supplierId: '',
-                      warehouse: ''
-                    });
+                    setFilterData({ yearMonth: '', supplierId: '', warehouse: '' });
                     setFormData({
-                      invoiceNo: '',
-                      invoiceDate: todayStr(),
-                      invoiceTitle: '',
-                      invoiceType: '進貨單',
-                      taxType: '應稅',
-                      invoiceAmount: '',
-                      supplierDiscount: '',
-                      status: '待核銷'
+                      invoiceNo: '', invoiceDate: todayStr(), invoiceTitle: '',
+                      invoiceType: '進貨單', taxType: '應稅',
+                      invoiceAmount: '', supplierDiscount: '', status: '待核銷'
                     });
                   }}
                   className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"

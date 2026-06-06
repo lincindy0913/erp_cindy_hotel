@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Navigation from '@/components/Navigation';
 import Link from 'next/link';
+import { useToast } from '@/context/ToastContext';
 
 const REFRESH_INTERVAL = 300000; // 5 minutes
 
@@ -83,6 +84,7 @@ const NOTIFICATION_TYPES = [
 ];
 
 export default function NotificationsPage() {
+  const { showToast } = useToast();
   const [notifications, setNotifications] = useState([]);
   const [summary, setSummary] = useState({ total: 0, critical: 0, urgent: 0, warning: 0 });
   const [calculatedAt, setCalculatedAt] = useState('');
@@ -98,7 +100,6 @@ export default function NotificationsPage() {
   const [settings, setSettings] = useState({});
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [settingsSaving, setSettingsSaving] = useState(false);
-  const [settingsMessage, setSettingsMessage] = useState('');
 
   const fetchNotifications = useCallback(async () => {
     try {
@@ -162,7 +163,6 @@ export default function NotificationsPage() {
 
   const handleSaveSettings = async () => {
     setSettingsSaving(true);
-    setSettingsMessage('');
     try {
       const res = await fetch('/api/notifications/settings', {
         method: 'PUT',
@@ -170,14 +170,13 @@ export default function NotificationsPage() {
         body: JSON.stringify({ settings }),
       });
       if (res.ok) {
-        setSettingsMessage('設定已儲存');
-        setTimeout(() => setSettingsMessage(''), 3000);
+        showToast('通知設定已儲存', 'success');
       } else {
         const data = await res.json();
-        setSettingsMessage(data.error?.message || '儲存失敗');
+        showToast(data.error?.message || '儲存失敗', 'error');
       }
     } catch (err) {
-      setSettingsMessage('儲存失敗，請稍後再試');
+      showToast('儲存失敗，請稍後再試', 'error');
     } finally {
       setSettingsSaving(false);
     }
@@ -406,11 +405,6 @@ export default function NotificationsPage() {
                   <p className="text-sm text-gray-500 mt-1">選擇您要接收的通知類型，關閉後將不會在通知中心顯示該類別</p>
                 </div>
                 <div className="flex items-center gap-3">
-                  {settingsMessage && (
-                    <span className={`text-sm ${settingsMessage.includes('失敗') ? 'text-red-600' : 'text-green-600'}`}>
-                      {settingsMessage}
-                    </span>
-                  )}
                   <button
                     onClick={handleSaveSettings}
                     disabled={settingsSaving}

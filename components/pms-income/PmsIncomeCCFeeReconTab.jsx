@@ -1,5 +1,8 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
+
+const DEFAULT_FEE_RATE = '0.017'; // 1.7% — 若未設定特店費率時使用
 
 function fmt(n) {
   if (n == null || Number(n) === 0) return '-';
@@ -10,6 +13,13 @@ function fmtPct(n) {
   return (Number(n) * 100).toFixed(2) + '%';
 }
 
+/** 取下一個工作日（跳過週六/日） */
+function nextWorkday(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  do { d.setDate(d.getDate() + 1); } while (d.getDay() === 0 || d.getDay() === 6);
+  return d.toISOString().slice(0, 10);
+}
+
 export default function PmsIncomeCCFeeReconTab({ WAREHOUSES = [] }) {
   const [warehouse, setWarehouse] = useState(WAREHOUSES[0] || '');
   const [month, setMonth] = useState(() => {
@@ -18,18 +28,21 @@ export default function PmsIncomeCCFeeReconTab({ WAREHOUSES = [] }) {
   });
   const [rows, setRows] = useState([]);
   const [ccStatements, setCcStatements] = useState([]);
+  const [merchantConfig, setMerchantConfig] = useState(null);
   const [loading, setLoading] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
-  const [feeRate, setFeeRate] = useState('0.02');
+  const [feeRate, setFeeRate] = useState(DEFAULT_FEE_RATE);
   const [settleDate, setSettleDate] = useState('');
   const [running, setRunning] = useState(false);
   const [msg, setMsg] = useState('');
+  const [batchResult, setBatchResult] = useState(null);
   const [selectedStatement, setSelectedStatement] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setSelectedIds(new Set());
     setSelectedStatement(null);
+    setBatchResult(null);
     try {
       const params = new URLSearchParams();
       if (warehouse) params.set('warehouse', warehouse);
@@ -39,14 +52,30 @@ export default function PmsIncomeCCFeeReconTab({ WAREHOUSES = [] }) {
         const json = await res.json();
         setRows(json.reservations || []);
         setCcStatements(json.ccStatements || []);
-        // Auto-select first CC statement
-        if (json.ccStatements?.length > 0) {
-          setSelectedStatement(json.ccStatements[0]);
-          // Auto-calculate fee rate from statement
+        setMerchantConfig(json.merchantConfig || null);
+
+        // 優先：特店設定的費率（單位：%，需除以100轉為小數）
+        if (json.merchantConfig?.domesticFeeRate) {
+          setFeeRate((json.merchantConfig.domesticFeeRate / 100).toFixed(4));
+        } else if (json.ccStatements?.length > 0) {
+          // 次之：從對帳單反推費率
           const stmt = json.ccStatements[0];
           if (stmt.totalAmount > 0 && stmt.totalFee > 0) {
-            const rate = stmt.totalFee / stmt.totalAmount;
-            setFeeRate(rate.toFixed(4));
+            setFeeRate((stmt.totalFee / stmt.totalAmount).toFixed(4));
+          }
+        }
+
+        // 自動設定結帳日 = 本月最後一筆刷卡日的下一個工作日
+        if (json.reservations?.length > 0) {
+          const lastDate = json.reservations[json.reservations.length - 1]?.businessDate;
+          if (lastDate && !settleDate) setSettleDate(nextWorkday(lastDate));
+        }
+
+        if (json.ccStatements?.length > 0) {
+          setSelectedStatement(json.ccStatements[0]);
+          if (json.ccStatements[0].totalAmount > 0 && json.ccStatements[0].totalFee > 0 && !json.merchantConfig?.domesticFeeRate) {
+            const stmt = json.ccStatements[0];
+            setFeeRate((stmt.totalFee / stmt.totalAmount).toFixed(4));
           }
         }
       }
@@ -81,10 +110,11 @@ export default function PmsIncomeCCFeeReconTab({ WAREHOUSES = [] }) {
   async function runRecon() {
     if (selectedIds.size === 0) { setMsg('請勾選要核對的訂單'); return; }
     const rate = parseFloat(feeRate);
-    if (isNaN(rate) || rate <= 0 || rate > 0.1) { setMsg('手續費率請輸入合理值（例如 0.02 表示 2%）'); return; }
-    if (!settleDate) { setMsg('請選擇結帳日期'); return; }
+    if (isNaN(rate) || rate <= 0 || rate > 0.1) { setMsg('手續費率請輸入合理值（例如 0.017 表示 1.7%）'); return; }
+    if (!settleDate) { setMsg('請選擇結帳日期（通常為刷卡日隔日）'); return; }
     setRunning(true);
     setMsg('');
+    setBatchResult(null);
     try {
       const res = await fetch('/api/pms-income/cc-fee-recon', {
         method: 'POST',
@@ -99,6 +129,7 @@ export default function PmsIncomeCCFeeReconTab({ WAREHOUSES = [] }) {
       const json = await res.json();
       if (res.ok) {
         setMsg(`完成核對 ${json.count} 筆`);
+        setBatchResult(json);
         load();
       } else {
         setMsg(json.error?.message || '核對失敗');
@@ -204,28 +235,65 @@ export default function PmsIncomeCCFeeReconTab({ WAREHOUSES = [] }) {
       )}
 
       {/* Batch recon panel */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex flex-wrap gap-3 items-end">
-        <div>
-          <label className="block text-xs text-gray-600 mb-1">手續費率（小數）</label>
-          <div className="flex items-center gap-1">
-            <input type="number" step="0.0001" min="0" max="0.1" className="border rounded px-2 py-1 text-sm w-24"
-              value={feeRate} onChange={e => setFeeRate(e.target.value)} placeholder="0.02" />
-            <span className="text-xs text-gray-500">= {(parseFloat(feeRate || 0) * 100).toFixed(2)}%</span>
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
+        <div className="flex flex-wrap gap-3 items-end">
+          <div>
+            <label className="block text-xs text-gray-600 mb-1">
+              手續費率
+              {merchantConfig
+                ? <span className="ml-1 text-blue-600">（{merchantConfig.bankName} 設定值）</span>
+                : <span className="ml-1 text-amber-600">（未設定特店，使用預設 1.7%）</span>}
+            </label>
+            <div className="flex items-center gap-1.5">
+              <input type="number" step="0.0001" min="0" max="0.1" className="border rounded px-2 py-1 text-sm w-24"
+                value={feeRate} onChange={e => setFeeRate(e.target.value)} placeholder="0.017" />
+              <span className="text-sm font-medium text-blue-700">= {(parseFloat(feeRate || 0) * 100).toFixed(2)}%</span>
+              <Link href="/settings?tab=creditCard" target="_blank"
+                className="text-xs text-gray-400 hover:text-blue-600 underline ml-1">
+                修改費率設定 →
+              </Link>
+            </div>
           </div>
+          <div>
+            <label className="block text-xs text-gray-600 mb-1">結帳日期（刷卡隔日入存簿）</label>
+            <input type="date" className="border rounded px-2 py-1 text-sm" value={settleDate} onChange={e => setSettleDate(e.target.value)} />
+          </div>
+          <div className="text-xs text-gray-500 self-end pb-1">已勾選 {selectedIds.size} 筆</div>
+          <button
+            onClick={runRecon}
+            disabled={running || selectedIds.size === 0}
+            className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+          >
+            {running ? '核對中...' : '批次核對並建立存簿入帳'}
+          </button>
+          {msg && <span className={`text-sm ${msg.startsWith('完成') ? 'text-green-600' : 'text-red-600'}`}>{msg}</span>}
         </div>
-        <div>
-          <label className="block text-xs text-gray-600 mb-1">結帳日期</label>
-          <input type="date" className="border rounded px-2 py-1 text-sm" value={settleDate} onChange={e => setSettleDate(e.target.value)} />
-        </div>
-        <div className="text-xs text-gray-500 self-end pb-1">已勾選 {selectedIds.size} 筆</div>
-        <button
-          onClick={runRecon}
-          disabled={running || selectedIds.size === 0}
-          className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-        >
-          {running ? '核對中...' : '批次核對信用卡手續費'}
-        </button>
-        {msg && <span className={`text-sm ${msg.startsWith('完成') ? 'text-green-600' : 'text-red-600'}`}>{msg}</span>}
+
+        {/* 試算預覽（核對前） */}
+        {selectedIds.size > 0 && !batchResult && (() => {
+          const selRows = rows.filter(r => selectedIds.has(r.id));
+          const gross = selRows.reduce((s, r) => s + (r.creditCard || 0), 0);
+          const rate  = parseFloat(feeRate) || 0;
+          const fee   = Math.round(gross * rate * 100) / 100;
+          const net   = Math.round((gross - fee) * 100) / 100;
+          return (
+            <div className="bg-white rounded border border-blue-200 px-4 py-3 flex flex-wrap gap-6 text-sm">
+              <span className="text-gray-500">刷卡合計 <strong className="text-gray-800">{gross.toLocaleString('zh-TW')}</strong></span>
+              <span className="text-gray-500">手續費（{(rate*100).toFixed(2)}%） <strong className="text-red-600">-{fee.toLocaleString('zh-TW')}</strong></span>
+              <span className="text-gray-500">預計 {settleDate || '隔日'} 入存簿 <strong className="text-green-700">{net.toLocaleString('zh-TW')}</strong></span>
+            </div>
+          );
+        })()}
+
+        {/* 核對完成後結果 */}
+        {batchResult && (
+          <div className="bg-green-50 border border-green-200 rounded px-4 py-3 text-sm flex flex-wrap gap-6">
+            <span className="text-green-700 font-medium">✓ 核對完成 {batchResult.count} 筆</span>
+            <span className="text-gray-600">刷卡合計 <strong>{Number(batchResult.batchGross).toLocaleString('zh-TW')}</strong></span>
+            <span className="text-gray-600">手續費 <strong className="text-red-600">-{Number(batchResult.batchFee).toLocaleString('zh-TW')}</strong></span>
+            <span className="text-gray-600">已建立存簿入帳（{settleDate}）<strong className="text-green-700">{Number(batchResult.batchNet).toLocaleString('zh-TW')}</strong></span>
+          </div>
+        )}
       </div>
 
       {loading ? (

@@ -39,7 +39,7 @@ export default function OtaReconTab({
       {otaError && <div className="mb-4"><FetchErrorBanner message={otaError} onRetry={runOtaReconcile} /></div>}
       <div className="flex items-center justify-between mb-3">
         <p className="text-[11px] text-gray-400">
-          💡 目前支援 Booking.com 對帳單；Agoda／Expedia 開發中。比對完成後請至「OTA傭金」分頁確認佣金。
+          💡 目前支援 Booking.com 對帳單。比對完成後請至「OTA傭金」分頁確認佣金。
         </p>
         {onGoToCommission && (
           <button onClick={onGoToCommission}
@@ -54,10 +54,8 @@ export default function OtaReconTab({
           <label htmlFor="ota" className="block text-xs text-gray-500 mb-1">OTA 來源</label>
           <select id="ota" className="border rounded-lg px-3 py-1.5 text-sm"
             value={otaSource} onChange={e => setOtaSource(e.target.value)}>
-            {OTA_SOURCES.map(s => (
-              <option key={s.value} value={s.value} disabled={!s.supported}>
-                {s.label}{!s.supported ? '（尚未支援）' : ''}
-              </option>
+            {OTA_SOURCES.filter(s => s.supported).map(s => (
+              <option key={s.value} value={s.value}>{s.label}</option>
             ))}
           </select>
         </div>

@@ -211,7 +211,7 @@ export default function RecordsTab({
           <div>
             <label htmlFor="f-pagesize" className="block text-xs text-gray-500 mb-1">每頁筆數</label>
             <select id="f-pagesize" value={pageSize}
-              onChange={e => { setPageSize(Number(e.target.value)); fetchRecords(1); }}
+              onChange={e => { const s = Number(e.target.value); setPageSize(s); fetchRecords(1, s); }}
               className={inputCls}>
               <option value={50}>50 筆</option>
               <option value={100}>100 筆</option>
@@ -659,7 +659,11 @@ export default function RecordsTab({
               <tbody className="divide-y divide-gray-50">
                 {visibleRecords.length === 0 && (
                   <tr><td colSpan={19} className="text-center py-10 text-gray-400">
-                    {filterPayment ? `無${filterPayment === 'filled' ? '已填付款' : '未填付款'}記錄` : '無資料'}
+                    {filterPayment === 'filled'
+                      ? '目前條件下無已填付款記錄，可嘗試調整月份或館別篩選'
+                      : filterPayment === 'unfilled'
+                        ? '目前條件下無未填付款記錄，表示所有訂單均已完成付款登記'
+                        : '目前查詢範圍無資料，請確認月份與館別設定，或新增訂房記錄'}
                   </td></tr>
                 )}
                 {visibleRecords.map(r => {

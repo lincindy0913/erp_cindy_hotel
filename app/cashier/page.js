@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import NotificationBanner from '@/components/NotificationBanner';
 import ModuleGuideCard from '@/components/ModuleGuideCard';
+import HelpButton from '@/components/HelpButton';
 import FetchErrorBanner from '@/components/FetchErrorBanner';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
@@ -787,7 +788,13 @@ export default function CashierPage() {
         <div className="flex gap-2 mb-4 items-center">
           {TABS.map(tab => (
             <button key={tab.key}
-              onClick={() => { setActiveTab(tab.key); setExpandedOrderId(null); setSelectedOrderIds(new Set()); }}
+              onClick={async () => {
+                if (tab.key !== activeTab) {
+                  const hasBatch = selectedOrderIds.size > 0 && batchAccounts.some(a => a.accountId && parseFloat(a.amount) > 0);
+                  if (hasBatch && !(await confirm('切換分頁會清除目前的批次帳務設定，確定繼續？', { title: '切換分頁' }))) return;
+                }
+                setActiveTab(tab.key); setExpandedOrderId(null); setSelectedOrderIds(new Set());
+              }}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 activeTab === tab.key
                   ? 'bg-amber-600 text-white'
@@ -809,6 +816,14 @@ export default function CashierPage() {
 
         {/* Orders Table */}
         {activeTab !== 'report' && <div className="bg-white rounded-lg shadow tbl-wrap">
+          {!loading && displayOrders.length > 0 && (
+            <div className="px-4 py-2 border-b text-xs text-gray-400 flex items-center gap-2">
+              <span>共 {displayOrders.length} 筆</span>
+              {searchFilter.sourceType && (
+                <span className="text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">已套用類別篩選</span>
+              )}
+            </div>
+          )}
           {loading ? (
             <div className="p-8 text-center text-gray-500">載入中...</div>
           ) : displayOrders.length === 0 ? (

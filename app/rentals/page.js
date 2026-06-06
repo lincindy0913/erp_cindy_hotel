@@ -911,7 +911,7 @@ function RentalsPage() {
                     }}
                     className="w-full border rounded px-3 py-2 text-sm">
                     <option value="">-- 選擇帳戶 --</option>
-                    {accounts.map(a => <option key={a.id} value={String(a.id)}>{a.name}</option>)}
+                    {accounts.filter(a => a.isActive !== false).map(a => <option key={a.id} value={String(a.id)}>{a.name}</option>)}
                   </select>
                 </div>
                 <div>

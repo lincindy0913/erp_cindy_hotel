@@ -24,7 +24,7 @@ export default function OverviewTab({
       {/* Total summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         {ACCOUNT_TYPES.map(type => {
-          const total = accounts.filter(a => a.type === type).reduce((s, a) => s + a.currentBalance, 0);
+          const total = accounts.filter(a => a.type === type).reduce((s, a) => s + (a.currentBalance ?? 0), 0);
           return (
             <div key={type} className="bg-white rounded-lg shadow-sm p-4 border-l-4 border-emerald-500">
               <div className="text-sm text-gray-500 mb-1">{type}</div>
@@ -39,8 +39,8 @@ export default function OverviewTab({
       {/* Grand total */}
       <div className="bg-emerald-50 border-2 border-emerald-200 rounded-lg p-4 mb-6 flex justify-between items-center">
         <span className="text-lg font-semibold text-gray-700">全部帳戶總餘額</span>
-        <span className={`text-2xl font-bold ${accounts.reduce((s, a) => s + a.currentBalance, 0) >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
-          {formatMoney(accounts.reduce((s, a) => s + a.currentBalance, 0))}
+        <span className={`text-2xl font-bold ${accounts.reduce((s, a) => s + (a.currentBalance ?? 0), 0) >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+          {formatMoney(accounts.reduce((s, a) => s + (a.currentBalance ?? 0), 0))}
         </span>
       </div>
 
@@ -93,8 +93,8 @@ export default function OverviewTab({
             </div>
             {overviewCategorySummary.incomeByCategory?.length > 0 ? (
               <div className="space-y-2">
-                {overviewCategorySummary.incomeByCategory.slice(0, 5).map((item, idx) => (
-                  <div key={idx} className="flex justify-between items-center">
+                {overviewCategorySummary.incomeByCategory.slice(0, 5).map((item) => (
+                  <div key={item.name} className="flex justify-between items-center">
                     <span className="text-sm text-gray-600">{item.name}</span>
                     <div className="flex items-center gap-2">
                       <div className="w-24 bg-gray-100 rounded-full h-2">
@@ -117,8 +117,8 @@ export default function OverviewTab({
             </div>
             {overviewCategorySummary.expenseByCategory?.length > 0 ? (
               <div className="space-y-2">
-                {overviewCategorySummary.expenseByCategory.slice(0, 5).map((item, idx) => (
-                  <div key={idx} className="flex justify-between items-center">
+                {overviewCategorySummary.expenseByCategory.slice(0, 5).map((item) => (
+                  <div key={item.name} className="flex justify-between items-center">
                     <span className="text-sm text-gray-600">{item.name}</span>
                     <div className="flex items-center gap-2">
                       <div className="w-24 bg-gray-100 rounded-full h-2">

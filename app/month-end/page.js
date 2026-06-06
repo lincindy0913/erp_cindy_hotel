@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useEscKey } from '@/lib/hooks/useEscKey';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import FetchErrorBanner from '@/components/FetchErrorBanner';
@@ -32,8 +33,17 @@ export default function MonthEndPage() {
   const isAdmin = session?.user?.role === 'admin';
   const userName = session?.user?.name || '';
 
-  const currentYear = new Date().getFullYear();
-  const [selectedYear, setSelectedYear] = useState(currentYear);
+  const [currentYear, setCurrentYear] = useState(() => new Date().getFullYear());
+  const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear());
+
+  // 跨年時同步更新 currentYear（每分鐘檢查一次）
+  useEffect(() => {
+    const id = setInterval(() => {
+      const y = new Date().getFullYear();
+      setCurrentYear(prev => prev !== y ? y : prev);
+    }, 60_000);
+    return () => clearInterval(id);
+  }, []);
   const [monthsData, setMonthsData] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -65,6 +75,13 @@ export default function MonthEndPage() {
   const [unlockReason, setUnlockReason] = useState('');
   const [unlockLoading, setUnlockLoading] = useState(false);
 
+  // Esc 鍵關閉 modal（preCheck 執行中不可關）
+  useEscKey(useCallback(() => {
+    if (showUnlock && !unlockLoading)        { setShowUnlock(false);      return; }
+    if (showMonthDetail)                     { setShowMonthDetail(false); return; }
+    if (showPreCheck && !preCheckLoading)    { setShowPreCheck(false);    return; }
+  }, [showUnlock, unlockLoading, showMonthDetail, showPreCheck, preCheckLoading]));
+
   // Lock confirmation
   const [lockLoading, setLockLoading] = useState(false);
   const [monthDataError, setMonthDataError] = useState(null);
@@ -77,6 +94,12 @@ export default function MonthEndPage() {
   useEffect(() => {
     fetchMonthData();
   }, [selectedYear]);
+
+  // 年份或月份改變時自動重載清單
+  useEffect(() => {
+    fetchChecklist(checklistMonth);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedYear, checklistMonth]);
 
   async function fetchMonthData() {
     setLoading(true);
@@ -627,7 +650,7 @@ export default function MonthEndPage() {
                 disabled={checklistLoading}
                 className="text-xs px-2.5 py-1 bg-slate-600 text-white rounded hover:bg-slate-700 disabled:opacity-50 whitespace-nowrap"
               >
-                {checklistLoading ? '載入中…' : checklistData ? '重新整理' : '載入清單'}
+                {checklistLoading ? '載入中…' : '重新整理'}
               </button>
             </div>
           </div>
@@ -700,13 +723,7 @@ export default function MonthEndPage() {
             </div>
           ) : (
             <div className="px-4 py-6 text-center">
-              <p className="text-sm text-slate-400 mb-3">點擊「載入清單」查詢本月月結前各項狀態</p>
-              <button
-                onClick={() => fetchChecklist(checklistMonth)}
-                className="text-sm px-4 py-1.5 bg-slate-600 text-white rounded-lg hover:bg-slate-700"
-              >
-                載入清單
-              </button>
+              <div className="animate-spin inline-block w-5 h-5 border-2 border-slate-300 border-t-slate-600 rounded-full" />
             </div>
           )}
         </div>
@@ -857,8 +874,8 @@ export default function MonthEndPage() {
                       const prevName = md.month > 1 ? `${MONTH_NAMES[md.month - 2]}` : '上年度 12 月';
                       return (
                         <button
-                          onClick={() => ok && handleStartClose(md.month)}
-                          disabled={preCheckLoading || !ok}
+                          onClick={() => ok && !showPreCheck && !preCheckLoading && handleStartClose(md.month)}
+                          disabled={preCheckLoading || !ok || showPreCheck}
                           title={!ok ? `請先完成 ${prevName}月結（須依序 1→12 月）` : '執行月結'}
                           className={`flex-1 text-xs px-3 py-1.5 rounded-lg transition-colors font-medium ${
                             ok
@@ -919,8 +936,8 @@ export default function MonthEndPage() {
       {/* Pre-check / Closing Result Modal */}
       {/* ========================================== */}
       {showPreCheck && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-auto">
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => !preCheckLoading && setShowPreCheck(false)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
             <div className="sticky top-0 bg-white px-6 py-4 border-b border-slate-200 flex items-center justify-between z-10">
               <h3 className="text-lg font-bold text-slate-800">
                 月結作業 - {selectedYear}/{String(preCheckMonth).padStart(2, '0')}
@@ -1151,8 +1168,8 @@ export default function MonthEndPage() {
       {/* Month Detail Modal (all reports for a month) */}
       {/* ========================================== */}
       {showMonthDetail && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-auto">
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowMonthDetail(false)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
             <div className="sticky top-0 bg-white px-6 py-4 border-b border-slate-200 flex items-center justify-between z-10">
               <h3 className="text-lg font-bold text-slate-800">
                 {monthDetail ? `${monthDetail.year}/${String(monthDetail.month).padStart(2, '0')} 月結報表` : '月結詳情'}
@@ -1278,8 +1295,8 @@ export default function MonthEndPage() {
       {/* Unlock Modal */}
       {/* ========================================== */}
       {showUnlock && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => !unlockLoading && setShowUnlock(false)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
             <div className="px-6 py-4 border-b border-slate-200">
               <h3 className="text-lg font-bold text-slate-800">解鎖月結</h3>
             </div>
@@ -1319,9 +1336,13 @@ export default function MonthEndPage() {
                   value={unlockReason}
                   onChange={e => setUnlockReason(e.target.value)}
                   rows={3}
+                  maxLength={500}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-400 focus:border-amber-400"
                   placeholder="請說明解鎖原因..."
                 />
+                <p className={`text-xs text-right mt-1 ${unlockReason.length >= 480 ? 'text-amber-600' : 'text-gray-400'}`}>
+                  {unlockReason.length} / 500
+                </p>
               </div>
             </div>
 

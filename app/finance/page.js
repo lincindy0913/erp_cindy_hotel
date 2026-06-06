@@ -1086,17 +1086,23 @@ export default function PaymentPage() {
                 >
                   取消
                 </button>
-                <button
-                  type="submit"
-                  disabled={selectedInvoiceIds.size === 0 || formSaving}
-                  className={`px-6 py-2 rounded-lg ${
-                    selectedInvoiceIds.size === 0 || formSaving
-                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                      : 'bg-indigo-600 text-white hover:bg-indigo-700'
-                  }`}
-                >
-                  {formSaving ? '儲存中…' : '儲存草稿'}
-                </button>
+                {(() => {
+                  const checkIncomplete = formData.paymentMethod === '支票' && (
+                    !formData.checkIssueDate?.trim() || !formData.checkDate?.trim() ||
+                    !formData.checkNo?.trim() || !formData.checkAccountId
+                  );
+                  const isDisabled = selectedInvoiceIds.size === 0 || formSaving || checkIncomplete;
+                  return (
+                    <button
+                      type="submit"
+                      disabled={isDisabled}
+                      title={checkIncomplete ? '請填寫支票付款必填欄位（付款日期、支票日期、票號、帳戶）' : ''}
+                      className={`px-6 py-2 rounded-lg ${isDisabled ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}
+                    >
+                      {formSaving ? '儲存中…' : '儲存草稿'}
+                    </button>
+                  );
+                })()}
               </div>
             </form>
           </div>

@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Navigation from '@/components/Navigation';
 import FetchErrorBanner from '@/components/FetchErrorBanner';
 import { sortRows, SortableTh } from '@/components/SortableTh';
+import HelpButton from '@/components/HelpButton';
 import { useDashboardTab } from '@/components/reconciliation/useDashboardTab';
 import { useAccountTab } from '@/components/reconciliation/useAccountTab';
 import { useCreditCardTab, CC_STATUS_MAP } from '@/components/reconciliation/useCreditCardTab';
@@ -981,6 +982,7 @@ function ReconciliationPageInner() {
             <h2 className="text-2xl font-bold text-gray-800">存簿對帳</h2>
             <p className="text-sm text-gray-500 mt-1">信用卡、OTA 等科目對帳。銀行存款月結調節表請至 <Link href="/bank-reconciliation" className="text-violet-600 hover:underline">存簿核對 →</Link></p>
           </div>
+          <HelpButton anchor="九銀行對帳" />
         </div>
 
         {/* Message */}

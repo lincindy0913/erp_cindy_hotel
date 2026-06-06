@@ -6,6 +6,7 @@ import { useSession } from 'next-auth/react';
 import { useSearchParams } from 'next/navigation';
 import Navigation from '@/components/Navigation';
 import ModuleGuideCard from '@/components/ModuleGuideCard';
+import HelpButton from '@/components/HelpButton';
 import FetchErrorBanner from '@/components/FetchErrorBanner';
 import ExportButtons from '@/components/ExportButtons';
 import { EXPORT_CONFIGS } from '@/lib/export-columns';
@@ -651,14 +652,14 @@ function PurchasingPageInner() {
         <div className="flex gap-2 mb-4 border-b border-gray-200">
           <button
             type="button"
-            onClick={() => setPurchasePageTab('orders')}
+            onClick={() => { setPurchasePageTab('orders'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
             className={`px-4 py-2 text-sm font-medium rounded-t-lg ${purchasePageTab === 'orders' ? 'bg-orange-100 text-orange-800 border border-b-0 border-orange-300' : 'text-gray-600 hover:bg-gray-100'}`}
           >
             進貨單
           </button>
           <button
             type="button"
-            onClick={() => setPurchasePageTab('monthlyExpense')}
+            onClick={() => { setPurchasePageTab('monthlyExpense'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
             className={`px-4 py-2 text-sm font-medium rounded-t-lg ${purchasePageTab === 'monthlyExpense' ? 'bg-orange-100 text-orange-800 border border-b-0 border-orange-300' : 'text-gray-600 hover:bg-gray-100'}`}
           >
             進銷存每月費用
@@ -669,8 +670,11 @@ function PurchasingPageInner() {
           <>
         {/* 標題與操作 */}
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold">進貨單管理</h2>
+          <div>
+            <h2 className="text-2xl font-bold">進貨單管理</h2>
+          </div>
           <div className="flex items-center gap-3">
+            <HelpButton anchor="四採購與庫存" />
             <ExportButtons
               data={purchases.map(p => ({
                 ...p,
@@ -1320,7 +1324,9 @@ function PurchasingPageInner() {
               <div className="flex justify-end gap-3">
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={async () => {
+                    const isDirty = !!editingPurchase || items.length > 0 || !!formData.warehouse || !!formData.supplierId;
+                    if (isDirty && !(await confirm('表單內有未儲存的資料，確定要離開？', { title: '放棄變更', danger: true }))) return;
                     setShowAddForm(false);
                     setEditingPurchase(null);
                     setItems([]);
@@ -1400,14 +1406,13 @@ function PurchasingPageInner() {
             >
               查詢
             </button>
-            {(filterData.supplierId || filterData.startDate || filterData.endDate || filterData.warehouse) && (
-              <button
-                onClick={handleResetFilter}
-                className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-              >
-                清除
-              </button>
-            )}
+            <button
+              onClick={handleResetFilter}
+              disabled={!filterData.supplierId && !filterData.startDate && !filterData.endDate && !filterData.warehouse}
+              className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              清除篩選
+            </button>
             <span className="text-sm text-gray-600">
               顯示 {purchases.length} 筆（共 {totalCount} 筆）
             </span>

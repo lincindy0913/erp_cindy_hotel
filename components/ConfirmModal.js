@@ -51,16 +51,22 @@ export default function ConfirmModal({ dialog, onClose, onConfirm }) {
   useEffect(() => {
     if (dialog?.open) {
       triggerRef.current = document.activeElement;
-      // 下一 tick 再 focus，確保 modal 已渲染
       setTimeout(() => confirmBtnRef.current?.focus(), 0);
     } else {
-      // 關閉後把 focus 歸還給觸發元素
       if (triggerRef.current && typeof triggerRef.current.focus === 'function') {
         triggerRef.current.focus();
         triggerRef.current = null;
       }
     }
   }, [dialog?.open]);
+
+  // Esc 鍵關閉
+  useEffect(() => {
+    if (!dialog?.open) return;
+    const handler = (e) => { if (e.key === 'Escape') onClose?.(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [dialog?.open, onClose]);
 
   if (!dialog?.open) return null;
   const handleConfirm = onConfirm ?? dialog._onConfirm;
