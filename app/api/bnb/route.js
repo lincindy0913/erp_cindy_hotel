@@ -78,9 +78,35 @@ export async function GET(request) {
     if (source)    where.source      = source;
     if (status)    where.status      = status;  // explicit status overrides default
     if (guestName) where.guestName   = { contains: guestName.replace(/\s+/g, '').replace(/[%_\\]/g, '\\$&'), mode: 'insensitive' };
-    const paymentFilter = searchParams.get('paymentFilter'); // 'filled' | 'unfilled'
+    const paymentFilter = searchParams.get('paymentFilter'); // 'filled' | 'unfilled' | 'mismatch'
     if (paymentFilter === 'filled')   where.paymentFilled = true;
     if (paymentFilter === 'unfilled') where.paymentFilled = false;
+
+    // ── mismatch：server-side 找出付款總額 ≠ 房費+消費的記錄 ─────
+    let mismatchIds = null;
+    let mismatchOverflow = false;
+    if (paymentFilter === 'mismatch') {
+      where.paymentFilled = true;
+      where.isComplimentary = false;
+      // 先拿所有已填記錄的金額欄位（輕量 select），再 JS 過濾
+      const allFilled = await prisma.bnbBookingRecord.findMany({
+        where,
+        select: { id: true, payDeposit: true, payTransfer: true, payCard: true, payCash: true, payVoucher: true, roomCharge: true, otherCharge: true },
+      });
+      const ids = allFilled
+        .filter(r => {
+          const pt = Number(r.payDeposit) + Number(r.payTransfer) + Number(r.payCard) + Number(r.payCash) + Number(r.payVoucher);
+          const ct = Number(r.roomCharge) + Number(r.otherCharge);
+          return Math.abs(pt - ct) > 0.01;
+        })
+        .map(r => r.id);
+      mismatchIds = ids;
+      mismatchOverflow = false; // No overflow — we checked ALL filled records
+      // Replace where filter with exact id list for pagination
+      delete where.paymentFilled;
+      delete where.isComplimentary;
+      where.id = { in: ids };
+    }
 
     const [total, records] = await prisma.$transaction([
       prisma.bnbBookingRecord.count({ where }),
@@ -125,7 +151,10 @@ export async function GET(request) {
       cashMatched:     r.cashCashTxId     ? matchedSet.has(r.cashCashTxId)     : false,
       cardMatched:     r.cardCashTxId     ? matchedSet.has(r.cardCashTxId)     : false,
     }));
-    return NextResponse.json({ data, total, page, pageSize });
+    return NextResponse.json({
+      data, total, page, pageSize,
+      ...(mismatchIds !== null && { mismatchCount: mismatchIds.length, mismatchOverflow }),
+    });
   } catch (error) {
     return handleApiError(error);
   }

@@ -112,8 +112,12 @@ export async function PATCH(request) {
           const refreshed = { ...existing, ...updateData };
           for (const payType of PAY_TYPE_KEYS) {
             const entryData = bookingToPaymentEntry(refreshed, payType);
-            if (entryData) await syncPaymentEntry(prisma, id, payType, entryData)
-              .catch(e => console.error('[syncPaymentEntry] bookingId=%d payType=%s:', id, payType, e.message));
+            if (entryData) {
+              await syncPaymentEntry(prisma, id, payType, entryData).catch(e => {
+                console.error('[syncPaymentEntry] bookingId=%d payType=%s:', id, payType, e.message);
+                failures.push({ id, error: `付款明細分表同步失敗（${payType}）：${e.message}`, type: 'entry_sync' });
+              });
+            }
           }
 
           // 同步 BnbBossWithdraw

@@ -63,11 +63,8 @@ export function useBnbRecords() {
       if (filterSource)    p.set('source', filterSource);
       if (filterStatus)    p.set('status', filterStatus);
       if (filterWarehouse) p.set('warehouse', filterWarehouse);
-      if (filterPayment === 'mismatch') {
-        // mismatch 需要全部已填記錄再前端過濾
-        p.set('paymentFilter', 'filled');
-        p.set('pageSize', '500');
-      } else if (filterPayment) {
+      if (filterPayment) {
+        // mismatch 由 API server-side 過濾（全月範圍，無 500 筆上限）
         p.set('paymentFilter', filterPayment);
       }
       const res = await fetch(`/api/bnb?${p}`);
@@ -84,6 +81,9 @@ export function useBnbRecords() {
       setRecords(json.data ?? json);
       setRecTotal(json.total ?? (json.data ?? json).length);
       setRecPage(page);
+      if (json.mismatchOverflow) {
+        showToast('金額不符記錄超過顯示上限，部分結果可能未顯示，請縮小篩選條件', 'warning');
+      }
     } catch (e) {
       showToast(`載入訂房記錄失敗：${e.message}`, 'error');
       setRecError(`載入訂房記錄失敗：${e.message}`);

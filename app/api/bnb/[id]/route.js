@@ -133,10 +133,18 @@ export async function PATCH(request, { params }) {
         },
       });
       if (refreshed) {
+        const entryFailures = [];
         for (const payType of PAY_TYPE_KEYS) {
           const entryData = bookingToPaymentEntry(refreshed, payType);
-          if (entryData) await syncPaymentEntry(prisma, id, payType, entryData)
-            .catch(e => console.error('[syncPaymentEntry] bookingId=%d payType=%s:', id, payType, e.message));
+          if (entryData) {
+            await syncPaymentEntry(prisma, id, payType, entryData).catch(e => {
+              console.error('[syncPaymentEntry] bookingId=%d payType=%s:', id, payType, e.message);
+              entryFailures.push(payType);
+            });
+          }
+        }
+        if (entryFailures.length > 0) {
+          console.warn(`[syncPaymentEntry] bookingId=${id} 分表同步部分失敗: ${entryFailures.join(', ')}`);
         }
       }
     }
