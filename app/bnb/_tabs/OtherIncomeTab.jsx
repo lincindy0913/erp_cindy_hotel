@@ -143,7 +143,7 @@ export default function OtherIncomeTab({
                     <span className="text-gray-700 flex-1">{t.description}</span>
                     <span className="font-semibold text-indigo-700">NT${Number(t.defaultAmt).toLocaleString()}</span>
                     <button
-                      onClick={() => deleteRecurringTemplate(t.id)}
+                      onClick={() => confirm(`確定停用模板「${t.description}」？`, () => deleteRecurringTemplate(t.id), '停用')}
                       className="text-red-400 hover:text-red-600 hover:underline"
                     >
                       停用

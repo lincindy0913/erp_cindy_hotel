@@ -31,9 +31,11 @@ export function useBnbRecords() {
   const [filterSource,   setFilterSource]   = useState('');
   const [filterStatus,   setFilterStatus]   = useState('');
   const [filterWarehouse,setFilterWarehouse]= useState(() => getLS('bnb_filterWarehouse', ''));
+  const [pageSize,       setPageSize]       = useState(() => parseInt(getLS('bnb_pageSize', '200')));
 
   useEffect(() => { try { localStorage.setItem('bnb_filterMonth', filterMonth); } catch {} }, [filterMonth]);
   useEffect(() => { try { localStorage.setItem('bnb_filterWarehouse', filterWarehouse); } catch {} }, [filterWarehouse]);
+  useEffect(() => { try { localStorage.setItem('bnb_pageSize', String(pageSize)); } catch {} }, [pageSize]);
   const [filterPayment,  setFilterPayment]  = useState(''); // '' | 'unfilled' | 'filled'
 
   // ── 批次填入 state ────────────────────────────────────────────
@@ -63,7 +65,7 @@ export function useBnbRecords() {
   const fetchRecords = useCallback(async (page = 1) => {
     setRecLoading(true);
     try {
-      const p = new URLSearchParams({ month: filterMonth, page: String(page), pageSize: '200' });
+      const p = new URLSearchParams({ month: filterMonth, page: String(page), pageSize: String(pageSize) });
       if (filterSource)    p.set('source', filterSource);
       if (filterStatus)    p.set('status', filterStatus);
       if (filterWarehouse) p.set('warehouse', filterWarehouse);
@@ -102,17 +104,26 @@ export function useBnbRecords() {
     }
     setBatchApplying(true);
     try {
-      const results = await Promise.all([...selectedIds].map(id =>
-        fetch(`/api/bnb/${id}`, {
+      const idList = [...selectedIds];
+      const results = await Promise.all(idList.map(async id => {
+        const res = await fetch(`/api/bnb/${id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status: batchValue }),
-        })
-      ));
-      const failed = results.filter(r => !r.ok).length;
-      const succeeded = results.length - failed;
-      if (failed > 0) {
-        showToast(`${succeeded} 筆成功，${failed} 筆失敗`, 'error');
+        });
+        const body = await res.json().catch(() => ({}));
+        return { id, ok: res.ok, error: body?.error || null };
+      }));
+      const failed    = results.filter(r => !r.ok);
+      const succeeded = results.length - failed.length;
+      if (failed.length > 0) {
+        // 找失敗記錄的姓名（從 records 陣列）
+        const failNames = failed
+          .map(f => records.find(r => r.id === f.id)?.guestName || `#${f.id}`)
+          .slice(0, 5)
+          .join('、');
+        const extra = failed.length > 5 ? `…等 ${failed.length} 筆` : '';
+        showToast(`${succeeded} 筆成功，${failed.length} 筆失敗：${failNames}${extra}`, 'error');
       } else {
         showToast(`已套用 ${succeeded} 筆`, 'success');
       }
@@ -374,6 +385,7 @@ export function useBnbRecords() {
     filterStatus, setFilterStatus,
     filterWarehouse, setFilterWarehouse,
     filterPayment, setFilterPayment,
+    pageSize, setPageSize,
     selectedIds, setSelectedIds,
     batchField, setBatchField,
     batchValue, setBatchValue,

@@ -55,6 +55,7 @@ export default function RecordsTab({
   filterStatus, setFilterStatus,
   filterWarehouse, setFilterWarehouse,
   filterPayment, setFilterPayment,
+  pageSize, setPageSize,
   selectedIds, setSelectedIds,
   batchField, setBatchField,
   batchValue, setBatchValue,
@@ -206,6 +207,17 @@ export default function RecordsTab({
               {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
             </select>
             <WhQuickBtns list={warehouseList} value={filterWarehouse} onChange={setFilterWarehouse} />
+          </div>
+          <div>
+            <label htmlFor="f-pagesize" className="block text-xs text-gray-500 mb-1">每頁筆數</label>
+            <select id="f-pagesize" value={pageSize}
+              onChange={e => { setPageSize(Number(e.target.value)); fetchRecords(1); }}
+              className={inputCls}>
+              <option value={50}>50 筆</option>
+              <option value={100}>100 筆</option>
+              <option value={200}>200 筆</option>
+              <option value={500}>500 筆</option>
+            </select>
           </div>
           <button onClick={fetchRecords} className={`${btnCls} bg-indigo-50 text-indigo-700`}>查詢</button>
           <button onClick={() => setAddBookingOpen(true)}
@@ -613,27 +625,34 @@ export default function RecordsTab({
                       onChange={toggleSelectAll}
                       className="rounded cursor-pointer" />
                   </th>
-                  <th className="px-3 py-2 text-left font-medium whitespace-nowrap">館別</th>
-                  <th className="px-3 py-2 text-left font-medium whitespace-nowrap">來源</th>
+                  {/* 手機隱藏：館別、來源（sm+可見） */}
+                  <th className="px-3 py-2 text-left font-medium whitespace-nowrap hidden sm:table-cell">館別</th>
+                  <th className="px-3 py-2 text-left font-medium whitespace-nowrap hidden sm:table-cell">來源</th>
+                  {/* 必顯：姓名 */}
                   <th className="px-3 py-2 text-left font-medium whitespace-nowrap">姓名</th>
-                  <th className="px-3 py-2 text-left font-medium whitespace-nowrap">房間</th>
+                  {/* 手機隱藏：房間 */}
+                  <th className="px-3 py-2 text-left font-medium whitespace-nowrap hidden sm:table-cell">房間</th>
+                  {/* 必顯：入住、退房 */}
                   <th className="px-3 py-2 text-left font-medium whitespace-nowrap">入住</th>
-                  <th className="px-3 py-2 text-left font-medium whitespace-nowrap">退房</th>
-                  <th className="px-3 py-2 text-left font-medium whitespace-nowrap">房費</th>
-                  <th className="px-3 py-2 text-left font-medium whitespace-nowrap">消費</th>
-                  <th className="px-3 py-2 text-left font-medium whitespace-nowrap">
+                  <th className="px-3 py-2 text-left font-medium whitespace-nowrap hidden sm:table-cell">退房</th>
+                  {/* 手機隱藏：房費、消費 */}
+                  <th className="px-3 py-2 text-left font-medium whitespace-nowrap hidden md:table-cell">房費</th>
+                  <th className="px-3 py-2 text-left font-medium whitespace-nowrap hidden md:table-cell">消費</th>
+                  {/* 付款欄：手機隱藏 */}
+                  <th className="px-3 py-2 text-left font-medium whitespace-nowrap hidden lg:table-cell">
                     訂金{editMode && <span className="block text-[10px] font-normal opacity-60">後五碼</span>}
                   </th>
-                  <th className="px-3 py-2 text-left font-medium whitespace-nowrap">
+                  <th className="px-3 py-2 text-left font-medium whitespace-nowrap hidden lg:table-cell">
                     當天匯款{editMode && <span className="block text-[10px] font-normal opacity-60">後五碼</span>}
                   </th>
-                  <th className="px-3 py-2 text-left font-medium whitespace-nowrap">刷卡</th>
-                  <th className="px-3 py-2 text-left font-medium whitespace-nowrap">手續費</th>
-                  <th className="px-3 py-2 text-left font-medium whitespace-nowrap">現金</th>
-                  <th className="px-3 py-2 text-left font-medium whitespace-nowrap">住宿卷</th>
-                  <th className="px-3 py-2 text-left font-medium whitespace-nowrap">金流</th>
+                  <th className="px-3 py-2 text-left font-medium whitespace-nowrap hidden lg:table-cell">刷卡</th>
+                  <th className="px-3 py-2 text-left font-medium whitespace-nowrap hidden xl:table-cell">手續費</th>
+                  <th className="px-3 py-2 text-left font-medium whitespace-nowrap hidden lg:table-cell">現金</th>
+                  <th className="px-3 py-2 text-left font-medium whitespace-nowrap hidden xl:table-cell">住宿卷</th>
+                  {/* 金流、狀態：md+ */}
+                  <th className="px-3 py-2 text-left font-medium whitespace-nowrap hidden md:table-cell">金流</th>
                   <th className="px-3 py-2 text-left font-medium whitespace-nowrap">狀態</th>
-                  <th className="px-3 py-2 text-left font-medium whitespace-nowrap">備註</th>
+                  <th className="px-3 py-2 text-left font-medium whitespace-nowrap hidden sm:table-cell">備註</th>
                   {!editMode && <th className="px-3 py-2 text-center font-medium whitespace-nowrap">操作</th>}
                 </tr>
               </thead>
@@ -758,15 +777,15 @@ export default function RecordsTab({
                             className="rounded cursor-pointer" />
                         )}
                       </td>
-                      <td className="px-3 py-2 text-gray-400 text-xs whitespace-nowrap">{r.warehouse}</td>
-                      <td className="px-3 py-2 whitespace-nowrap">
+                      <td className="px-3 py-2 text-gray-400 text-xs whitespace-nowrap hidden sm:table-cell">{r.warehouse}</td>
+                      <td className="px-3 py-2 whitespace-nowrap hidden sm:table-cell">
                         <span className={`text-xs px-1.5 py-0.5 rounded ${SOURCE_COLORS[r.source] || SOURCE_COLORS['其他']}`}>{r.source}</span>
                       </td>
                       <td className="px-3 py-2 whitespace-nowrap max-w-[140px]">
                         <span className="truncate">{r.guestName}</span>
                         {r.isComplimentary && <span className="ml-1 text-[10px] bg-rose-100 text-rose-600 px-1 py-0.5 rounded">招待</span>}
                       </td>
-                      <td className="px-3 py-2 text-gray-500 text-xs">{r.roomNo || '—'}</td>
+                      <td className="px-3 py-2 text-gray-500 text-xs hidden sm:table-cell">{r.roomNo || '—'}</td>
                       <td className="px-3 py-2 text-gray-600 text-xs whitespace-nowrap">
                         {r.checkInDate}
                         {r.checkOutDate && r.checkOutDate.substring(0, 7) !== r.importMonth && (
@@ -774,8 +793,8 @@ export default function RecordsTab({
                             title={`退房日 ${r.checkOutDate} 與入住月 ${r.importMonth} 不同月份；此訂單收入整筆計入入住月`}>跨月</span>
                         )}
                       </td>
-                      <td className="px-3 py-2 text-gray-600 text-xs whitespace-nowrap">{r.checkOutDate}</td>
-                      <td className={`px-3 py-2 text-right ${paymentMismatch ? 'text-red-600' : ''}`}>
+                      <td className="px-3 py-2 text-gray-600 text-xs whitespace-nowrap hidden sm:table-cell">{r.checkOutDate}</td>
+                      <td className={`px-3 py-2 text-right hidden md:table-cell ${paymentMismatch ? 'text-red-600' : ''}`}>
                         {Math.round(Number(r.roomCharge)).toLocaleString()}
                         {paymentMismatch && (
                           <div className="text-[10px] text-red-500 whitespace-nowrap" title={`收款合計 ${Math.round(payTotal).toLocaleString()} ≠ 房費+消費 ${Math.round(chargeTotal).toLocaleString()}`}>
@@ -783,10 +802,10 @@ export default function RecordsTab({
                           </div>
                         )}
                       </td>
-                      <td className="px-3 py-2 text-right text-gray-500">{Number(r.otherCharge) > 0 ? Math.round(Number(r.otherCharge)).toLocaleString() : '—'}</td>
+                      <td className="px-3 py-2 text-right text-gray-500 hidden md:table-cell">{Number(r.otherCharge) > 0 ? Math.round(Number(r.otherCharge)).toLocaleString() : '—'}</td>
 
                       {/* 訂金 + 後五碼（點擊開啟付款 Modal 以填寫日期+後五碼） */}
-                      <td className="px-3 py-1.5 text-right">
+                      <td className="px-3 py-1.5 text-right hidden lg:table-cell">
                         {inExcelMode ? (
                           <div className="flex flex-col gap-0.5 items-end">
                             {excelInput('payDeposit', 'border-blue-300 focus:ring-blue-300')}
@@ -821,7 +840,7 @@ export default function RecordsTab({
                       </td>
 
                       {/* 當天匯款 */}
-                      <td className="px-3 py-1.5 text-right">
+                      <td className="px-3 py-1.5 text-right hidden lg:table-cell">
                         {inExcelMode ? (
                           <div className="flex flex-col gap-0.5 items-end">
                             {excelInput('payTransfer', 'border-teal-300 focus:ring-teal-300')}
@@ -864,7 +883,7 @@ export default function RecordsTab({
                       </td>
 
                       {/* 刷卡 */}
-                      <td className="px-3 py-1.5 text-right">
+                      <td className="px-3 py-1.5 text-right hidden lg:table-cell">
                         {inExcelMode ? (
                           <div className="flex flex-col gap-0.5 items-end">
                             {excelInput('payCard', 'border-purple-300 focus:ring-purple-300')}
@@ -881,12 +900,12 @@ export default function RecordsTab({
                       </td>
 
                       {/* 手續費（唯讀） */}
-                      <td className="px-3 py-2 text-right text-red-400 text-xs">
+                      <td className="px-3 py-2 text-right text-red-400 text-xs hidden xl:table-cell">
                         {Number(r.cardFee) > 0 ? Math.round(Number(r.cardFee)).toLocaleString() : '—'}
                       </td>
 
                       {/* 現金 */}
-                      <td className="px-3 py-1.5 text-right">
+                      <td className="px-3 py-1.5 text-right hidden lg:table-cell">
                         {inExcelMode ? (
                           <div className="flex flex-col gap-0.5 items-end">
                             {excelInput('payCash', 'border-green-300 focus:ring-green-300')}
@@ -915,12 +934,12 @@ export default function RecordsTab({
                       </td>
 
                       {/* 住宿卷 */}
-                      <td className="px-3 py-1.5 text-right">
+                      <td className="px-3 py-1.5 text-right hidden xl:table-cell">
                         {inExcelMode ? excelInput('payVoucher', 'border-amber-300 focus:ring-amber-300') : editCell('payVoucher', 'text-amber-600')}
                       </td>
 
                       {/* 金流狀態 */}
-                      <td className="px-3 py-1.5">
+                      <td className="px-3 py-1.5 hidden md:table-cell">
                         <div className="flex flex-col gap-0.5 text-[10px] leading-tight">
                           {/* 訂金 */}
                           {r.depositCashTxId ? (
@@ -977,7 +996,7 @@ export default function RecordsTab({
                       </td>
 
                       {/* 備註（點擊 inline 編輯） */}
-                      <td className="px-3 py-2">{noteCell()}</td>
+                      <td className="px-3 py-2 hidden sm:table-cell">{noteCell()}</td>
 
                       {/* 操作欄（非 Excel 模式才顯示） */}
                       {!editMode && (

@@ -192,6 +192,7 @@ function BnbPage() {
     filterStatus, setFilterStatus,
     filterWarehouse, setFilterWarehouse,
     filterPayment, setFilterPayment,
+    pageSize, setPageSize,
     selectedIds, setSelectedIds,
     batchField, setBatchField,
     batchValue, setBatchValue,
@@ -612,6 +613,16 @@ function BnbPage() {
     setImportResult(null);
     setImportConfirm(null);
     if (!file) return;
+
+    // ── 選檔後立即查覆蓋筆數（若 importReplace=true）──────────
+    if (importReplace) {
+      try {
+        const res = await fetch(`/api/bnb/import?importMonth=${importMonth}&warehouse=${encodeURIComponent(importWarehouse)}`);
+        const data = await res.json();
+        if (data.count > 0) setImportConfirm({ existingCount: data.count });
+      } catch (e) { console.warn('[bnb import] pre-check failed:', e.message); }
+    }
+
     try {
       const fd = new FormData();
       fd.append('file', file);
@@ -630,17 +641,11 @@ function BnbPage() {
     } catch {} // 預覽失敗不阻礙後續操作
   }
 
-  // ── 匯入（帶覆蓋確認） ────────────────────────────────────────
+  // ── 匯入（覆蓋確認已在選檔時完成，這裡直接執行）──────────────
   async function handleImport() {
     if (!importFile) { showToast('請選擇檔案', 'error'); return; }
-    if (importReplace) {
-      // 查現有筆數，若有資料則顯示確認對話框
-      try {
-        const res  = await fetch(`/api/bnb/import?importMonth=${importMonth}&warehouse=${encodeURIComponent(importWarehouse)}`);
-        const data = await res.json();
-        if (data.count > 0) { setImportConfirm({ existingCount: data.count }); return; }
-      } catch (e) { console.warn('[bnb import] pre-check failed:', e.message); }
-    }
+    // importConfirm 若存在且使用者尚未確認則先等確認
+    if (importReplace && importConfirm) return; // UI 會顯示確認框讓使用者按
     await doImport();
   }
 
@@ -922,6 +927,7 @@ function BnbPage() {
             filterStatus={filterStatus} setFilterStatus={setFilterStatus}
             filterWarehouse={filterWarehouse} setFilterWarehouse={setFilterWarehouse}
             filterPayment={filterPayment} setFilterPayment={setFilterPayment}
+            pageSize={pageSize} setPageSize={setPageSize}
             selectedIds={selectedIds} setSelectedIds={setSelectedIds}
             batchField={batchField} setBatchField={setBatchField}
             batchValue={batchValue} setBatchValue={setBatchValue}
