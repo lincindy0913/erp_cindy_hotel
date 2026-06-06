@@ -158,18 +158,22 @@ export default function LoansPage() {
       if (loans.length === 0) fetchAll();
       autoSetupMonthly();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, monthlyYear, monthlyMonth]);
 
   useEffect(() => {
     if (activeTab === 'records') fetchAllRecords();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, recFilterLoan, recFilterYear, recFilterMonth, recFilterStatus]);
 
   useEffect(() => {
     if (activeTab === 'report') fetchReportData();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, reportYear, reportMonth]);
 
   useEffect(() => {
     if (activeTab === 'annual') fetchAnnualData();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, annualYear]);
 
   async function fetchAll() {

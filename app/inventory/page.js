@@ -254,6 +254,7 @@ export default function InventoryPage() {
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/exhaustive-deps — fetchWarehouses mount-only init
     fetchWarehouses();
     // 深連結支援：?tab=inbound 等直跳對應 tab
     const params = new URLSearchParams(window.location.search);
@@ -289,6 +290,7 @@ export default function InventoryPage() {
       fetchInventory();
     }
     if (activeTab === 'requisition' || activeTab === 'transfer' || activeTab === 'count') fetchProducts();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, warehouse]);
 
   useEffect(() => {

@@ -45,7 +45,7 @@ export function useDepositMatch() {
       setDmSelLine(null);
     } catch { setDmError('載入核對資料失敗，請稍後再試'); }
     finally { setDmLoading(false); }
-  }, [dmMonth, dmAccountId, dmWarehouse, dmPayType]);
+  }, [dmMonth, dmAccountId, dmWarehouse, dmPayType, showToast]);
 
   async function handleMatch(onSuccess) {
     if (!dmSelBnb || !dmSelLine) return;

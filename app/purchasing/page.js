@@ -188,6 +188,7 @@ function PurchasingPageInner() {
         window.history.replaceState({}, '', '/purchasing');
       }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allPurchases, suppliers, products]);
 
   // 檢查某個進貨品項是否已核銷
@@ -370,6 +371,7 @@ function PurchasingPageInner() {
       },
     };
     return sortRows(purchases, purSortKey, purSortDir, acc);
+  // eslint-disable-next-line react-hooks/exhaustive-deps — isItemInvoiced closes over invoicedIds which IS in deps
   }, [purchases, purSortKey, purSortDir, suppliers, invoicedIds]);
 
   function handleViewDetails(purchaseId) {

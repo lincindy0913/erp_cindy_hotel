@@ -96,7 +96,7 @@ export function useBnbRecords() {
       setRecError(`載入訂房記錄失敗：${e.message}`);
     }
     finally { setRecLoading(false); }
-  }, [filterMonth, filterSource, filterStatus, filterWarehouse, filterPayment, pageSize]);
+  }, [filterMonth, filterSource, filterStatus, filterWarehouse, filterPayment, pageSize, showToast, fetchT]);
 
   // ── 批次套用 ──────────────────────────────────────────────────
   async function handleBatchApply() {

@@ -62,7 +62,7 @@ export function useOtaReconcile({ showToast, confirm, setEditBooking, DEFAULT_WA
       setOtaPreview(await res.json());
     } catch { showToast('解析失敗', 'error'); }
     finally { setOtaPreviewLoading(false); }
-  }, [otaFile, otaSource]);
+  }, [otaFile, otaSource, showToast]);
 
   // ── OTA 比對執行 ───────────────────────────────────────────────
   const runOtaReconcile = useCallback(async () => {
@@ -89,7 +89,7 @@ export function useOtaReconcile({ showToast, confirm, setEditBooking, DEFAULT_WA
       await _checkCommExisting(month, otaSource, otaWarehouse);
     } catch { const msg = 'OTA 比對失敗'; setOtaError(msg); showToast(msg, 'error'); }
     finally { setOtaLoading(false); }
-  }, [otaFile, otaSource, otaDateFrom, otaDateTo, otaWarehouse, _checkCommExisting]);
+  }, [otaFile, otaSource, otaDateFrom, otaDateTo, otaWarehouse, _checkCommExisting, showToast]);
 
   // ── 確認比對存檔 ───────────────────────────────────────────────
   const confirmReconcile = useCallback(async () => {
@@ -125,7 +125,7 @@ export function useOtaReconcile({ showToast, confirm, setEditBooking, DEFAULT_WA
       showToast('比對結果已確認存檔', 'success');
     } catch { showToast('存檔失敗', 'error'); }
     finally { setReconcileConfirming(false); }
-  }, [otaResult, otaSource, otaWarehouse, otaDateFrom, otaDateTo, DEFAULT_WAREHOUSE, confirm]);
+  }, [otaResult, otaSource, otaWarehouse, otaDateFrom, otaDateTo, DEFAULT_WAREHOUSE, confirm, showToast]);
 
   // ── OTA 比對：開啟編輯 ─────────────────────────────────────────
   const openOtaEdit = useCallback(async (bnbId) => {
@@ -136,7 +136,7 @@ export function useOtaReconcile({ showToast, confirm, setEditBooking, DEFAULT_WA
       if (!record) { showToast('找不到此訂房記錄', 'error'); return; }
       setEditBooking(record);
     } catch { showToast('載入訂房記錄失敗', 'error'); }
-  }, [setEditBooking]);
+  }, [setEditBooking, showToast]);
 
   // ── OTA 比對：刪除系統記錄 ────────────────────────────────────
   const deleteOtaBnb = useCallback(async (bnbId) => {
@@ -148,7 +148,7 @@ export function useOtaReconcile({ showToast, confirm, setEditBooking, DEFAULT_WA
       showToast('已刪除', 'success');
       runOtaReconcile();
     } catch { showToast('刪除失敗', 'error'); }
-  }, [runOtaReconcile, confirm]);
+  }, [runOtaReconcile, confirm, showToast]);
 
   // ── OTA 比對：新增 OTA 資料 ────────────────────────────────────
   const openOtaAdd = useCallback((otaRow) => {
@@ -206,7 +206,7 @@ export function useOtaReconcile({ showToast, confirm, setEditBooking, DEFAULT_WA
       await _checkCommExisting(month, otaSource, otaWarehouse);
     } catch { showToast('建立失敗', 'error'); }
     finally { setCommSubmitting(false); }
-  }, [otaResult, commAmt, commMethod, commNote, otaSource, otaDateFrom, otaWarehouse, DEFAULT_WAREHOUSE, _checkCommExisting]);
+  }, [otaResult, commAmt, commMethod, commNote, otaSource, otaDateFrom, otaWarehouse, DEFAULT_WAREHOUSE, _checkCommExisting, showToast]);
 
   // ── 傭金：歷史列表 ─────────────────────────────────────────────
   const fetchCommHistory = useCallback(async () => {
