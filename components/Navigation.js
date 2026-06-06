@@ -7,30 +7,42 @@ import { usePathname } from 'next/navigation';
 import { ROLE_LABELS, ROLE_COLORS, hasPermission } from '@/lib/permissions';
 import NotificationBell from '@/components/NotificationBell';
 
-// 主選單順序：儀錶板 → 庫存 → 進貨 → 發票登錄 → 付款 → 支票 → 費用 → 貸款 → 出納 → 代墊款 → 現金流 → 存簿對帳 → 存簿核對 → PMS收入 → 租屋管理 → 工程 → 工程分業 → 分析 → 結帳(下拉) → 報表(下拉)
+// ── 頂層項目（常用 + 每日必看）───────────────────────────────────
 const NAV_ITEMS = [
-  { href: '/', label: '儀錶板', linkClass: 'link-dashboard', requiredPermission: null },
-  { href: '/inventory', label: '庫存', linkClass: 'link-inventory', requiredPermission: 'inventory.view' },
-  { href: '/purchasing', label: '進貨', linkClass: 'link-purchasing', requiredPermission: 'purchasing.view' },
-  { href: '/sales', label: '發票登錄', linkClass: 'link-sales', requiredPermission: 'sales.view' },
-  { href: '/finance', label: '付款', subtitle: '付款單', linkClass: 'link-finance', requiredPermission: 'finance.view' },
-  { href: '/purchase-allowances', label: '退貨', linkClass: 'link-finance', requiredPermission: 'finance.view' },
-  { href: '/checks', label: '支票', linkClass: 'link-checks', requiredPermission: 'check.view' },
-  { href: '/expenses', label: '費用', linkClass: 'link-finance', requiredPermission: 'expense.view' },
-  { href: '/loans', label: '貸款', linkClass: 'link-loans', requiredPermission: 'loan.view' },
-  { href: '/cashier', label: '出納', subtitle: '執行轉帳／匯款', linkClass: 'link-cashier', requiredPermission: 'cashier.view' },
-  { href: '/employee-advances', label: '代墊款', linkClass: 'link-cashflow', requiredPermission: 'cashier.view' },
-  { href: '/cashflow', label: '現金流', linkClass: 'link-cashflow', requiredPermission: 'cashflow.view' },
-  { href: '/reconciliation', label: '信用卡對帳', subtitle: '信用卡／OTA 核對', linkClass: 'link-reconciliation', requiredPermission: 'reconciliation.view' },
+  { href: '/',                label: '儀錶板',   linkClass: 'link-dashboard',     requiredPermission: null },
+  { href: '/inventory',       label: '庫存',     linkClass: 'link-inventory',     requiredPermission: 'inventory.view' },
+  { href: '/purchasing',      label: '進貨',     linkClass: 'link-purchasing',    requiredPermission: 'purchasing.view' },
+  { href: '/sales',           label: '發票登錄', linkClass: 'link-sales',         requiredPermission: 'sales.view' },
+  { href: '/cashier',         label: '出納',     subtitle: '執行轉帳／匯款', linkClass: 'link-cashier', requiredPermission: 'cashier.view' },
+  { href: '/cashflow',        label: '現金流',   linkClass: 'link-cashflow',      requiredPermission: 'cashflow.view' },
+  { href: '/reconciliation',  label: '信用卡對帳', subtitle: '信用卡／OTA 核對', linkClass: 'link-reconciliation', requiredPermission: 'reconciliation.view' },
   { href: '/bank-reconciliation', label: '銀行對帳', subtitle: '銀行月結對帳單', linkClass: 'link-reconciliation', requiredPermission: 'cashflow.view' },
-  { href: '/pms-income', label: 'PMS收入', linkClass: 'link-pms-income', requiredPermission: 'pms.view' },
-  { href: '/bnb', label: '民宿帳', linkClass: 'link-pms-income', requiredPermission: 'bnb.view' },
-  { href: '/rentals', label: '租屋管理', linkClass: 'link-rentals', requiredPermission: 'rental.view' },
-  { href: '/assets', label: '資產管理', linkClass: 'link-rentals', requiredPermission: 'asset.view' },
-  { href: '/engineering', label: '工程', subtitle: '合約／進度／請款', linkClass: 'link-engineering', requiredPermission: 'engineering.view' },
-  { href: '/company-expenses', label: '工程分業', subtitle: '未歸案發票歸屬', linkClass: 'link-engineering', requiredPermission: 'engineering.view' },
-  { href: '/utility-bills', label: '水電費', linkClass: 'link-utility', requiredPermission: null },
-  { href: '/analytics', label: '分析', linkClass: 'link-analytics', requiredPermission: 'analytics.view' },
+  { href: '/pms-income',      label: 'PMS收入',  linkClass: 'link-pms-income',    requiredPermission: 'pms.view' },
+  { href: '/bnb',             label: '民宿帳',   linkClass: 'link-pms-income',    requiredPermission: 'bnb.view' },
+  { href: '/analytics',       label: '分析',     linkClass: 'link-analytics',     requiredPermission: 'analytics.view' },
+];
+
+// ── 付款管理 群組下拉 ─────────────────────────────────────────────
+const PAY_MGMT_ITEMS = [
+  { href: '/finance',           label: '付款單',   subtitle: '建立 / 審核付款', linkClass: 'link-finance',  requiredPermission: 'finance.view' },
+  { href: '/purchase-allowances', label: '退貨',   linkClass: 'link-finance',   requiredPermission: 'finance.view' },
+  { href: '/checks',            label: '支票',     linkClass: 'link-checks',    requiredPermission: 'check.view' },
+  { href: '/expenses',          label: '費用',     linkClass: 'link-finance',   requiredPermission: 'expense.view' },
+  { href: '/loans',             label: '貸款',     linkClass: 'link-loans',     requiredPermission: 'loan.view' },
+  { href: '/employee-advances', label: '代墊款',   linkClass: 'link-cashflow',  requiredPermission: 'cashier.view' },
+];
+
+// ── 工程 群組下拉 ─────────────────────────────────────────────────
+const ENGINEERING_ITEMS = [
+  { href: '/engineering',     label: '工程',     subtitle: '合約／進度／請款',   linkClass: 'link-engineering', requiredPermission: 'engineering.view' },
+  { href: '/company-expenses', label: '工程分業', subtitle: '未歸案發票歸屬',     linkClass: 'link-engineering', requiredPermission: 'engineering.view' },
+];
+
+// ── 不動產 群組下拉 ──────────────────────────────────────────────
+const PROPERTY_ITEMS = [
+  { href: '/rentals',      label: '租屋管理', linkClass: 'link-rentals',  requiredPermission: 'rental.view' },
+  { href: '/assets',       label: '資產管理', linkClass: 'link-rentals',  requiredPermission: 'asset.view' },
+  { href: '/utility-bills', label: '水電費',  linkClass: 'link-utility',  requiredPermission: null },
 ];
 
 // 結帳下拉：月結、年結
@@ -88,6 +100,9 @@ export default function Navigation({ borderColor = 'border-blue-500' }) {
   }
   const allNavLinks = [
     ...NAV_ITEMS,
+    ...PAY_MGMT_ITEMS,
+    ...ENGINEERING_ITEMS,
+    ...PROPERTY_ITEMS,
     ...CLOSE_BOOK_ITEMS,
     ...REPORTS_ITEMS,
   ];
@@ -113,6 +128,27 @@ export default function Navigation({ borderColor = 'border-blue-500' }) {
   const visibleNavItems = NAV_ITEMS.filter((item) => {
     return canAccess(item.requiredPermission);
   });
+
+  // 付款管理 dropdown
+  const visiblePayMgmtItems = PAY_MGMT_ITEMS.filter(item => canAccess(item.requiredPermission));
+  const isPayMgmtActive = PAY_MGMT_ITEMS.some(item => pathname === item.href);
+  const [payMgmtOpen, setPayMgmtOpen] = useState(false);
+  const payMgmtRef = useRef(null);
+  const payMgmtTimeoutRef = useRef(null);
+
+  // 工程 dropdown
+  const visibleEngineeringItems = ENGINEERING_ITEMS.filter(item => canAccess(item.requiredPermission));
+  const isEngineeringActive = ENGINEERING_ITEMS.some(item => pathname === item.href);
+  const [engineeringOpen, setEngineeringOpen] = useState(false);
+  const engineeringRef = useRef(null);
+  const engineeringTimeoutRef = useRef(null);
+
+  // 不動產 dropdown
+  const visiblePropertyItems = PROPERTY_ITEMS.filter(item => canAccess(item.requiredPermission));
+  const isPropertyActive = PROPERTY_ITEMS.some(item => pathname === item.href);
+  const [propertyOpen, setPropertyOpen] = useState(false);
+  const propertyRef = useRef(null);
+  const propertyTimeoutRef = useRef(null);
 
   // 過濾結帳下拉項目（月結、年結）
   const visibleCloseBookItems = CLOSE_BOOK_ITEMS.filter(item => canAccess(item.requiredPermission));
@@ -154,12 +190,20 @@ export default function Navigation({ borderColor = 'border-blue-500' }) {
     timeoutRef.current = setTimeout(() => setDropdownOpen(false), 150);
   };
 
+  // 共用 hover handlers 產生器
+  function makeHoverHandlers(setOpen, timeoutRef) {
+    return {
+      onMouseEnter: () => { if (timeoutRef.current) clearTimeout(timeoutRef.current); setOpen(true); },
+      onMouseLeave: () => { timeoutRef.current = setTimeout(() => setOpen(false), 150); },
+    };
+  }
+
   // Cleanup timeouts on unmount
   useEffect(() => {
     return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-      if (closeBookTimeoutRef.current) clearTimeout(closeBookTimeoutRef.current);
-      if (reportsTimeoutRef.current) clearTimeout(reportsTimeoutRef.current);
+      [timeoutRef, closeBookTimeoutRef, reportsTimeoutRef,
+       payMgmtTimeoutRef, engineeringTimeoutRef, propertyTimeoutRef
+      ].forEach(r => { if (r.current) clearTimeout(r.current); });
     };
   }, []);
 
@@ -228,6 +272,71 @@ export default function Navigation({ borderColor = 'border-blue-500' }) {
                   )}
                 </Link>
               ))}
+
+              {/* 付款管理 dropdown */}
+              {visiblePayMgmtItems.length > 0 && (
+                <div className="relative" ref={payMgmtRef}
+                  {...makeHoverHandlers(setPayMgmtOpen, payMgmtTimeoutRef)}>
+                  <button className={`link-finance flex items-center gap-1 ${isPayMgmtActive ? 'active font-medium' : ''}`}>
+                    付款管理
+                    <svg className={`w-3 h-3 transition-transform ${payMgmtOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                  </button>
+                  {payMgmtOpen && (
+                    <div className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[130px] z-50">
+                      {visiblePayMgmtItems.map(item => (
+                        <Link key={item.href} href={item.href} onClick={() => setPayMgmtOpen(false)}
+                          className={`block px-4 py-2 text-sm hover:bg-gray-100 transition-colors ${pathname === item.href ? 'font-medium bg-gray-50' : 'text-gray-700'}`}>
+                          {item.label}
+                          {item.subtitle && <div className="text-xs text-gray-400">{item.subtitle}</div>}
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 工程 dropdown */}
+              {visibleEngineeringItems.length > 0 && (
+                <div className="relative" ref={engineeringRef}
+                  {...makeHoverHandlers(setEngineeringOpen, engineeringTimeoutRef)}>
+                  <button className={`link-engineering flex items-center gap-1 ${isEngineeringActive ? 'active font-medium' : ''}`}>
+                    工程
+                    <svg className={`w-3 h-3 transition-transform ${engineeringOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                  </button>
+                  {engineeringOpen && (
+                    <div className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[130px] z-50">
+                      {visibleEngineeringItems.map(item => (
+                        <Link key={item.href} href={item.href} onClick={() => setEngineeringOpen(false)}
+                          className={`block px-4 py-2 text-sm hover:bg-gray-100 transition-colors ${pathname === item.href ? 'font-medium bg-gray-50' : 'text-gray-700'}`}>
+                          {item.label}
+                          {item.subtitle && <div className="text-xs text-gray-400">{item.subtitle}</div>}
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 不動產 dropdown */}
+              {visiblePropertyItems.length > 0 && (
+                <div className="relative" ref={propertyRef}
+                  {...makeHoverHandlers(setPropertyOpen, propertyTimeoutRef)}>
+                  <button className={`link-rentals flex items-center gap-1 ${isPropertyActive ? 'active font-medium' : ''}`}>
+                    不動產
+                    <svg className={`w-3 h-3 transition-transform ${propertyOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                  </button>
+                  {propertyOpen && (
+                    <div className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[120px] z-50">
+                      {visiblePropertyItems.map(item => (
+                        <Link key={item.href} href={item.href} onClick={() => setPropertyOpen(false)}
+                          className={`block px-4 py-2 text-sm hover:bg-gray-100 transition-colors ${pathname === item.href ? 'font-medium bg-gray-50' : 'text-gray-700'}`}>
+                          {item.label}
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* 結帳 dropdown（月結、年結） */}
               {visibleCloseBookItems.length > 0 && (

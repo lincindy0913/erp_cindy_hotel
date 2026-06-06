@@ -8,6 +8,7 @@ import NotificationBanner from '@/components/NotificationBanner';
 import ExportButtons from '@/components/ExportButtons';
 import { EXPORT_CONFIGS } from '@/lib/export-columns';
 import { useToast } from '@/context/ToastContext';
+import { useFetchWithTimeout } from '@/lib/hooks/useFetchWithTimeout';
 import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 import { todayStr, localDateStr } from '@/lib/localDate';
@@ -46,6 +47,7 @@ export default function CashFlowPage() {
   const { showToast } = useToast();
   const confirm = useConfirm();
   const isLoggedIn = !!session;
+  const fetchT = useFetchWithTimeout(10000);
   const [activeTab, setActiveTab] = useState('overview');
 
   // Shared data
@@ -238,7 +240,7 @@ export default function CashFlowPage() {
 
   async function fetchAccounts() {
     try {
-      const res = await fetch('/api/cashflow/accounts');
+      const res = await fetchT('/api/cashflow/accounts');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setAccountsError(null);
@@ -725,8 +727,9 @@ export default function CashFlowPage() {
         </div>
 
         <ModuleGuideCard
-          title="現金流操作流程（展開查看）"
+          title="現金流操作流程"
           color="slate"
+          storageKey="guide:cashflow:ops"
           steps={[
             {
               label: '日常：以自動來源為主',

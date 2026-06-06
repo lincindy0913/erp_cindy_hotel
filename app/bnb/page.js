@@ -791,6 +791,7 @@ function BnbPage() {
         <ModuleGuideCard
           title="標準月底流程說明"
           color="blue"
+          storageKey="guide:bnb:monthly"
           steps={[
             {
               label: '訂房明細',

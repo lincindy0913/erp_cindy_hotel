@@ -4,17 +4,21 @@ import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
 import { todayStr } from '@/lib/localDate';
+import { useFetchWithTimeout } from '@/lib/hooks/useFetchWithTimeout';
 
 // ── 付款欄位順序（Excel Tab 跳格用）──────────────────────────────
 const PAY_FIELDS = [
   'payDeposit', 'depositDate', 'depositLast5',
   'payTransfer', 'transferDate', 'transferLast5',
-  'payCard', 'payCash', 'payVoucher',
+  'payCard', 'cardSettlementDate',
+  'payCash', 'cashDepositDate', 'cashDestination',
+  'payVoucher',
 ];
 
 export function useBnbRecords() {
   const { showToast } = useToast();
   const confirm = useConfirm();
+  const fetchT = useFetchWithTimeout(10000); // 10s timeout for BnB record lists
 
   // ── 訂房明細 state ────────────────────────────────────────────
   const [records,        setRecords]        = useState([]);
@@ -67,7 +71,7 @@ export function useBnbRecords() {
         // mismatch 由 API server-side 過濾（全月範圍，無 500 筆上限）
         p.set('paymentFilter', filterPayment);
       }
-      const res = await fetch(`/api/bnb?${p}`);
+      const res = await fetchT(`/api/bnb?${p}`);
       if (!res.ok) {
         if (res.status === 401) { window.location.href = '/login'; return; }
         const errJson = await res.json().catch(() => ({}));

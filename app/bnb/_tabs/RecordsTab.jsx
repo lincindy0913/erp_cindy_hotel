@@ -865,7 +865,19 @@ export default function RecordsTab({
 
                       {/* 刷卡 */}
                       <td className="px-3 py-1.5 text-right">
-                        {inExcelMode ? excelInput('payCard', 'border-purple-300 focus:ring-purple-300') : editCell('payCard', 'text-purple-600')}
+                        {inExcelMode ? (
+                          <div className="flex flex-col gap-0.5 items-end">
+                            {excelInput('payCard', 'border-purple-300 focus:ring-purple-300')}
+                            <input
+                              id={`pc-${r.id}-cardSettlementDate`}
+                              type="date"
+                              value={editMap[r.id]?.cardSettlementDate ?? (r.cardSettlementDate || '')}
+                              onChange={e => updateCell(r.id, 'cardSettlementDate', e.target.value)}
+                              onKeyDown={e => handlePayKeyDown(e, r.id, 'cardSettlementDate', editableRecords)}
+                              className={`w-32 border rounded px-1.5 py-0.5 text-xs outline-none focus:ring-1 border-purple-200 focus:ring-purple-300 ${(editMap[r.id]?.cardSettlementDate !== undefined) ? 'bg-yellow-50' : 'bg-white'} text-purple-500`}
+                            />
+                          </div>
+                        ) : editCell('payCard', 'text-purple-600')}
                       </td>
 
                       {/* 手續費（唯讀） */}
@@ -878,9 +890,21 @@ export default function RecordsTab({
                         {inExcelMode ? (
                           <div className="flex flex-col gap-0.5 items-end">
                             {excelInput('payCash', 'border-green-300 focus:ring-green-300')}
+                            {/* 存帳日期（非老闆收取時顯示） */}
+                            {(editMap[r.id]?.cashDestination ?? r.cashDestination) !== '老闆收取' && (
+                              <input
+                                id={`pc-${r.id}-cashDepositDate`}
+                                type="date"
+                                value={editMap[r.id]?.cashDepositDate ?? (r.cashDepositDate || '')}
+                                onChange={e => updateCell(r.id, 'cashDepositDate', e.target.value)}
+                                onKeyDown={e => handlePayKeyDown(e, r.id, 'cashDepositDate', editableRecords)}
+                                className={`w-32 border rounded px-1.5 py-0.5 text-xs outline-none focus:ring-1 border-green-200 focus:ring-green-300 ${(editMap[r.id]?.cashDepositDate !== undefined) ? 'bg-yellow-50' : 'bg-white'} text-green-500`}
+                              />
+                            )}
                             <label className="flex items-center gap-1 text-[10px] cursor-pointer select-none"
                               title="勾選表示此現金由老闆直接收取">
                               <input type="checkbox"
+                                id={`pc-${r.id}-cashDestination`}
                                 checked={(editMap[r.id]?.cashDestination ?? r.cashDestination) === '老闆收取'}
                                 onChange={e => updateCell(r.id, 'cashDestination', e.target.checked ? '老闆收取' : '')}
                                 className="w-3 h-3 accent-orange-500 cursor-pointer" />

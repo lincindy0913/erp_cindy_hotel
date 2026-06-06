@@ -1,23 +1,32 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 
 /**
- * 通用流程說明卡片（仿 EngineeringHeaderInsights 樣式）
+ * 通用流程說明卡片
  *
  * Props:
- *   title   string          — 標題列文字
- *   steps   Array<{         — 流程步驟清單
- *     label: string,        — 步驟名稱（粗體）
- *     desc:  string,        — 補充說明
- *     link?: { href, text } — 選填：附連結
- *   }>
- *   color   'amber'|'slate'|'violet'|'blue'  — 配色（預設 amber）
- *   defaultOpen  boolean    — 預設展開（預設 false）
+ *   title        string   — 標題列文字
+ *   steps        Array    — 流程步驟清單
+ *   color        string   — 'amber'|'slate'|'violet'|'blue'（預設 amber）
+ *   defaultOpen  boolean  — 無 storageKey 時的預設展開狀態（預設 false）
+ *   storageKey   string   — 若提供，用 localStorage 記住開合狀態；
+ *                           首次瀏覽（key 不存在）預設展開
  */
-export default function ModuleGuideCard({ title, steps = [], color = 'amber', defaultOpen = false }) {
-  const [open, setOpen] = useState(defaultOpen);
+export default function ModuleGuideCard({ title, steps = [], color = 'amber', defaultOpen = false, storageKey }) {
+  const [open, setOpen] = useState(() => {
+    if (!storageKey) return defaultOpen;
+    try {
+      const stored = localStorage.getItem(storageKey);
+      return stored === null ? true : stored !== 'closed'; // 首次 = 展開
+    } catch { return true; }
+  });
+
+  useEffect(() => {
+    if (!storageKey) return;
+    try { localStorage.setItem(storageKey, open ? 'open' : 'closed'); } catch {}
+  }, [open, storageKey]);
 
   const palette = {
     amber:  { header: 'bg-amber-50/80 text-amber-900 border-amber-100 hover:bg-amber-50', chevron: 'text-amber-600', border: 'border-amber-100' },
