@@ -111,6 +111,13 @@ export default function LoansPage() {
   const [showBatchModal, setShowBatchModal] = useState(false);
   const [batchLoanIds, setBatchLoanIds] = useState([]);
   const [showTransferModal, setShowTransferModal] = useState(false);
+  const [showLoansPrintModal, setShowLoansPrintModal] = useState(false);
+
+  const [transferForm, setTransferForm] = useState({
+    sourceAccountId: '', amount: '', description: '', transactionDate: ''
+  });
+  const [transferTargetAccount, setTransferTargetAccount] = useState(null);
+  const [transfering, setTransfering] = useState(false);
 
   // Esc 鍵：依優先序關閉最上層 modal
   useEscKey(useCallback(() => {
@@ -121,13 +128,6 @@ export default function LoansPage() {
     if (showLoanModal)        { setShowLoanModal(false);        return; }
     if (showLoansPrintModal)  { setShowLoansPrintModal(false);  return; }
   }, [showTransferModal, showBatchModal, showConfirmModal, showAnnualPrintModal, showLoanModal, showLoansPrintModal]));
-
-  const [transferForm, setTransferForm] = useState({
-    sourceAccountId: '', amount: '', description: '', transactionDate: ''
-  });
-  const [transferTargetAccount, setTransferTargetAccount] = useState(null);
-  const [transfering, setTransfering] = useState(false);
-  const [showLoansPrintModal, setShowLoansPrintModal] = useState(false);
 
   // Loan form
   const [loanForm, setLoanForm] = useState({
