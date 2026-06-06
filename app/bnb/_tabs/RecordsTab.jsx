@@ -144,6 +144,12 @@ export default function RecordsTab({
       <div>
         {recError && <div className="mb-4"><FetchErrorBanner message={recError} onRetry={() => fetchRecords(1)} /></div>}
 
+        {recTotal > records.length && (
+          <div className="mb-4 flex items-center gap-2 bg-yellow-50 border border-yellow-300 rounded-xl px-4 py-2.5 text-sm text-yellow-800">
+            <span>⚠ 目前顯示 <strong>{records.length}</strong> / <strong>{recTotal}</strong> 筆；以下統計、金額、鎖帳範圍僅含本頁資料，請翻頁或縮小篩選條件後再執行批次操作。</span>
+          </div>
+        )}
+
         {recStats.overdueUnpaid > 0 && (
           <div className="mb-4 flex items-center gap-3 bg-amber-50 border border-amber-300 rounded-xl px-4 py-2.5">
             <span className="text-sm text-amber-800">⚠ 已退房未填款：<strong>{recStats.overdueUnpaid}</strong> 筆</span>

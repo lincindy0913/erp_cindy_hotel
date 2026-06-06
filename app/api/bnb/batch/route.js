@@ -66,27 +66,33 @@ export async function PATCH(request) {
           select: { paymentLocked: true, payCard: true, cardFeeRate: true,
                     payCash: true, cashDestination: true, guestName: true,
                     warehouse: true, checkInDate: true, checkOutDate: true, bossWithdrawNote: true,
+                    cashDepositDate: true, cardSettlementDate: true,
                     payDeposit: true, payTransfer: true, payVoucher: true, isComplimentary: true },
         });
         if (!existing) continue;
         if (existing.paymentLocked) { skipped++; continue; }
 
         const updateData = {};
-        if (rec.payDeposit       !== undefined) updateData.payDeposit       = parseFloat(rec.payDeposit)  || 0;
-        if (rec.depositDate      !== undefined) updateData.depositDate      = rec.depositDate   || null;
-        if (rec.depositLast5     !== undefined) updateData.depositLast5     = rec.depositLast5  || null;
-        if (rec.payTransfer      !== undefined) updateData.payTransfer      = parseFloat(rec.payTransfer) || 0;
-        if (rec.transferDate     !== undefined) updateData.transferDate     = rec.transferDate  || null;
-        if (rec.transferLast5    !== undefined) updateData.transferLast5    = rec.transferLast5 || null;
-        if (rec.payCard          !== undefined) updateData.payCard          = parseFloat(rec.payCard)     || 0;
-        if (rec.payCash          !== undefined) updateData.payCash          = parseFloat(rec.payCash)     || 0;
-        if (rec.cashDestination  !== undefined) updateData.cashDestination  = rec.cashDestination || null;
-        if (rec.payVoucher       !== undefined) updateData.payVoucher       = parseFloat(rec.payVoucher)  || 0;
+        if (rec.payDeposit          !== undefined) updateData.payDeposit          = parseFloat(rec.payDeposit)  || 0;
+        if (rec.depositDate         !== undefined) updateData.depositDate         = rec.depositDate   || null;
+        if (rec.depositLast5        !== undefined) updateData.depositLast5        = rec.depositLast5  || null;
+        if (rec.payTransfer         !== undefined) updateData.payTransfer         = parseFloat(rec.payTransfer) || 0;
+        if (rec.transferDate        !== undefined) updateData.transferDate        = rec.transferDate  || null;
+        if (rec.transferLast5       !== undefined) updateData.transferLast5       = rec.transferLast5 || null;
+        if (rec.payCard             !== undefined) updateData.payCard             = parseFloat(rec.payCard)     || 0;
+        if (rec.cardFeeRate         !== undefined) updateData.cardFeeRate         = parseFloat(rec.cardFeeRate) || 0;
+        if (rec.cardSettlementDate  !== undefined) updateData.cardSettlementDate  = rec.cardSettlementDate  || null;
+        if (rec.payCash             !== undefined) updateData.payCash             = parseFloat(rec.payCash)     || 0;
+        if (rec.cashDestination     !== undefined) updateData.cashDestination     = rec.cashDestination || null;
+        if (rec.cashDepositDate     !== undefined) updateData.cashDepositDate     = rec.cashDepositDate || null;
+        if (rec.payVoucher          !== undefined) updateData.payVoucher          = parseFloat(rec.payVoucher)  || 0;
+        if (rec.bossWithdrawNote    !== undefined) updateData.bossWithdrawNote    = rec.bossWithdrawNote || null;
 
-        // 重新計算手續費
-        if (updateData.payCard !== undefined) {
-          const rate = Number(existing.cardFeeRate) || 0;
-          updateData.cardFee = updateData.payCard * rate;
+        // 重新計算手續費（payCard 或 cardFeeRate 任一更新都重算）
+        if (updateData.payCard !== undefined || updateData.cardFeeRate !== undefined) {
+          const card = updateData.payCard     ?? Number(existing.payCard);
+          const rate = updateData.cardFeeRate ?? Number(existing.cardFeeRate);
+          updateData.cardFee = card * (rate || 0);
         }
 
         if (rec.isComplimentary !== undefined) updateData.isComplimentary = rec.isComplimentary === true;
@@ -199,6 +205,70 @@ export async function PATCH(request) {
       });
 
       return NextResponse.json({ ok: true, count: ids.length, locked: isLocking });
+    }
+
+    // ── lockAllFilled：server-side 全月鎖帳（不受前端分頁限制）──
+    if (action === 'lockAllFilled') {
+      const auth = await requireAnyPermission([PERMISSIONS.BNB_LOCK, PERMISSIONS.BNB_EDIT]);
+      if (!auth.ok) return auth.response;
+
+      const { importMonth, warehouse, confirmMismatch = false } = body;
+      if (!importMonth) return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少 importMonth', 400);
+
+      const where = {
+        importMonth,
+        paymentLocked: false,
+        status: { not: '已刪除' },
+        OR: [{ paymentFilled: true }, { isComplimentary: true }],
+        ...(warehouse ? { warehouse } : {}),
+      };
+
+      const eligible = await prisma.bnbBookingRecord.findMany({
+        where,
+        select: {
+          id: true, guestName: true,
+          payDeposit: true, payTransfer: true, payCard: true, payCash: true, payVoucher: true,
+          roomCharge: true, otherCharge: true, isComplimentary: true,
+          importMonth: true, warehouse: true,
+        },
+      });
+
+      if (eligible.length === 0) {
+        return NextResponse.json({ ok: true, locked: 0, mismatches: [] });
+      }
+
+      // 先確認月份未鎖
+      const checkedPairs = new Set();
+      for (const r of eligible) {
+        const key = `${r.importMonth}|${r.warehouse}`;
+        if (!checkedPairs.has(key)) {
+          await assertBnbMonthOpen(r.importMonth, r.warehouse);
+          checkedPairs.add(key);
+        }
+      }
+
+      // 計算金額不符記錄
+      const mismatches = eligible
+        .filter(r => !r.isComplimentary)
+        .filter(r => {
+          const pt = Number(r.payDeposit) + Number(r.payTransfer) + Number(r.payCard) + Number(r.payCash) + Number(r.payVoucher);
+          const ct = Number(r.roomCharge) + Number(r.otherCharge);
+          return Math.abs(pt - ct) > 0.01;
+        })
+        .map(r => ({ id: r.id, guestName: r.guestName }));
+
+      // 有不符且未確認 → 回傳讓前端顯示確認框
+      if (mismatches.length > 0 && !confirmMismatch) {
+        return NextResponse.json({ ok: false, requireConfirm: true, eligible: eligible.length, mismatches }, { status: 409 });
+      }
+
+      const userName = auth.session?.user?.name || auth.session?.user?.email || 'system';
+      await prisma.bnbBookingRecord.updateMany({
+        where: { id: { in: eligible.map(r => r.id) } },
+        data: { paymentLocked: true, paymentLockedAt: new Date(), paymentLockedBy: userName },
+      });
+
+      return NextResponse.json({ ok: true, locked: eligible.length, mismatches });
     }
 
     return createErrorResponse('INVALID_PARAMETER', `未知 action: ${action}`, 400);

@@ -149,15 +149,17 @@ export function useBnbRecords() {
     for (const r of records) {
       if (r.status === '已刪除' || r.paymentLocked) continue;
       map[r.id] = {
-        payDeposit:      String(r.payDeposit   > 0 ? r.payDeposit   : ''),
-        depositLast5:    r.depositLast5 || '',
-        payTransfer:     String(r.payTransfer  > 0 ? r.payTransfer  : ''),
-        transferDate:    r.transferDate  || '',
-        transferLast5:   r.transferLast5 || '',
-        payCard:         String(r.payCard      > 0 ? r.payCard      : ''),
-        payCash:         String(r.payCash      > 0 ? r.payCash      : ''),
-        cashDestination: r.cashDestination || '',
-        payVoucher:      String(r.payVoucher   > 0 ? r.payVoucher   : ''),
+        payDeposit:         String(r.payDeposit   > 0 ? r.payDeposit   : ''),
+        depositLast5:       r.depositLast5 || '',
+        payTransfer:        String(r.payTransfer  > 0 ? r.payTransfer  : ''),
+        transferDate:       r.transferDate  || '',
+        transferLast5:      r.transferLast5 || '',
+        payCard:            String(r.payCard      > 0 ? r.payCard      : ''),
+        cardSettlementDate: r.cardSettlementDate  || '',
+        payCash:            String(r.payCash      > 0 ? r.payCash      : ''),
+        cashDestination:    r.cashDestination || '',
+        cashDepositDate:    r.cashDepositDate || '',
+        payVoucher:         String(r.payVoucher   > 0 ? r.payVoucher   : ''),
       };
       if (!r.paymentFilled) initialDirty.add(r.id);
     }
@@ -257,34 +259,52 @@ export function useBnbRecords() {
     finally { setLocking(false); }
   }
 
-  // ── 月底批次鎖帳（全部已填付款）────────────────────────────────
+  // ── 月底批次鎖帳（全月範圍，server-side 查詢，不受前端分頁限制）──
   async function lockAllFilled() {
-    const eligible = records.filter(r => (r.paymentFilled || r.isComplimentary) && !r.paymentLocked && r.status !== '已刪除');
-    if (eligible.length === 0) {
-      showToast('無可鎖定的記錄（已全部鎖帳或無已填付款記錄）', 'error');
-      return;
-    }
-    const mismatchList = eligible.filter(r => {
-      const pt = Number(r.payDeposit) + Number(r.payTransfer) + Number(r.payCard) + Number(r.payCash) + Number(r.payVoucher);
-      const ct = Number(r.roomCharge) + Number(r.otherCharge);
-      return Math.abs(pt - ct) > 0.01;
-    });
-    if (mismatchList.length > 0) {
-      const names = mismatchList.slice(0, 5).map(r => r.guestName).join('、');
-      const extra = mismatchList.length > 5 ? `…等 ${mismatchList.length} 筆` : '';
-      if (!(await confirm(`以下 ${mismatchList.length} 筆收款金額與房費+消費不符：\n${names}${extra}\n\n是否仍要繼續鎖帳？`, { title: '金額不符警告', danger: false }))) return;
-    }
-    if (!(await confirm(`確定要鎖定本月 ${eligible.length} 筆已填付款記錄嗎？鎖定後僅有鎖帳權限者可修改付款資料。`, { title: '批次鎖帳確認', danger: true }))) return;
     setLocking(true);
     try {
-      const res = await fetch('/api/bnb/batch', {
+      // Step 1: 乾跑 — server 計算全月可鎖筆數與金額不符清單
+      const body1 = { action: 'lockAllFilled', importMonth: filterMonth, warehouse: filterWarehouse || undefined };
+      const res1 = await fetch('/api/bnb/batch', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'lock', ids: eligible.map(r => r.id) }),
+        body: JSON.stringify(body1),
       });
-      const d = await res.json().catch(() => ({}));
-      if (!res.ok) { showToast(d.message || '鎖帳失敗', 'error'); return; }
-      showToast(`已鎖帳 ${eligible.length} 筆`, 'success');
+      const d1 = await res1.json().catch(() => ({}));
+
+      if (!res1.ok && res1.status !== 409) {
+        showToast(d1.error || '鎖帳失敗', 'error'); return;
+      }
+
+      const eligible = d1.eligible ?? d1.locked ?? 0;
+      if (eligible === 0) {
+        showToast('無可鎖定的記錄（已全部鎖帳或無已填付款記錄）', 'error'); return;
+      }
+
+      // Step 2: 若有金額不符，先讓使用者確認
+      if (res1.status === 409 && d1.mismatches?.length > 0) {
+        const names = d1.mismatches.slice(0, 5).map(r => r.guestName).join('、');
+        const extra = d1.mismatches.length > 5 ? `…等 ${d1.mismatches.length} 筆` : '';
+        if (!(await confirm(
+          `以下 ${d1.mismatches.length} 筆收款金額與房費+消費不符（全月範圍）：\n${names}${extra}\n\n是否仍要繼續鎖帳？`,
+          { title: '金額不符警告', danger: false }
+        ))) return;
+      }
+
+      // Step 3: 最終確認後正式鎖帳
+      if (!(await confirm(
+        `確定要鎖定 ${filterMonth}${filterWarehouse ? `（${filterWarehouse}）` : '（全館）'} 共 ${eligible} 筆已填付款記錄嗎？`,
+        { title: '批次鎖帳確認', danger: true }
+      ))) return;
+
+      const res2 = await fetch('/api/bnb/batch', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...body1, confirmMismatch: true }),
+      });
+      const d2 = await res2.json().catch(() => ({}));
+      if (!res2.ok) { showToast(d2.error || '鎖帳失敗', 'error'); return; }
+      showToast(`已鎖帳 ${d2.locked} 筆（全月範圍）`, 'success');
       fetchRecords();
     } catch { showToast('鎖帳失敗', 'error'); }
     finally { setLocking(false); }
