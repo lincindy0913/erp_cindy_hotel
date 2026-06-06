@@ -629,9 +629,22 @@ export default function MonthEndPage() {
             <div className="flex items-center gap-2">
               <span className="text-sm font-semibold text-slate-700">月結前確認清單</span>
               {checklistData && (
-                checklistData.warningCount > 0
-                  ? <span className="text-xs px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 font-medium">{checklistData.warningCount} 項待處理</span>
-                  : <span className="text-xs px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">全部完成</span>
+                checklistData.warningCount > 0 ? (
+                  <div className="flex items-center gap-1.5">
+                    {checklistData.criticalCount > 0 && (
+                      <span className="text-xs px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 font-medium">
+                        {checklistData.criticalCount} 項阻斷
+                      </span>
+                    )}
+                    {(checklistData.warningCount - (checklistData.criticalCount || 0)) > 0 && (
+                      <span className="text-xs px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 font-medium">
+                        {checklistData.warningCount - (checklistData.criticalCount || 0)} 項待處理
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <span className="text-xs px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">全部完成</span>
+                )
               )}
             </div>
             <div className="flex items-center gap-2">
@@ -665,51 +678,57 @@ export default function MonthEndPage() {
           ) : checklistData ? (
             <div className="px-4 py-3 space-y-2">
               {checklistData.items.map((item) => {
-                const isOk     = item.status === 'ok';
-                const isWarn   = item.status === 'warning';
-                const isManual = item.status === 'manual';
+                const isOk       = item.status === 'ok';
+                const isCritical = item.status === 'critical';
+                const isWarn     = item.status === 'warning';
+                const isManual   = item.status === 'manual';
                 return (
                   <div
                     key={item.key}
                     className={`flex items-start gap-3 p-2.5 rounded-lg border ${
-                      isOk     ? 'bg-green-50 border-green-100'
-                      : isWarn ? 'bg-orange-50 border-orange-200'
+                      isOk       ? 'bg-green-50 border-green-100'
+                      : isCritical ? 'bg-red-50 border-red-300'
+                      : isWarn   ? 'bg-orange-50 border-orange-200'
                       : 'bg-slate-50 border-slate-100'
                     }`}
                   >
                     {/* Step badge */}
                     <div className={`mt-0.5 w-5 h-5 rounded-full flex items-center justify-center shrink-0 text-xs font-bold ${
-                      isOk   ? 'bg-green-500 text-white'
-                      : isWarn ? 'bg-orange-400 text-white'
+                      isOk       ? 'bg-green-500 text-white'
+                      : isCritical ? 'bg-red-600 text-white'
+                      : isWarn   ? 'bg-orange-400 text-white'
                       : 'bg-slate-300 text-white'
                     }`}>
-                      {isOk ? '✓' : item.step}
+                      {isOk ? '✓' : isCritical ? '✗' : item.step}
                     </div>
 
                     {/* Text */}
                     <div className="flex-1 min-w-0">
                       <p className={`text-sm font-medium ${
-                        isOk ? 'text-green-800' : isWarn ? 'text-orange-800' : 'text-slate-700'
+                        isOk ? 'text-green-800' : isCritical ? 'text-red-800' : isWarn ? 'text-orange-800' : 'text-slate-700'
                       }`}>
                         {item.label}
+                        {isCritical && <span className="ml-1.5 text-xs font-bold text-red-600 bg-red-100 px-1 rounded">阻斷月結</span>}
                         {item.count > 0 && (
-                          <span className="ml-1.5 text-xs font-bold text-orange-600">（{item.count} 筆）</span>
+                          <span className={`ml-1.5 text-xs font-bold ${isCritical ? 'text-red-700' : 'text-orange-600'}`}>（{item.count} 筆）</span>
                         )}
                         {isManual && (
                           <span className="ml-1.5 text-xs text-slate-400">（請人工確認）</span>
                         )}
                       </p>
-                      {item.desc && <p className="text-xs text-slate-400 mt-0.5">{item.desc}</p>}
-                      {item.detail && <p className="text-xs text-orange-600 mt-0.5">{item.detail}</p>}
+                      {item.desc && <p className={`text-xs mt-0.5 ${isCritical ? 'text-red-600' : 'text-slate-400'}`}>{item.desc}</p>}
+                      {item.detail && <p className={`text-xs mt-0.5 ${isCritical ? 'text-red-600' : 'text-orange-600'}`}>{item.detail}</p>}
                     </div>
 
                     {/* Action link */}
                     <Link
                       href={item.href}
                       className={`shrink-0 text-xs px-2 py-1 rounded whitespace-nowrap font-medium transition-colors ${
-                        isWarn
-                          ? 'bg-orange-500 text-white hover:bg-orange-600'
-                          : 'bg-white border border-slate-300 text-slate-600 hover:bg-slate-100'
+                        isCritical
+                          ? 'bg-red-600 text-white hover:bg-red-700'
+                          : isWarn
+                            ? 'bg-orange-500 text-white hover:bg-orange-600'
+                            : 'bg-white border border-slate-300 text-slate-600 hover:bg-slate-100'
                       }`}
                     >
                       {item.linkText} →

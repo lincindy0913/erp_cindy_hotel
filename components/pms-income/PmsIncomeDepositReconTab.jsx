@@ -75,22 +75,20 @@ export default function PmsIncomeDepositReconTab({ WAREHOUSES = [] }) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    // 先自動標記超過 7 天未入存簿的訂金為「逾期未入」，再讀取最新資料
+    // auto-mark-overdue 與資料 fetch 並行（互不依賴）
+    const op = new URLSearchParams({ days: '7' });
+    if (warehouse) op.set('warehouse', warehouse);
+    const params = new URLSearchParams({ take: '1000' });
+    if (warehouse) params.set('warehouse', warehouse);
+    if (weekView) {
+      params.set('dateFrom', weekFrom);
+      params.set('dateTo', weekTo);
+    } else {
+      params.set('month', month);
+    }
     try {
-      const op = new URLSearchParams({ days: '7' });
-      if (warehouse) op.set('warehouse', warehouse);
-      await fetch(`/api/pms-income/reservations/auto-mark-overdue?${op}`, { method: 'POST' });
-    } catch {}
-    try {
-      const params = new URLSearchParams({ take: '1000' });
-      if (warehouse) params.set('warehouse', warehouse);
-      if (weekView) {
-        params.set('dateFrom', weekFrom);
-        params.set('dateTo', weekTo);
-      } else {
-        params.set('month', month);
-      }
-      const [rowsRes, sumRes] = await Promise.all([
+      const [, rowsRes, sumRes] = await Promise.all([
+        fetch(`/api/pms-income/reservations/auto-mark-overdue?${op}`, { method: 'POST' }).catch(() => {}),
         fetch(`/api/pms-income/reservations?${params}`),
         weekView ? Promise.resolve({ ok: false }) :
           fetch(`/api/pms-income/reservations/deposit-summary?month=${month}${warehouse ? `&warehouse=${warehouse}` : ''}`),

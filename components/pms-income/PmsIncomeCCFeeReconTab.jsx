@@ -65,10 +65,10 @@ export default function PmsIncomeCCFeeReconTab({ WAREHOUSES = [] }) {
           }
         }
 
-        // 自動設定結帳日 = 本月最後一筆刷卡日的下一個工作日
+        // 自動設定結帳日 = 本月最後一筆刷卡日的下一個工作日（只在尚未設定時帶入）
         if (json.reservations?.length > 0) {
           const lastDate = json.reservations[json.reservations.length - 1]?.businessDate;
-          if (lastDate && !settleDate) setSettleDate(nextWorkday(lastDate));
+          if (lastDate) setSettleDate(prev => prev || nextWorkday(lastDate));
         }
 
         if (json.ccStatements?.length > 0) {

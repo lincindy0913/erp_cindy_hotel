@@ -100,9 +100,20 @@ function toNum(v) {
   return parseFloat(String(v).replace(/[,$\s]/g, '')) || 0;
 }
 
-// ── Booking.com 帳單匯入與比對 ──
-function BookingStatementPanel({ bookingRows }) {
+// 各 OTA 平台識別碼 → 顯示名稱
+const OTA_PANEL_SOURCES = [
+  { key: 'OTA-Booking', label: 'Booking.com' },
+  { key: 'OTA-Agoda',   label: 'Agoda' },
+  { key: 'OTA-Expedia', label: 'Expedia' },
+  { key: 'OTA-易遊網',  label: '易遊網' },
+  { key: 'OTA-MOMO',    label: 'MOMO' },
+];
+
+// ── OTA 帳單匯入與比對 (多平台) ──
+function BookingStatementPanel({ rows: allOtaRows }) {
   const fileRef = useRef(null);
+  const [selectedSource, setSelectedSource] = useState('OTA-Booking');
+  const bookingRows = allOtaRows.filter(r => (r.sourceOverride || r.source) === selectedSource);
   const [csvData, setCsvData] = useState(null);  // { headers, rows }
   const [mapping, setMapping] = useState(null);  // autoDetectMapping result
   const [matchResult, setMatchResult] = useState(null);
@@ -171,9 +182,21 @@ function BookingStatementPanel({ bookingRows }) {
 
   return (
     <div className="border border-blue-100 rounded-xl bg-blue-50/40 p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-semibold text-blue-900">Booking.com 帳單比對</span>
-        <span className="text-xs text-blue-500">上傳 CSV 帳單，自動比對系統訂單與佣金差異</span>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-sm font-semibold text-blue-900">OTA 帳單比對</span>
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-blue-600">平台：</label>
+          <select
+            value={selectedSource}
+            onChange={e => { setSelectedSource(e.target.value); setCsvData(null); setMatchResult(null); setParseError(''); }}
+            className="border border-blue-200 rounded px-2 py-0.5 text-xs"
+          >
+            {OTA_PANEL_SOURCES.map(s => (
+              <option key={s.key} value={s.key}>{s.label}（{allOtaRows.filter(r => (r.sourceOverride || r.source) === s.key).length} 筆）</option>
+            ))}
+          </select>
+          <span className="text-xs text-blue-400">上傳 CSV 帳單，自動比對佣金差異</span>
+        </div>
       </div>
 
       {/* 上傳區 */}
@@ -597,9 +620,7 @@ export default function PmsIncomeOtaCommissionTab({ WAREHOUSES = [] }) {
 
       {/* ── Booking.com 帳單比對 ── */}
       {showBookingImport && (
-        <BookingStatementPanel
-          bookingRows={rows.filter(r => (r.sourceOverride || r.source) === 'OTA-Booking')}
-        />
+        <BookingStatementPanel rows={rows} />
       )}
     </div>
   );

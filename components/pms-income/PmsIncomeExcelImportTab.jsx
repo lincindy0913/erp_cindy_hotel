@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { formatNumber } from './pmsIncomeFormatters';
 import { DEFAULT_PMS_COLUMNS } from './pmsIncomeConstants';
 import { useConfirm } from '@/context/ConfirmContext';
@@ -330,7 +330,7 @@ export default function PmsIncomeExcelImportTab({ WAREHOUSES, setActiveTab }) {
   const [importedDates, setImportedDates] = useState({});
 
   const fileInputRef = useRef(null);
-  const wh = WAREHOUSES?.length ? WAREHOUSES : ['麗格', '麗軒', '民宿'];
+  const wh = useMemo(() => WAREHOUSES?.length ? WAREHOUSES : ['麗格', '麗軒', '民宿'], [WAREHOUSES]);
 
   const [duplicateWarning, setDuplicateWarning] = useState(null); // null | date string
   const [recentBatches, setRecentBatches] = useState([]);

@@ -225,7 +225,8 @@ export async function GET(request) {
             : '各館已完成，請執行全館月結',
         count: pendingCount,
         done: allDone,
-        status: allDone ? 'ok' : 'warning',
+        // critical：各館未完成月結前，全館損益快照無法正確彙整
+        status: allDone ? 'ok' : 'critical',
         href: '/month-end', linkText: '前往月結',
         detail: unclosed.length > 0
           ? `未完成館別：${unclosed.map(w => w.name).join('、')}${!globalClose ? '；全館月結：尚未執行' : ''}`
@@ -406,7 +407,8 @@ export async function GET(request) {
           ? `${mismatchCount} 個帳戶餘額與交易加總不符（${mismatchNames.slice(0, 3).join('、')}${mismatchNames.length > 3 ? '…' : ''}），請使用「重算餘額」修正後再月結`
           : '所有帳戶餘額與交易加總一致',
         count: mismatchCount, done: mismatchCount === 0,
-        status: mismatchCount > 0 ? 'warning' : 'ok',
+        // critical：餘額不一致會造成損益快照錯誤，必須在月結前修正
+        status: mismatchCount > 0 ? 'critical' : 'ok',
         href: '/fund-management', linkText: '前往資金管理（重算餘額）',
       });
     } catch {
@@ -455,10 +457,11 @@ export async function GET(request) {
       items.push({ key: 'pms_deposit_overdue', step: 16, label: 'PMS 訂金逾期未入', status: 'manual', href: '/pms-income?tab=depositRecon', linkText: '前往訂金核對' });
     }
 
-    const doneCount    = items.filter(i => i.done).length;
-    const warningCount = items.filter(i => i.status === 'warning').length;
+    const doneCount     = items.filter(i => i.done).length;
+    const criticalCount = items.filter(i => i.status === 'critical').length;
+    const warningCount  = items.filter(i => i.status === 'warning' || i.status === 'critical').length;
 
-    return NextResponse.json({ year, month, items, doneCount, warningCount });
+    return NextResponse.json({ year, month, items, doneCount, criticalCount, warningCount });
   } catch (error) {
     return handleApiError(error);
   }

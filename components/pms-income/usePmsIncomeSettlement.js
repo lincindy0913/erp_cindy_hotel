@@ -85,7 +85,7 @@ export function usePmsIncomeSettlement({ activeTab, setLoading, setError, setSuc
       setError(e.message);
     }
     setLoading(false);
-  }, [settlementWarehouse, settlementYearMonth, setLoading, setError, setSuccess, fetchSettlementData]);
+  }, [confirm, settlementWarehouse, settlementYearMonth, setLoading, setError, setSuccess, fetchSettlementData]);
 
   const handleSettleMonth = useCallback(async () => {
     if (
@@ -117,7 +117,7 @@ export function usePmsIncomeSettlement({ activeTab, setLoading, setError, setSuc
       setError(e.message);
     }
     setSettling(false);
-  }, [settlementWarehouse, settlementYearMonth, setError, setSuccess, fetchSettlementData]);
+  }, [confirm, settlementWarehouse, settlementYearMonth, setError, setSuccess, fetchSettlementData]);
 
   const handleVerifyBatches = useCallback(
     async (batchIds) => {
@@ -165,7 +165,7 @@ export function usePmsIncomeSettlement({ activeTab, setLoading, setError, setSuc
       setError(e.message);
     }
     setLoading(false);
-  }, [settlementWarehouse, settlementYearMonth, setLoading, setError, setSuccess, fetchSettlementData]);
+  }, [confirm, settlementWarehouse, settlementYearMonth, setLoading, setError, setSuccess, fetchSettlementData]);
 
   return {
     settlementWarehouse,
