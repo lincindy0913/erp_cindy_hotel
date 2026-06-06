@@ -16,10 +16,6 @@ export default function AttachmentSection({ sourceModule, sourceRecordId, canUpl
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef(null);
 
-  useEffect(() => {
-    if (sourceRecordId) fetchAttachments();
-  }, [sourceModule, sourceRecordId]);
-
   async function fetchAttachments() {
     try {
       const res = await fetch(`/api/attachments?sourceModule=${sourceModule}&sourceRecordId=${sourceRecordId}`);
@@ -27,6 +23,12 @@ export default function AttachmentSection({ sourceModule, sourceRecordId, canUpl
       setAttachments(Array.isArray(data) ? data : []);
     } catch { setAttachments([]); }
   }
+
+  useEffect(() => {
+    if (sourceRecordId) fetchAttachments();
+  // fetchAttachments closes over sourceModule/sourceRecordId which are already in deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceModule, sourceRecordId]);
 
   async function handleUpload(files) {
     if (!files || files.length === 0) return;

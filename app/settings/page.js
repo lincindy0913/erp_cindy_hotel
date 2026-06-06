@@ -607,6 +607,7 @@ export default function SettingsPage() {
   // ---- Data Fetching ----
   useEffect(() => {
     fetchAllData();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function fetchAllData() {

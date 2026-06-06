@@ -61,6 +61,7 @@ export default function OutputInvoicesTab({ projects, progressClaims = [], onDas
 
   useEffect(() => {
     fetchOutputInvoices(projectFilter || undefined);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function fetchOutputInvoices(pid) {

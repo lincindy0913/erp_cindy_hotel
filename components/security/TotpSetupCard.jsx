@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Image from 'next/image';
 
 export default function TotpSetupCard({ initialEnabled = false }) {
   const [enabled,     setEnabled]     = useState(initialEnabled);
@@ -93,7 +94,7 @@ export default function TotpSetupCard({ initialEnabled = false }) {
           </p>
           {qrCode && (
             <div className="flex justify-center">
-              <img src={qrCode} alt="2FA QR Code" className="w-44 h-44 border rounded-lg" />
+              <Image src={qrCode} alt="2FA QR Code" width={176} height={176} className="border rounded-lg" unoptimized />
             </div>
           )}
           <p className="text-xs text-gray-400 text-center break-all">

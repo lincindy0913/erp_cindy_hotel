@@ -23,6 +23,9 @@ const TABS_VIEWER = [
   { key: 'detail',   label: '明細管理', icon: '🗂' },
 ];
 
+// Admin-only tabs (defined outside component for stable reference)
+const ADMIN_ONLY_TABS = new Set(['parse', 'water']);
+
 // Fallback — will be replaced by API data on mount
 const WAREHOUSE_OPTIONS_FALLBACK = [
   { value: '', label: '請選擇館別' },
@@ -111,10 +114,10 @@ export default function UtilityBillsPage() {
   }, [session]); // 重新依賴 session，session 載入後才執行
 
   // If session loads and user is not admin, and they are on an admin-only tab, redirect to list
-  const ADMIN_ONLY_TABS = new Set(['parse', 'water']);
+  // ADMIN_ONLY_TABS is defined at module level — stable reference, no need in deps
   useEffect(() => {
     if (session && !isAdmin && ADMIN_ONLY_TABS.has(activeTab)) setActiveTab('list');
-  }, [session, isAdmin]);
+  }, [session, isAdmin, activeTab]);
 
   // 檔名或地址關鍵字 → 館別（用於自動判讀）
   const WAREHOUSE_KEYWORDS = WAREHOUSE_OPTIONS.filter(o => o.value).map(o => ({ keyword: o.value, warehouse: o.value }));
@@ -131,10 +134,12 @@ export default function UtilityBillsPage() {
 
   useEffect(() => {
     if (activeTab === 'list') fetchRecords();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, listFilter.warehouse, listFilter.year, listFilter.month, listFilter.billType]);
 
   useEffect(() => {
     if (activeTab === 'detail') fetchDetailRecords();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, detailFilter.warehouse, detailFilter.year, detailFilter.billType]);
 
   // 切換到分析頁時自動查詢（warehouse 已就緒）
@@ -142,21 +147,25 @@ export default function UtilityBillsPage() {
     if (activeTab === 'analysis' && analysisFilter.warehouse && analysisFilter.year) {
       fetchAnalysisRecords();
     }
-  }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
 
   // 館別 / 年度 / 類型變更且在分析頁時自動查詢
   useEffect(() => {
     if (activeTab === 'analysis' && analysisFilter.warehouse && analysisFilter.year) {
       fetchAnalysisRecords();
     }
-  }, [analysisFilter.warehouse, analysisFilter.year, analysisFilter.billType]); // eslint-disable-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [analysisFilter.warehouse, analysisFilter.year, analysisFilter.billType]);
 
   useEffect(() => {
     if (activeTab === 'payment') fetchPaymentRecords();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
   useEffect(() => {
     if (activeTab === 'payment') fetchPaymentRecords();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paymentFilter.warehouse, paymentFilter.year, paymentFilter.billType, paymentFilter.status]);
 
   async function fetchRecords() {

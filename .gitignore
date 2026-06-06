@@ -47,6 +47,11 @@ next-env.d.ts
 
 # database dumps (do not commit)
 *.dump
+
+# OCR service runtime data (auto-generated, not source)
+ocr-service/*.json
+ocr-service/*.xls
+ocr-service/*.xlsx
 backup.dump
 
 # misc

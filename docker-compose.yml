@@ -8,7 +8,6 @@ services:
         GIT_COMMIT: ${GIT_COMMIT:-local}
         BUILD_DATE: ${BUILD_DATE:-}
     image: erp_cindy:latest
-    pull_policy: build
     container_name: erp_cindy
     ports:
       - "3000:3000"

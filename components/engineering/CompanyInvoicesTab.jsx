@@ -28,6 +28,7 @@ export default function CompanyInvoicesTab({ projects, onUnassignedCountChange }
 
   useEffect(() => {
     fetchCompanyInvoices();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function fetchCompanyInvoices(pid, period) {

@@ -24,6 +24,7 @@ export default function InputInvoicesTab({ projects, contracts, onDashStatsChang
 
   useEffect(() => {
     fetchInputInvoices(projectFilter || undefined);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function fetchInputInvoices(pid) {

@@ -23,6 +23,7 @@ export default function IncomeTab({ projects, progressClaims = [], outputInvoice
   useEffect(() => {
     fetchIncomes();
     fetchAccounts();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function fetchIncomes(projectId) {
