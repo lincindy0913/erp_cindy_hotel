@@ -127,6 +127,11 @@ export default function RecordsTab({
     }
   }
 
+  // 是否處於「選了本頁全部但還有其他頁」狀態
+  const allPageSelected = selectedIds.size > 0
+    && records.filter(r => r.status !== '已刪除').every(r => selectedIds.has(r.id))
+    && recTotal > records.length;
+
   const goToPayAudit = () => {
     if (onGoToPayAudit) { onGoToPayAudit(); return; }
     setActiveTab('payAudit');
@@ -152,7 +157,7 @@ export default function RecordsTab({
 
         {recStats.overdueUnpaid > 0 && (
           <div className="mb-4 flex items-center gap-3 bg-amber-50 border border-amber-300 rounded-xl px-4 py-2.5">
-            <span className="text-sm text-amber-800">⚠ 已退房未填款：<strong>{recStats.overdueUnpaid}</strong> 筆</span>
+            <span className="text-sm text-amber-800">⚠ 已退房未填款：<strong>{recStats.overdueUnpaid}</strong> 筆{recTotal > records.length ? '（本頁）' : ''}</span>
             <button
               onClick={goToPayAudit}
               className="ml-auto text-xs px-3 py-1 rounded-lg bg-amber-600 text-white hover:bg-amber-700 whitespace-nowrap">
@@ -163,7 +168,7 @@ export default function RecordsTab({
 
         {recStats.cardDateMissing > 0 && (
           <div className="mb-4 flex items-center gap-3 bg-purple-50 border border-purple-300 rounded-xl px-4 py-2.5">
-            <span className="text-sm text-purple-800">卡？ 刷卡入帳日未填：<strong>{recStats.cardDateMissing}</strong> 筆</span>
+            <span className="text-sm text-purple-800">卡？ 刷卡入帳日未填：<strong>{recStats.cardDateMissing}</strong> 筆{recTotal > records.length ? '（本頁）' : ''}</span>
             <button
               onClick={goToPayAudit}
               className="ml-auto text-xs px-3 py-1 rounded-lg bg-purple-600 text-white hover:bg-purple-700 whitespace-nowrap">
@@ -427,7 +432,7 @@ export default function RecordsTab({
 
         {/* 付款完成度橫幅 */}
         <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 bg-white rounded-xl shadow-sm border border-gray-100 text-sm">
-          <span className="text-gray-500">本月共</span>
+          <span className="text-gray-500">{recTotal > records.length ? '本頁' : '本月'}共</span>
           <span className="font-semibold text-gray-800">{recStats.rooms} 筆</span>
           <span className="text-gray-300">|</span>
           <button
@@ -456,7 +461,7 @@ export default function RecordsTab({
               <button
                 onClick={() => setFilterPayment(filterPayment === 'mismatch' ? '' : 'mismatch')}
                 className={`rounded px-2 py-0.5 transition-colors ${filterPayment === 'mismatch' ? 'bg-red-100 text-red-800 font-semibold' : 'text-red-500 hover:bg-red-50 font-medium'}`}>
-                金額不符 {recStats.mismatch} 筆
+                金額不符 {recStats.mismatch} 筆{recTotal > records.length ? '（本頁）' : ''}
               </button>
             </>
           )}
@@ -523,7 +528,9 @@ export default function RecordsTab({
         {/* 批次行動列 */}
         {selectedIds.size > 0 && (
           <div className="mb-3 flex flex-wrap items-center gap-3 p-3 bg-amber-50 rounded-xl border border-amber-200">
-            <span className="text-sm font-medium text-amber-800">已選 {selectedIds.size} 筆</span>
+            <span className="text-sm font-medium text-amber-800">
+              已選 {selectedIds.size} 筆{allPageSelected ? `（本頁全選，另有 ${recTotal - records.length} 筆在其他頁未選取）` : ''}
+            </span>
             {/* 狀態批次套用 */}
             {!editMode && (
               <>
