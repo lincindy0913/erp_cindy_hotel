@@ -80,6 +80,8 @@ export function usePaymentForm({
       ...(needDate && last.checkDate ? { checkDate: last.checkDate } : {}),
       ...(needAccount && last.checkAccountId ? { checkAccountId: String(last.checkAccountId) } : {})
     }));
+  // formData.checkXxx read only to check if empty (functional updater pattern avoids stale closure)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.paymentMethod]);
 
   // 當勾選的發票變動時，自動更新付款金額（含支票金額）

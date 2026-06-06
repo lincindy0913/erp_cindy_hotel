@@ -40,6 +40,7 @@ export default function CashCountTab({ accounts, warehouses }) {
 
   useEffect(() => {
     fetchCashCounts();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter]);
 
   async function fetchCashCounts() {

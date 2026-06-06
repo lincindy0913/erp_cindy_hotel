@@ -143,10 +143,12 @@ function ExpensesPageInner() {
 
   useEffect(() => {
     fetchAll();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     if (subTab === 'records') fetchRecords();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subTab, mainTab, recordFilter]);
 
   useEffect(() => {

@@ -578,36 +578,28 @@ function BnbPage() {
     if (activeTab === 'records') { setSelectedIds(new Set()); fetchRecords(); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterMonth, filterSource, filterStatus, filterWarehouse]);
-  useEffect(() => {
-    if (activeTab === 'analytics' && (analyticsSub === 'monthly' || analyticsSub === 'pnl')) fetchSummary();
-  }, [summaryYear, summaryWarehouse, summaryMode, activeTab, analyticsSub]);
-  useEffect(() => {
-    if (activeTab === 'analytics' && analyticsSub === 'declList') fetchDeclList();
-  }, [dlYear, dlWarehouse, activeTab, analyticsSub]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (activeTab === 'analytics' && (analyticsSub === 'monthly' || analyticsSub === 'pnl')) fetchSummary(); }, [summaryYear, summaryWarehouse, summaryMode, activeTab, analyticsSub]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (activeTab === 'analytics' && analyticsSub === 'declList') fetchDeclList(); }, [dlYear, dlWarehouse, activeTab, analyticsSub]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (activeTab === 'bossWithdraw') fetchBossWithdraw(); }, [bwMonth, bwWarehouse, activeTab]);
-  useEffect(() => {
-    if (activeTab === 'analytics' && analyticsSub === 'occupancy') fetchOccupancy();
-  }, [occYear, occWarehouse, activeTab, analyticsSub]);
-  useEffect(() => {
-    if (activeTab === 'analytics' && analyticsSub === 'sourceAnalysis') fetchSourceAnalysis();
-  }, [saYear, saWarehouse, activeTab, analyticsSub]);
-  useEffect(() => {
-    if (activeTab === 'analytics' && analyticsSub === 'otaAnalytics') fetchOtaAnalytics();
-  }, [oaYear, oaWarehouse, oaCompare, activeTab, analyticsSub]);
-  useEffect(() => {
-    if (activeTab === 'analytics' && analyticsSub === 'paymentSplit') fetchPaymentSplit();
-  }, [psYear, psWarehouse, activeTab, analyticsSub]);
-  useEffect(() => {
-    if (activeTab === 'deposit') fetchDepositMatch();
-  }, [dmPayType, activeTab]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (activeTab === 'analytics' && analyticsSub === 'occupancy') fetchOccupancy(); }, [occYear, occWarehouse, activeTab, analyticsSub]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (activeTab === 'analytics' && analyticsSub === 'sourceAnalysis') fetchSourceAnalysis(); }, [saYear, saWarehouse, activeTab, analyticsSub]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (activeTab === 'analytics' && analyticsSub === 'otaAnalytics') fetchOtaAnalytics(); }, [oaYear, oaWarehouse, oaCompare, activeTab, analyticsSub]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (activeTab === 'analytics' && analyticsSub === 'paymentSplit') fetchPaymentSplit(); }, [psYear, psWarehouse, activeTab, analyticsSub]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (activeTab === 'deposit') fetchDepositMatch(); }, [dmPayType, activeTab]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (activeTab === 'payAudit') fetchAudit(); }, [auditMonth, auditWarehouse, activeTab]);
-  useEffect(() => {
-    if (activeTab === 'analytics' && analyticsSub === 'calendar') fetchCalendar();
-  }, [calYear, calMonth, calWarehouse, activeTab, analyticsSub]);
-
-  useEffect(() => {
-    if (activeTab === 'analytics' && analyticsSub === 'dailyRev') fetchDailyRevenue();
-  }, [drMonth, drWarehouse, activeTab, analyticsSub]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (activeTab === 'analytics' && analyticsSub === 'calendar') fetchCalendar(); }, [calYear, calMonth, calWarehouse, activeTab, analyticsSub]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (activeTab === 'analytics' && analyticsSub === 'dailyRev') fetchDailyRevenue(); }, [drMonth, drWarehouse, activeTab, analyticsSub]);
 
   const isLocked   = !!lockStatus?.locked;
   const monthLocked = isLocked;

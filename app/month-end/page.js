@@ -93,6 +93,7 @@ export default function MonthEndPage() {
 
   useEffect(() => {
     fetchMonthData();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedYear]);
 
   // 年份或月份改變時自動重載清單

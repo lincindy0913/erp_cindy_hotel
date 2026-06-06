@@ -133,7 +133,7 @@ export function useBnbAnalytics({ showToast }) {
       setAuditOverflow(rows.length >= 500);
     } catch { const msg = '載入付款稽核失敗'; setAuditError(msg); showToast(msg, 'error'); }
     finally { setAuditLoading(false); }
-  }, [auditMonth, auditWarehouse]);
+  }, [auditMonth, auditWarehouse, showToast]);
 
   const fetchGuestHistory = useCallback(async () => {
     if (!ghSearch.trim()) { showToast('請輸入姓名搜尋', 'error'); return; }
@@ -148,7 +148,7 @@ export function useBnbAnalytics({ showToast }) {
       setGhData((json.data ?? json).filter(r => r.status !== '已刪除'));
     } catch { setGhError('載入房客歷史失敗，請稍後再試'); }
     finally { setGhLoading(false); }
-  }, [ghSearch]);
+  }, [ghSearch, showToast]);
 
   const fetchSummary = useCallback(async () => {
     setSummaryRows([]);
@@ -164,7 +164,7 @@ export function useBnbAnalytics({ showToast }) {
       setSummaryFixedHelp(data.fixedExpenseHelp ?? null);
     } catch { const msg = '載入月彙整失敗'; setSummaryError(msg); showToast(msg, 'error'); setSummaryFixedHelp(null); }
     finally { setSummaryLoading(false); }
-  }, [summaryYear, summaryWarehouse, summaryMode]);
+  }, [summaryYear, summaryWarehouse, summaryMode, showToast]);
 
   return {
     // 入住率

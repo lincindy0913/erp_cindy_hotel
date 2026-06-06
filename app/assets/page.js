@@ -287,7 +287,7 @@ function AssetsPageInner() {
       .catch(() => { if (!cancelled) setDetailIncomes([]); })
       .finally(() => { if (!cancelled) setDetailLoading(false); });
     return () => { cancelled = true; };
-  }, [selected?.id, year]);
+  }, [selected, year]);
 
   // Load disposals when selected asset changes
   useEffect(() => {
@@ -482,7 +482,7 @@ function AssetsPageInner() {
       .then(data => { if (!cancelled) setDetailTaxes(Array.isArray(data) ? data : []); })
       .catch(() => { if (!cancelled) setDetailTaxes([]); });
     return () => { cancelled = true; };
-  }, [selected?.id, year]);
+  }, [selected, year]);
 
   // Unlinked properties for the modal dropdown
   const propertyOptions = useMemo(() => {
