@@ -371,7 +371,7 @@ function PurchasingPageInner() {
       },
     };
     return sortRows(purchases, purSortKey, purSortDir, acc);
-  // eslint-disable-next-line react-hooks/exhaustive-deps — isItemInvoiced closes over invoicedIds which IS in deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [purchases, purSortKey, purSortDir, suppliers, invoicedIds]);
 
   function handleViewDetails(purchaseId) {
