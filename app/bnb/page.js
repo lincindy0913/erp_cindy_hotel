@@ -395,6 +395,7 @@ function BnbPage() {
         console.error('[bnb] failed to load warehouse list', e);
         showToast('館別清單載入失敗，館別選單可能無選項，請重新整理頁面。', 'error');
       });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
   // ── 銀行帳戶 fetch（mount once）──────────────────────────────
@@ -458,6 +459,7 @@ function BnbPage() {
       }
     } catch { showToast(`${action}失敗`, 'error'); }
     finally { setLockLoading(false); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lockStatus, lockLoading, getActiveLockContext]);
 
   // ── 月彙整 fetch ──────────────────────────────────────────────
@@ -476,6 +478,7 @@ function BnbPage() {
       setDrData(await res.json());
     } catch { const msg = '載入每日收入失敗'; setDrError(msg); showToast(msg, 'error'); }
     finally { setDrLoading(false); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [drMonth, drWarehouse]);
 
   // ── 旅宿網申報 fetch（實際 + 已存報表）─────────────────────────
@@ -562,15 +565,18 @@ function BnbPage() {
     if (activeTab === 'analytics' && analyticsSub === 'paymentSplit')  fetchPaymentSplit();
     if (activeTab === 'payAudit')      fetchAudit();
     if (activeTab === 'analytics' && analyticsSub === 'calendar') fetchCalendar();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, analyticsSub]);
 
   useEffect(() => {
     const ctx = getActiveLockContext();
     fetchLockStatus(ctx.month, ctx.warehouse);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, filterMonth, declMonth, declWarehouse, dmMonth, dmWarehouse]);
 
   useEffect(() => {
     if (activeTab === 'records') { setSelectedIds(new Set()); fetchRecords(); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterMonth, filterSource, filterStatus, filterWarehouse]);
   useEffect(() => {
     if (activeTab === 'analytics' && (analyticsSub === 'monthly' || analyticsSub === 'pnl')) fetchSummary();

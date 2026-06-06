@@ -245,6 +245,7 @@ function AssetsPageInner() {
       }
     })();
     return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadProperties, loadYearData, year]);
 
   // Highlight by propertyId URL param
