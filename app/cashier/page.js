@@ -91,6 +91,7 @@ export default function CashierPage() {
 
   useEffect(() => {
     fetchAll();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function fetchAll() {

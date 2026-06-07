@@ -35,6 +35,7 @@ export default function EmployeeAdvancesPage() {
   const [warehousesList, setWarehousesList] = useState([]);
   const [expenseCategories, setExpenseCategories] = useState([]);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchAll(); }, []);
 
   async function fetchAll() {
