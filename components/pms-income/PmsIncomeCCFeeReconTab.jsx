@@ -94,6 +94,12 @@ export default function PmsIncomeCCFeeReconTab({ WAREHOUSES = [] }) {
     next.has(id) ? next.delete(id) : next.add(id);
     setSelectedIds(next);
   };
+  // 一鍵選取所有尚未核對的訂單
+  const selectPending = () => {
+    const pending = rows.filter(r => !['已核對', '已建帳', 'cc_已建帳'].includes(r.creditCardStatus));
+    setSelectedIds(new Set(pending.map(r => r.id)));
+  };
+  const pendingCount = rows.filter(r => !['已核對', '已建帳', 'cc_已建帳'].includes(r.creditCardStatus)).length;
 
   const totalCC = rows.reduce((s, r) => s + r.creditCard, 0);
   const totalFee = rows.reduce((s, r) => s + (r.ccFeeAmount || 0), 0);
@@ -107,8 +113,9 @@ export default function PmsIncomeCCFeeReconTab({ WAREHOUSES = [] }) {
   const pmsDiff   = totalCC - stmtGross;
   const derivedRate = stmtGross > 0 ? stmtFee / stmtGross : 0;
 
-  async function runRecon() {
-    if (selectedIds.size === 0) { setMsg('請勾選要核對的訂單'); return; }
+  async function runRecon(overrideIds = null) {
+    const ids = overrideIds ?? selectedIds;
+    if (ids.size === 0) { setMsg('請勾選要核對的訂單'); return; }
     const rate = parseFloat(feeRate);
     if (isNaN(rate) || rate <= 0 || rate > 0.1) { setMsg('手續費率請輸入合理值（例如 0.017 表示 1.7%）'); return; }
     if (!settleDate) { setMsg('請選擇結帳日期（通常為刷卡日隔日）'); return; }
@@ -123,7 +130,7 @@ export default function PmsIncomeCCFeeReconTab({ WAREHOUSES = [] }) {
           warehouse,
           date: settleDate,
           feeRate: rate,
-          reservationIds: [...selectedIds],
+          reservationIds: [...ids],
         }),
       });
       const json = await res.json();
@@ -136,6 +143,27 @@ export default function PmsIncomeCCFeeReconTab({ WAREHOUSES = [] }) {
       }
     } catch { setMsg('網路錯誤'); }
     finally { setRunning(false); }
+  }
+
+  async function quickBatchAll() {
+    const pending = rows.filter(r => !['已核對', '已建帳', 'cc_已建帳'].includes(r.creditCardStatus));
+    if (pending.length === 0) { setMsg('無待核對訂單'); return; }
+    const rate = parseFloat(feeRate);
+    if (isNaN(rate) || rate <= 0 || rate > 0.1) { setMsg('請先確認手續費率'); return; }
+    if (!settleDate) { setMsg('請先確認結帳日期'); return; }
+    const gross = pending.reduce((s, r) => s + (r.creditCard || 0), 0);
+    const fee   = Math.round(gross * rate * 100) / 100;
+    const net   = Math.round((gross - fee) * 100) / 100;
+    if (!window.confirm(
+      `一鍵批次核對 ${pending.length} 筆？\n` +
+      `刷卡合計：${gross.toLocaleString('zh-TW')}\n` +
+      `手續費（${(rate * 100).toFixed(2)}%）：-${fee.toLocaleString('zh-TW')}\n` +
+      `結帳日 ${settleDate} 入存簿：${net.toLocaleString('zh-TW')}\n\n` +
+      `此操作將同時計算手續費、標記已核對、建立存簿入帳，確定執行？`
+    )) return;
+    const ids = new Set(pending.map(r => r.id));
+    setSelectedIds(ids);
+    await runRecon(ids);
   }
 
   return (
@@ -153,6 +181,25 @@ export default function PmsIncomeCCFeeReconTab({ WAREHOUSES = [] }) {
           <input type="month" className="border rounded px-2 py-1 text-sm" value={month} onChange={e => setMonth(e.target.value)} />
         </div>
         <button onClick={load} className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700">重新整理</button>
+        {pendingCount > 0 && (
+          <>
+            <button
+              onClick={selectPending}
+              className="px-3 py-1 text-sm border border-purple-400 text-purple-700 rounded hover:bg-purple-50"
+              title="一鍵選取所有尚未核對的訂單"
+            >
+              全選未核對（{pendingCount} 筆）
+            </button>
+            <button
+              onClick={quickBatchAll}
+              disabled={running}
+              className="px-3 py-1 text-sm bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50"
+              title="一步完成：全選未核對 → 計算手續費 → 標記已核對 → 建立存簿入帳"
+            >
+              ⚡ 一鍵批次完成
+            </button>
+          </>
+        )}
       </div>
 
       {/* KPI */}

@@ -91,6 +91,26 @@ export default function MonthEndPage() {
   const [checklistLoading, setChecklistLoading] = useState(false);
   const [checklistMonth, setChecklistMonth] = useState(new Date().getMonth() + 1);
 
+  // 人工確認狀態（manual items），以 localStorage 持久化
+  const [manualConfirmed, setManualConfirmed] = useState({});
+
+  useEffect(() => {
+    const key = `monthend_manual_${selectedYear}_${checklistMonth}`;
+    try {
+      const stored = JSON.parse(localStorage.getItem(key) || '{}');
+      setManualConfirmed(stored);
+    } catch { setManualConfirmed({}); }
+  }, [selectedYear, checklistMonth]);
+
+  function toggleManualConfirm(itemKey) {
+    const key = `monthend_manual_${selectedYear}_${checklistMonth}`;
+    setManualConfirmed(prev => {
+      const next = { ...prev, [itemKey]: !prev[itemKey] };
+      try { localStorage.setItem(key, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }
+
   useEffect(() => {
     fetchMonthData();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -679,42 +699,47 @@ export default function MonthEndPage() {
           ) : checklistData ? (
             <div className="px-4 py-3 space-y-2">
               {checklistData.items.map((item) => {
-                const isOk       = item.status === 'ok';
-                const isCritical = item.status === 'critical';
-                const isWarn     = item.status === 'warning';
-                const isManual   = item.status === 'manual';
+                const isOk         = item.status === 'ok';
+                const isCritical   = item.status === 'critical';
+                const isWarn       = item.status === 'warning';
+                const isManual     = item.status === 'manual';
+                const isConfirmed  = isManual && !!manualConfirmed[item.key];
+                const effectiveOk  = isOk || isConfirmed;
                 return (
                   <div
                     key={item.key}
                     className={`flex items-start gap-3 p-2.5 rounded-lg border ${
-                      isOk       ? 'bg-green-50 border-green-100'
+                      effectiveOk  ? 'bg-green-50 border-green-100'
                       : isCritical ? 'bg-red-50 border-red-300'
-                      : isWarn   ? 'bg-orange-50 border-orange-200'
+                      : isWarn     ? 'bg-orange-50 border-orange-200'
                       : 'bg-slate-50 border-slate-100'
                     }`}
                   >
                     {/* Step badge */}
                     <div className={`mt-0.5 w-5 h-5 rounded-full flex items-center justify-center shrink-0 text-xs font-bold ${
-                      isOk       ? 'bg-green-500 text-white'
+                      effectiveOk  ? 'bg-green-500 text-white'
                       : isCritical ? 'bg-red-600 text-white'
-                      : isWarn   ? 'bg-orange-400 text-white'
+                      : isWarn     ? 'bg-orange-400 text-white'
                       : 'bg-slate-300 text-white'
                     }`}>
-                      {isOk ? '✓' : isCritical ? '✗' : item.step}
+                      {effectiveOk ? '✓' : isCritical ? '✗' : item.step}
                     </div>
 
                     {/* Text */}
                     <div className="flex-1 min-w-0">
                       <p className={`text-sm font-medium ${
-                        isOk ? 'text-green-800' : isCritical ? 'text-red-800' : isWarn ? 'text-orange-800' : 'text-slate-700'
+                        effectiveOk ? 'text-green-800' : isCritical ? 'text-red-800' : isWarn ? 'text-orange-800' : 'text-slate-700'
                       }`}>
                         {item.label}
                         {isCritical && <span className="ml-1.5 text-xs font-bold text-red-600 bg-red-100 px-1 rounded">阻斷月結</span>}
                         {item.count > 0 && (
                           <span className={`ml-1.5 text-xs font-bold ${isCritical ? 'text-red-700' : 'text-orange-600'}`}>（{item.count} 筆）</span>
                         )}
-                        {isManual && (
+                        {isManual && !isConfirmed && (
                           <span className="ml-1.5 text-xs text-slate-400">（請人工確認）</span>
+                        )}
+                        {isConfirmed && (
+                          <span className="ml-1.5 text-xs text-green-600">（已確認）</span>
                         )}
                       </p>
                       {item.desc && <p className={`text-xs mt-0.5 ${isCritical ? 'text-red-600' : 'text-slate-400'}`}>{item.desc}</p>}
@@ -722,18 +747,32 @@ export default function MonthEndPage() {
                     </div>
 
                     {/* Action link */}
-                    <Link
-                      href={item.href}
-                      className={`shrink-0 text-xs px-2 py-1 rounded whitespace-nowrap font-medium transition-colors ${
-                        isCritical
-                          ? 'bg-red-600 text-white hover:bg-red-700'
-                          : isWarn
-                            ? 'bg-orange-500 text-white hover:bg-orange-600'
-                            : 'bg-white border border-slate-300 text-slate-600 hover:bg-slate-100'
-                      }`}
-                    >
-                      {item.linkText} →
-                    </Link>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {isManual && (
+                        <button
+                          onClick={() => toggleManualConfirm(item.key)}
+                          className={`text-xs px-2 py-1 rounded whitespace-nowrap font-medium border transition-colors ${
+                            isConfirmed
+                              ? 'bg-green-100 border-green-300 text-green-700 hover:bg-green-200'
+                              : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-100'
+                          }`}
+                        >
+                          {isConfirmed ? '✓ 已確認' : '標記確認'}
+                        </button>
+                      )}
+                      <Link
+                        href={item.href}
+                        className={`text-xs px-2 py-1 rounded whitespace-nowrap font-medium transition-colors ${
+                          isCritical
+                            ? 'bg-red-600 text-white hover:bg-red-700'
+                            : isWarn
+                              ? 'bg-orange-500 text-white hover:bg-orange-600'
+                              : 'bg-white border border-slate-300 text-slate-600 hover:bg-slate-100'
+                        }`}
+                      >
+                        {item.linkText} →
+                      </Link>
+                    </div>
                   </div>
                 );
               })}

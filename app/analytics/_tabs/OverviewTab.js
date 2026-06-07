@@ -1,7 +1,184 @@
 'use client';
 
+import { useState, useEffect } from 'react';
+
 const NT = (v) => `NT$ ${Number(v || 0).toLocaleString()}`;
 const pct = (v) => `${Number(v || 0).toFixed(1)}%`;
+
+const MONTH_LABELS = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+
+// ── 共用子元件（放在最前避免 const hoisting 問題） ──
+const SectionTitle = ({ children }) => (
+  <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+    <span className="w-1 h-4 bg-cyan-500 rounded-full inline-block" />
+    {children}
+  </h3>
+);
+
+function cellColor(net, maxNet) {
+  if (!net || net <= 0) return 'bg-gray-100 text-gray-400';
+  const ratio = maxNet > 0 ? net / maxNet : 0;
+  if (ratio >= 0.8) return 'bg-violet-700 text-white';
+  if (ratio >= 0.6) return 'bg-violet-500 text-white';
+  if (ratio >= 0.4) return 'bg-violet-300 text-violet-900';
+  if (ratio >= 0.2) return 'bg-violet-200 text-violet-800';
+  return 'bg-violet-100 text-violet-700';
+}
+
+function yoyColor(pct) {
+  if (pct == null) return 'bg-gray-100 text-gray-400';
+  if (pct >= 20)  return 'bg-emerald-600 text-white';
+  if (pct >= 5)   return 'bg-emerald-300 text-emerald-900';
+  if (pct >= -5)  return 'bg-gray-100 text-gray-500';
+  if (pct >= -20) return 'bg-red-200 text-red-800';
+  return 'bg-red-500 text-white';
+}
+
+function WarehouseHeatmap() {
+  const curYear = new Date().getFullYear();
+  const [year, setYear]       = useState(curYear);
+  const [mode, setMode]       = useState('amount'); // 'amount' | 'yoy'
+  const [summaries, setSummaries]     = useState(null);
+  const [prevSummaries, setPrevSummaries] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    setSummaries(null);
+    setPrevSummaries(null);
+    Promise.all([
+      fetch(`/api/pms-income/monthly-summary?year=${year}`).then(r => r.ok ? r.json() : null),
+      fetch(`/api/pms-income/monthly-summary?year=${year - 1}`).then(r => r.ok ? r.json() : null),
+    ]).then(([cur, prev]) => {
+      if (Array.isArray(cur))  setSummaries(cur);
+      if (Array.isArray(prev)) setPrevSummaries(prev);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, [year]);
+
+  if (loading) return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+      <SectionTitle>館別 × 月份收入熱力圖</SectionTitle>
+      <div className="text-center py-6 text-gray-400 text-sm">載入中…</div>
+    </div>
+  );
+  if (!summaries) return null;
+
+  const warehouseSet = new Set();
+  summaries.forEach(m => Object.keys(m.byWarehouse || {}).forEach(w => warehouseSet.add(w)));
+  const warehouses = [...warehouseSet].sort();
+  if (warehouses.length === 0) return null;
+
+  let maxNet = 0;
+  summaries.forEach(m => Object.values(m.byWarehouse || {}).forEach(v => { if (v.net > maxNet) maxNet = v.net; }));
+
+  const yearOpts = [];
+  for (let y = curYear; y >= curYear - 4; y--) yearOpts.push(y);
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+      <div className="flex items-center justify-between mb-3">
+        <SectionTitle>館別 × 月份收入熱力圖</SectionTitle>
+        <div className="flex items-center gap-2">
+          <select
+            value={year}
+            onChange={e => setYear(Number(e.target.value))}
+            className="text-xs border rounded px-2 py-1 text-gray-600"
+          >
+            {yearOpts.map(y => <option key={y} value={y}>{y} 年</option>)}
+          </select>
+          <div className="flex gap-1">
+            {[['amount', '收入'], ['yoy', 'YoY%']].map(([v, l]) => (
+              <button key={v} onClick={() => setMode(v)}
+                className={`text-xs px-2.5 py-1 rounded border transition-colors ${mode === v ? 'bg-violet-600 text-white border-violet-600' : 'border-gray-300 text-gray-500 hover:bg-gray-50'}`}>
+                {l}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="text-xs w-full">
+          <thead>
+            <tr>
+              <th className="text-left px-2 py-1 text-gray-500 font-medium min-w-[5rem]">館別</th>
+              {MONTH_LABELS.map((l, i) => (
+                <th key={i} className="text-center px-0.5 py-1 text-gray-500 font-medium w-11">{l}</th>
+              ))}
+              <th className="text-right px-2 py-1 text-gray-500 font-medium">全年</th>
+            </tr>
+          </thead>
+          <tbody>
+            {warehouses.map(wh => {
+              let rowTotal = 0;
+              return (
+                <tr key={wh}>
+                  <td className="px-2 py-1 font-medium text-gray-700 whitespace-nowrap">{wh}</td>
+                  {summaries.map((m, mi) => {
+                    const net  = m.byWarehouse?.[wh]?.net ?? 0;
+                    const prev = prevSummaries?.[mi]?.byWarehouse?.[wh]?.net ?? 0;
+                    const yoy  = prev > 0 ? Math.round((net - prev) / prev * 100) : null;
+                    rowTotal += net;
+                    const cls  = mode === 'yoy' ? yoyColor(yoy) : cellColor(net, maxNet);
+                    const label = mode === 'yoy'
+                      ? (yoy != null ? `${yoy > 0 ? '+' : ''}${yoy}%` : '—')
+                      : (net > 0 ? `${Math.round(net / 1000)}k` : '—');
+                    const tip = mode === 'yoy'
+                      ? `${wh} ${mi + 1}月：${year}=${net.toLocaleString('zh-TW')} / ${year-1}=${prev.toLocaleString('zh-TW')}（YoY ${yoy != null ? (yoy > 0 ? '+' : '') + yoy + '%' : 'N/A'}）`
+                      : `${wh} ${mi + 1}月：NT$ ${net.toLocaleString('zh-TW')}`;
+                    return (
+                      <td key={mi} className="px-0.5 py-0.5">
+                        <div className={`rounded text-center py-1 px-0.5 ${cls}`} title={tip}>{label}</div>
+                      </td>
+                    );
+                  })}
+                  <td className="px-2 py-1 text-right font-semibold text-gray-700">
+                    {rowTotal > 0 ? `${Math.round(rowTotal / 1000)}k` : '—'}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot>
+            <tr className="border-t border-gray-200">
+              <td className="px-2 py-1 text-xs font-semibold text-gray-600">月合計</td>
+              {summaries.map((m, mi) => {
+                const total = Object.values(m.byWarehouse || {}).reduce((s, v) => s + (v.net || 0), 0);
+                return (
+                  <td key={mi} className="px-0.5 py-1 text-center text-xs text-gray-500">
+                    {total > 0 ? `${Math.round(total / 1000)}k` : '—'}
+                  </td>
+                );
+              })}
+              <td />
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <div className="flex items-center gap-4 mt-3 text-xs text-gray-400">
+        {mode === 'amount' && (
+          <div className="flex items-center gap-1.5">
+            <span>低</span>
+            {['bg-violet-100','bg-violet-200','bg-violet-300','bg-violet-500','bg-violet-700'].map(c => (
+              <span key={c} className={`inline-block w-4 h-3 rounded ${c}`} />
+            ))}
+            <span>高</span>
+          </div>
+        )}
+        {mode === 'yoy' && (
+          <div className="flex items-center gap-1.5">
+            <span className="bg-red-500 text-white px-1 rounded">↓−20%+</span>
+            <span className="bg-red-200 text-red-800 px-1 rounded">↓小跌</span>
+            <span className="bg-gray-100 text-gray-500 px-1 rounded">持平</span>
+            <span className="bg-emerald-300 text-emerald-900 px-1 rounded">↑小漲</span>
+            <span className="bg-emerald-600 text-white px-1 rounded">↑+20%+</span>
+          </div>
+        )}
+        <span>數字單位 k = 千元。滑鼠懸停可查看詳細金額。</span>
+      </div>
+    </div>
+  );
+}
 
 const riskBadge = (level) => {
   const map = { low: 'bg-green-100 text-green-700', medium: 'bg-amber-100 text-amber-700', high: 'bg-orange-100 text-orange-700', critical: 'bg-red-100 text-red-700' };
@@ -18,13 +195,6 @@ const KpiCard = ({ label, value, sub, color = 'text-gray-900', icon }) => (
     <p className={`text-2xl font-bold mt-1 ${color}`}>{value}</p>
     {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
   </div>
-);
-
-const SectionTitle = ({ children }) => (
-  <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-    <span className="w-1 h-4 bg-cyan-500 rounded-full inline-block" />
-    {children}
-  </h3>
 );
 
 export default function OverviewTab({ data, onTabSwitch }) {
@@ -148,6 +318,9 @@ export default function OverviewTab({ data, onTabSwitch }) {
           {rep.executiveSummary}
         </div>
       )}
+
+      {/* 館別 × 月份熱力圖 */}
+      <WarehouseHeatmap />
     </div>
   );
 }

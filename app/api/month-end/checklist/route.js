@@ -457,6 +457,75 @@ export async function GET(request) {
       items.push({ key: 'pms_deposit_overdue', step: 16, label: 'PMS 訂金逾期未入', status: 'manual', href: '/pms-income?tab=depositRecon', linkText: '前往訂金核對' });
     }
 
+    // ── 17. 統一發票申報（VAT）────────────────────────────────────
+    try {
+      const invoiceCount = await prisma.pmsReservationRecord.count({
+        where: {
+          businessDate: { gte: periodStart, lte: periodEnd },
+          invoiceNo: { not: null },
+          NOT: { invoiceNo: '' },
+        },
+      });
+      // 只有本月有開發票才需要提醒申報
+      if (invoiceCount > 0) {
+        items.push({
+          key: 'vat_filing', step: 17,
+          label: '統一發票申報（VAT）',
+          desc: `本月共 ${invoiceCount} 張統一發票，請確認已從「PMS 收入 → 發票查詢」匯出申報格式並申報`,
+          count: 0, done: false,
+          status: 'manual',
+          href: '/pms-income?tab=invoiceQuery', linkText: '前往發票查詢',
+        });
+      } else {
+        items.push({
+          key: 'vat_filing', step: 17,
+          label: '統一發票申報（VAT）',
+          desc: '本月 PMS 無統一發票記錄',
+          count: 0, done: true, status: 'ok',
+          href: '/pms-income?tab=invoiceQuery', linkText: '前往發票查詢',
+        });
+      }
+    } catch {
+      items.push({ key: 'vat_filing', step: 17, label: '統一發票申報（VAT）', status: 'manual', href: '/pms-income?tab=invoiceQuery', linkText: '前往發票查詢' });
+    }
+
+    // ── 18. 存簿帳戶期末餘額確認 ──────────────────────────────────
+    try {
+      const bankRecons = await prisma.bankReconciliation.findMany({
+        where: { statementYear: year, statementMonth: month },
+        select: { status: true, difference: true, accountName: true },
+      });
+      if (bankRecons.length === 0) {
+        items.push({
+          key: 'bank_balance_confirm', step: 18,
+          label: '存簿期末餘額確認',
+          desc: '尚未匯入銀行對帳單，請先完成存簿核對後再月結',
+          count: 0, done: false, status: 'manual',
+          href: '/bank-reconciliation', linkText: '前往存簿核對',
+        });
+      } else {
+        const unconfirmed = bankRecons.filter(r => r.status !== 'confirmed');
+        const withDiff    = bankRecons.filter(r => Math.abs(Number(r.difference)) > 0.01);
+        const allOk = unconfirmed.length === 0 && withDiff.length === 0;
+        items.push({
+          key: 'bank_balance_confirm', step: 18,
+          label: '存簿期末餘額確認',
+          desc: allOk
+            ? `全部 ${bankRecons.length} 個帳戶存簿核對完成，餘額吻合`
+            : [
+                unconfirmed.length > 0 ? `${unconfirmed.length} 個帳戶未確認` : '',
+                withDiff.length > 0 ? `${withDiff.length} 個帳戶有餘額差異（${withDiff.map(r => r.accountName).join('、')}）` : '',
+              ].filter(Boolean).join('；'),
+          count: unconfirmed.length + withDiff.length,
+          done: allOk,
+          status: allOk ? 'ok' : withDiff.length > 0 ? 'critical' : 'warning',
+          href: '/bank-reconciliation', linkText: '前往存簿核對',
+        });
+      }
+    } catch {
+      items.push({ key: 'bank_balance_confirm', step: 18, label: '存簿期末餘額確認', status: 'manual', href: '/bank-reconciliation', linkText: '前往存簿核對' });
+    }
+
     const doneCount     = items.filter(i => i.done).length;
     const criticalCount = items.filter(i => i.status === 'critical').length;
     const warningCount  = items.filter(i => i.status === 'warning' || i.status === 'critical').length;

@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useToast } from '@/context/ToastContext';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 const OTA_SOURCES = ['OTA-Booking', 'OTA-Agoda', 'OTA-Expedia', 'OTA-易遊網', 'OTA-MOMO', 'OTA-Klook', 'OTA-KKday', 'OTA-雄獅', 'OTA-可樂旅遊', '代訂中心'];
 const SOURCE_COLORS = {
@@ -108,6 +109,112 @@ const OTA_PANEL_SOURCES = [
   { key: 'OTA-易遊網',  label: '易遊網' },
   { key: 'OTA-MOMO',    label: 'MOMO' },
 ];
+
+const TREND_COLORS = {
+  'OTA-Booking': '#3b82f6',
+  'OTA-Agoda':   '#ef4444',
+  'OTA-Expedia': '#f59e0b',
+  'OTA-易遊網':  '#22c55e',
+  'OTA-MOMO':    '#ec4899',
+  'OTA-Klook':   '#f97316',
+  'OTA-KKday':   '#14b8a6',
+  '代訂中心':    '#a855f7',
+};
+const MAIN_SOURCES = ['OTA-Booking', 'OTA-Agoda', 'OTA-Expedia', 'OTA-易遊網', 'OTA-MOMO', '代訂中心'];
+
+function OtaTrendChart({ warehouse }) {
+  const [loading, setLoading] = useState(false);
+  const [chartData, setChartData] = useState(null);
+  const [metric, setMetric] = useState('revenue'); // 'revenue' | 'share'
+
+  useEffect(() => {
+    if (!warehouse) return;
+    setLoading(true);
+    const months = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(1);
+      d.setMonth(d.getMonth() - i);
+      months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+    }
+
+    Promise.all(months.map(m =>
+      fetch(`/api/pms-income/reservations?take=2000&warehouse=${encodeURIComponent(warehouse)}&month=${m}`)
+        .then(r => r.ok ? r.json() : [])
+        .catch(() => [])
+    )).then(results => {
+      const data = months.map((m, i) => {
+        const rows = results[i].filter(r => {
+          const src = r.sourceOverride || r.source;
+          return OTA_SOURCES.includes(src);
+        });
+        const bySource = {};
+        let total = 0;
+        for (const r of rows) {
+          const src = r.sourceOverride || r.source;
+          bySource[src] = (bySource[src] || 0) + (r.totalRevenue || 0);
+          total += r.totalRevenue || 0;
+        }
+        const entry = { month: m.slice(5) + '月', _total: total };
+        for (const src of MAIN_SOURCES) {
+          entry[src] = bySource[src] || 0;
+          entry[src + '_share'] = total > 0 ? Math.round((bySource[src] || 0) / total * 100 * 10) / 10 : 0;
+        }
+        return entry;
+      });
+      setChartData(data);
+      setLoading(false);
+    });
+  }, [warehouse]);
+
+  if (loading) return <div className="text-center py-8 text-gray-400 text-sm">載入趨勢資料...</div>;
+  if (!chartData) return null;
+
+  const activeLines = MAIN_SOURCES.filter(src => chartData.some(d => d[src] > 0));
+  if (activeLines.length === 0) return <div className="text-center py-4 text-gray-400 text-sm">近 6 個月無 OTA 資料</div>;
+
+  return (
+    <div className="bg-white border rounded-xl p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-semibold text-gray-700">OTA 來源趨勢（近 6 個月）</span>
+        <div className="flex gap-1">
+          {[['revenue', '收入金額'], ['share', '佔比 %']].map(([v, l]) => (
+            <button key={v} onClick={() => setMetric(v)}
+              className={`px-3 py-1 text-xs rounded border transition-colors ${metric === v ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
+              {l}
+            </button>
+          ))}
+        </div>
+      </div>
+      <ResponsiveContainer width="100%" height={220}>
+        <LineChart data={chartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+          <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+          <YAxis tick={{ fontSize: 11 }}
+            tickFormatter={v => metric === 'share' ? v + '%' : v >= 1000 ? Math.round(v / 1000) + 'k' : v} />
+          <Tooltip
+            formatter={(v, name) => [
+              metric === 'share' ? v + '%' : 'NT$ ' + Number(v).toLocaleString('zh-TW'),
+              name.replace('_share', '')
+            ]}
+          />
+          <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+          {activeLines.map(src => (
+            <Line key={src}
+              type="monotone"
+              dataKey={metric === 'share' ? src + '_share' : src}
+              name={src}
+              stroke={TREND_COLORS[src] || '#6b7280'}
+              strokeWidth={2}
+              dot={{ r: 3 }}
+              activeDot={{ r: 5 }}
+            />
+          ))}
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
 
 // ── OTA 帳單匯入與比對 (多平台) ──
 function BookingStatementPanel({ rows: allOtaRows }) {
@@ -348,6 +455,7 @@ export default function PmsIncomeOtaCommissionTab({ WAREHOUSES = [] }) {
   const [applying, setApplying] = useState(false);
   const [showEstimate, setShowEstimate] = useState(false);
   const [showBookingImport, setShowBookingImport] = useState(false);
+  const [showTrend, setShowTrend] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -487,6 +595,12 @@ export default function PmsIncomeOtaCommissionTab({ WAREHOUSES = [] }) {
         >
           {showBookingImport ? '隱藏帳單比對' : 'Booking 帳單比對'}
         </button>
+        <button
+          onClick={() => setShowTrend(v => !v)}
+          className={`px-3 py-1 text-sm rounded border transition-colors ${showTrend ? 'bg-violet-600 text-white border-violet-600' : 'border-violet-400 text-violet-700 hover:bg-violet-50'}`}
+        >
+          {showTrend ? '隱藏趨勢圖' : 'OTA 趨勢圖'}
+        </button>
       </div>
 
       {/* Summary KPI */}
@@ -621,6 +735,11 @@ export default function PmsIncomeOtaCommissionTab({ WAREHOUSES = [] }) {
       {/* ── Booking.com 帳單比對 ── */}
       {showBookingImport && (
         <BookingStatementPanel rows={rows} />
+      )}
+
+      {/* ── OTA 來源趨勢折線圖 ── */}
+      {showTrend && (
+        <OtaTrendChart warehouse={warehouse} />
       )}
     </div>
   );
