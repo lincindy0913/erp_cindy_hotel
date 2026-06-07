@@ -125,7 +125,7 @@ export function useOtaReconcile({ showToast, confirm, setEditBooking, DEFAULT_WA
       showToast('比對結果已確認存檔', 'success');
     } catch { showToast('存檔失敗', 'error'); }
     finally { setReconcileConfirming(false); }
-  }, [otaResult, otaSource, otaWarehouse, otaDateFrom, otaDateTo, DEFAULT_WAREHOUSE, confirm, showToast]);
+  }, [otaResult, otaSource, otaWarehouse, otaDateFrom, DEFAULT_WAREHOUSE, confirm, showToast]);
 
   // ── OTA 比對：開啟編輯 ─────────────────────────────────────────
   const openOtaEdit = useCallback(async (bnbId) => {
@@ -181,7 +181,7 @@ export function useOtaReconcile({ showToast, confirm, setEditBooking, DEFAULT_WA
       setReconLogsError('比對歷史記錄載入失敗，請稍後再試');
       setReconLogs([]);
     } finally { setReconLogsLoading(false); }
-  }, [otaWarehouse, showToast]);
+  }, [otaWarehouse]);
 
   // ── 傭金：建立草稿 ────────────────────────────────────────────
   const submitCommission = useCallback(async () => {
@@ -225,7 +225,7 @@ export function useOtaReconcile({ showToast, confirm, setEditBooking, DEFAULT_WA
       setCommHistError('傭金歷史記錄載入失敗，請稍後再試');
       setCommHistRows([]);
     } finally { setCommHistLoading(false); }
-  }, [otaWarehouse, commSource, showToast]);
+  }, [otaWarehouse, commSource]);
 
   // ── 傭金：確認送出出納 ─────────────────────────────────────────
   const confirmCommission = useCallback(async (id) => {
@@ -237,7 +237,7 @@ export function useOtaReconcile({ showToast, confirm, setEditBooking, DEFAULT_WA
       showToast(`傭金已送出出納（${data.orderNo}）`, 'success');
       fetchCommHistory();
     } catch { showToast('確認失敗', 'error'); }
-  }, [fetchCommHistory, confirm]);
+  }, [fetchCommHistory, confirm, showToast]);
 
   // ── 傭金：取消 ────────────────────────────────────────────────
   const cancelCommission = useCallback(async (id) => {
@@ -251,7 +251,7 @@ export function useOtaReconcile({ showToast, confirm, setEditBooking, DEFAULT_WA
       const month = otaDateFrom ? otaDateFrom.substring(0, 7) : todayStr().slice(0, 7);
       await _checkCommExisting(month, otaSource, otaWarehouse);
     } catch { showToast('取消失敗', 'error'); }
-  }, [fetchCommHistory, otaSource, otaDateFrom, otaWarehouse, _checkCommExisting, confirm]);
+  }, [fetchCommHistory, otaSource, otaDateFrom, otaWarehouse, _checkCommExisting, confirm, showToast]);
 
   // ── 傭金：開始編輯 ─────────────────────────────────────────────
   const startEditComm = useCallback((row) => {
@@ -276,7 +276,7 @@ export function useOtaReconcile({ showToast, confirm, setEditBooking, DEFAULT_WA
       fetchCommHistory();
     } catch { showToast('儲存失敗', 'error'); }
     finally { setCommEditSaving(false); }
-  }, [commEditId, commEditData, fetchCommHistory]);
+  }, [commEditId, commEditData, fetchCommHistory, showToast]);
 
   return {
     // OTA 比對

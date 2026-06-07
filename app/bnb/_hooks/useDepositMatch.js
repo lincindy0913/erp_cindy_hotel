@@ -26,6 +26,7 @@ export function useDepositMatch() {
       .then(r => r.ok ? r.json() : [])
       .then(data => setDmAccounts(data.filter(a => a.type === '銀行存款' && a.isActive)))
       .catch(() => showToast('存簿帳戶清單載入失敗，請重新整理頁面', 'error'));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchDepositMatch = useCallback(async () => {

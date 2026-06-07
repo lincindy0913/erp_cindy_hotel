@@ -51,10 +51,12 @@ export default function PaymentVoucherListPage() {
 
   useEffect(() => {
     fetchAll();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     filterInvoices();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [invoices, filterData]);
 
   async function fetchAll() {

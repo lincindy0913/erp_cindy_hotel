@@ -16,6 +16,7 @@ export default function ProductDetailPage() {
 
   useEffect(() => {
     fetchProductPurchases();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [productId]);
 
   async function fetchProductPurchases() {

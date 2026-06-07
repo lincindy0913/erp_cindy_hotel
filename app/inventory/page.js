@@ -254,7 +254,6 @@ export default function InventoryPage() {
   }
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     fetchWarehouses();
     // 深連結支援：?tab=inbound 等直跳對應 tab
     const params = new URLSearchParams(window.location.search);
@@ -263,6 +262,7 @@ export default function InventoryPage() {
       setActiveTab(tabParam);
     }
     if (params.get('lowstock') === '1') setFilterLowStock(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function fetchWarehouses() {

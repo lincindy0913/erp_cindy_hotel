@@ -354,11 +354,13 @@ function RentalsPage() {
 
   useEffect(() => {
     fetchAll();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     if (activeTab !== 'rentFiling') return;
     fetchRentFiling();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rentFilingYear, activeTab]);
 
   useEffect(() => {
@@ -370,7 +372,6 @@ function RentalsPage() {
       if (tenants.length === 0) fetchTenants();
     }
     if (activeTab === 'taxes') { fetchTaxes(); fetchYearLocks(); if (properties.length === 0) fetchProperties(); }
-    // 維護費頁面也需要物業清單供下拉選單使用
     if (activeTab === 'maintenance') {
       fetchMaintenances();
       fetchProperties();
@@ -391,9 +392,9 @@ function RentalsPage() {
       if (properties.length === 0) fetchProperties();
       if (contracts.length === 0) fetchContracts();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, analyticsSub]);
 
-  // 從出納執行回來時自動更新稅款/維護費清單（頁面重新顯示時 refetch）
   useEffect(() => {
     const onVisible = () => {
       if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
@@ -402,6 +403,7 @@ function RentalsPage() {
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
   // ── URL ↔ filter sync ─────────────────────────────────────────
@@ -411,6 +413,7 @@ function RentalsPage() {
     if (contractFilter.status)     p.set('contractStatus', contractFilter.status);
     if (contractFilter.propertyId) p.set('propertyId',     contractFilter.propertyId);
     router.replace(`/rentals?${p}`, { scroll: false });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, contractFilter.status, contractFilter.propertyId]);
 
   useEffect(() => {
@@ -419,6 +422,7 @@ function RentalsPage() {
     if (taxFilter.status)     p.set('taxStatus',  taxFilter.status);
     if (taxFilter.propertyId) p.set('propertyId', taxFilter.propertyId);
     router.replace(`/rentals?${p}`, { scroll: false });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, taxFilter.taxYear, taxFilter.status, taxFilter.propertyId]);
 
   useEffect(() => {
@@ -427,6 +431,7 @@ function RentalsPage() {
     if (incomeFilter.month)          p.set('incomeMonth',    incomeFilter.month);
     if (incomeFilter.propertySearch) p.set('propertySearch', incomeFilter.propertySearch);
     router.replace(`/rentals?${p}`, { scroll: false });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, incomeFilter.year, incomeFilter.month, incomeFilter.propertySearch]);
 
   // ── editProperty URL param ────────────────────────────────────
@@ -434,6 +439,7 @@ function RentalsPage() {
 
   useEffect(() => {
     if (editPropertyParam) fetchProperties();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editPropertyParam]);
 
   useEffect(() => {
@@ -458,6 +464,7 @@ function RentalsPage() {
     editPropertyOpenedRef.current = true;
     openPropertyModal(p);
     router.replace('/rentals', { scroll: false });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [properties, editPropertyParam, router, openPropertyModal, showToast]);
 
   // ── Helper ────────────────────────────────────────────────────

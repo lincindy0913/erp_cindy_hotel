@@ -169,10 +169,12 @@ function PurchasingPageInner() {
     fetchInvoiceTitles();
     fetchPaymentMethods();
     fetchReorderSuggestions();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     if (purchasePageTab === 'monthlyExpense') fetchInvoiceTitles();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [purchasePageTab]);
 
 

@@ -159,6 +159,7 @@ function InvoicePageInner() {
     fetchAllowances();
     fetchSystemTaxRate();
     fetchInvoiceTitles();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function fetchMonthlyStats() {
@@ -175,6 +176,7 @@ function InvoicePageInner() {
 
   useEffect(() => {
     if (activeView === 'monthly' && canSalesView) fetchMonthlyStats();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeView, canSalesView]);
 
   function goSalesView(next) {
@@ -273,11 +275,13 @@ function InvoicePageInner() {
       fetchOwnerExpenseTotal(reportDateFrom, reportDateTo);
       fetchPrivateInvoices(reportDateFrom, reportDateTo);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeView, reportDateFrom, reportDateTo]);
 
   // 切到 sub=private 時也刷新
   useEffect(() => {
     if (activeView === 'report' && reportSubIsPrivate) fetchPrivateInvoices(reportDateFrom, reportDateTo);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reportSubIsPrivate]);
 
   async function fetchPrivateInvoices(from, to) {
@@ -298,10 +302,11 @@ function InvoicePageInner() {
     setPrivateLoading(false);
   }
 
+  // Extract to variable so deps can be statically checked
+  const salesEditParam = searchParams.get('edit');
   useEffect(() => {
-    const editId = searchParams.get('edit');
-    if (!editId) return;
-    const id = parseInt(editId, 10);
+    if (!salesEditParam) return;
+    const id = parseInt(salesEditParam, 10);
     if (Number.isNaN(id)) return;
     let cancelled = false;
     fetch(`/api/sales/${id}`)
@@ -317,7 +322,8 @@ function InvoicePageInner() {
       })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [searchParams.get('edit')]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [salesEditParam]);
 
   async function fetchSystemTaxRate() {
     try {

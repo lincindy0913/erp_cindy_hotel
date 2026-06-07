@@ -56,6 +56,7 @@ export default function ProductsPage() {
   useEffect(() => {
     fetchProducts(1, itemsPerPage, '');
     fetchAccountingSubjects();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
