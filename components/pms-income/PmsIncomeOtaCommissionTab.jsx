@@ -130,41 +130,25 @@ function OtaTrendChart({ warehouse }) {
   useEffect(() => {
     if (!warehouse) return;
     setLoading(true);
-    const months = [];
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(1);
-      d.setMonth(d.getMonth() - i);
-      months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
-    }
-
-    Promise.all(months.map(m =>
-      fetch(`/api/pms-income/reservations?take=2000&warehouse=${encodeURIComponent(warehouse)}&month=${m}`)
-        .then(r => r.ok ? r.json() : [])
-        .catch(() => [])
-    )).then(results => {
-      const data = months.map((m, i) => {
-        const rows = results[i].filter(r => {
-          const src = r.sourceOverride || r.source;
-          return OTA_SOURCES.includes(src);
+    setChartData(null);
+    const params = new URLSearchParams({ warehouse, months: '6' });
+    fetch(`/api/pms-income/ota-trend?${params}`)
+      .then(r => r.ok ? r.json() : [])
+      .then(raw => {
+        const data = raw.map(entry => {
+          const label = { month: entry.month.slice(5) + '月', _total: entry._total };
+          for (const src of MAIN_SOURCES) {
+            label[src]           = entry[src] || 0;
+            label[src + '_share'] = entry._total > 0
+              ? Math.round((entry[src] || 0) / entry._total * 1000) / 10
+              : 0;
+          }
+          return label;
         });
-        const bySource = {};
-        let total = 0;
-        for (const r of rows) {
-          const src = r.sourceOverride || r.source;
-          bySource[src] = (bySource[src] || 0) + (r.totalRevenue || 0);
-          total += r.totalRevenue || 0;
-        }
-        const entry = { month: m.slice(5) + '月', _total: total };
-        for (const src of MAIN_SOURCES) {
-          entry[src] = bySource[src] || 0;
-          entry[src + '_share'] = total > 0 ? Math.round((bySource[src] || 0) / total * 100 * 10) / 10 : 0;
-        }
-        return entry;
-      });
-      setChartData(data);
-      setLoading(false);
-    });
+        setChartData(data);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
   }, [warehouse]);
 
   if (loading) return <div className="text-center py-8 text-gray-400 text-sm">載入趨勢資料...</div>;

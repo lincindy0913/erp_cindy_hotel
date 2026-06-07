@@ -68,20 +68,30 @@ export default function YearEndPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedYear]);
 
-  // 年結手動確認項目（VAT 申報、年度盤點），以 localStorage 持久化（per year）
+  // 年結手動確認項目（VAT 申報、年度盤點）— 從資料庫讀取/寫入
   const [yearManualChecks, setYearManualChecks] = useState({});
   useEffect(() => {
-    try {
-      const stored = JSON.parse(localStorage.getItem(`yearend_manual_${selectedYear}`) || '{}');
-      setYearManualChecks(stored);
-    } catch { setYearManualChecks({}); }
+    let cancelled = false;
+    setYearManualChecks({});
+    fetch(`/api/year-end/manual-check?year=${selectedYear}`)
+      .then(r => r.ok ? r.json() : {})
+      .then(d => { if (!cancelled) setYearManualChecks(d); })
+      .catch(() => {});
+    return () => { cancelled = true; };
   }, [selectedYear]);
-  function toggleYearManual(key) {
-    setYearManualChecks(prev => {
-      const next = { ...prev, [key]: !prev[key] };
-      try { localStorage.setItem(`yearend_manual_${selectedYear}`, JSON.stringify(next)); } catch {}
-      return next;
-    });
+
+  async function toggleYearManual(key) {
+    const next = { ...yearManualChecks, [key]: !yearManualChecks[key] };
+    setYearManualChecks(next); // optimistic
+    try {
+      await fetch('/api/year-end/manual-check', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ year: selectedYear, key, value: next[key] }),
+      });
+    } catch {
+      setYearManualChecks(prev => ({ ...prev, [key]: !next[key] })); // rollback
+    }
   }
 
   // Statement viewer modal

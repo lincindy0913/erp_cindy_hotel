@@ -91,24 +91,35 @@ export default function MonthEndPage() {
   const [checklistLoading, setChecklistLoading] = useState(false);
   const [checklistMonth, setChecklistMonth] = useState(new Date().getMonth() + 1);
 
-  // 人工確認狀態（manual items），以 localStorage 持久化
-  const [manualConfirmed, setManualConfirmed] = useState({});
+  // 人工確認狀態（manual items）— 從資料庫讀取/寫入
+  const [manualConfirmed,      setManualConfirmed]      = useState({});
+  const [manualConfirmLoading, setManualConfirmLoading] = useState(false);
 
   useEffect(() => {
-    const key = `monthend_manual_${selectedYear}_${checklistMonth}`;
-    try {
-      const stored = JSON.parse(localStorage.getItem(key) || '{}');
-      setManualConfirmed(stored);
-    } catch { setManualConfirmed({}); }
+    let cancelled = false;
+    setManualConfirmed({});
+    fetch(`/api/month-end/manual-check?year=${selectedYear}&month=${checklistMonth}`)
+      .then(r => r.ok ? r.json() : {})
+      .then(d => { if (!cancelled) setManualConfirmed(d); })
+      .catch(() => {});
+    return () => { cancelled = true; };
   }, [selectedYear, checklistMonth]);
 
-  function toggleManualConfirm(itemKey) {
-    const key = `monthend_manual_${selectedYear}_${checklistMonth}`;
-    setManualConfirmed(prev => {
-      const next = { ...prev, [itemKey]: !prev[itemKey] };
-      try { localStorage.setItem(key, JSON.stringify(next)); } catch {}
-      return next;
-    });
+  async function toggleManualConfirm(itemKey) {
+    const next = { ...manualConfirmed, [itemKey]: !manualConfirmed[itemKey] };
+    setManualConfirmed(next); // optimistic
+    setManualConfirmLoading(true);
+    try {
+      await fetch('/api/month-end/manual-check', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ year: selectedYear, month: checklistMonth, key: itemKey, value: next[itemKey] }),
+      });
+    } catch {
+      setManualConfirmed(prev => ({ ...prev, [itemKey]: !next[itemKey] })); // rollback
+    } finally {
+      setManualConfirmLoading(false);
+    }
   }
 
   useEffect(() => {
