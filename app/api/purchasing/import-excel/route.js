@@ -33,9 +33,9 @@ export async function POST(request) {
     const suppliers = await prisma.supplier.findMany({ select: { id: true, name: true } });
     const supMap    = Object.fromEntries(suppliers.map(s => [s.name.trim(), s.id]));
 
-    // 預載所有商品（代碼 → id 對照）
-    const products  = await prisma.product.findMany({ select: { id: true, productCode: true, name: true } });
-    const prodMap   = Object.fromEntries(products.map(p => [p.productCode?.trim(), p.id]));
+    // 預載所有商品（Product.code → id 對照）
+    const products  = await prisma.product.findMany({ select: { id: true, code: true, name: true } });
+    const prodMap   = Object.fromEntries(products.map(p => [p.code?.trim(), p.id]));
 
     // 按 date+supplier 分組
     const groups = {};
@@ -77,10 +77,10 @@ export async function POST(request) {
             // 新商品：建立基本記錄
             const newProd = await tx.product.create({
               data: {
-                productCode: r.productCode?.trim() || `IMP-${Date.now()}`,
-                name:        r.productName.trim(),
-                unit:        r.unit?.trim() || '個',
-                category:    r.category?.trim() || '未分類',
+                code:     r.productCode?.trim() || `IMP-${Date.now()}`,
+                name:     r.productName.trim(),
+                unit:     r.unit?.trim() || '個',
+                category: r.category?.trim() || '未分類',
               },
             });
             productId = newProd.id;

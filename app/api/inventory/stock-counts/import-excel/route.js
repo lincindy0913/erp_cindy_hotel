@@ -5,6 +5,7 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { handleApiError } from '@/lib/error-handler';
 import { nextSequence } from '@/lib/sequence-generator';
 import { todayStr } from '@/lib/localDate';
+import { getSystemQty } from '@/lib/inventory-helpers';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,7 +14,7 @@ export const dynamic = 'force-dynamic';
  * body: { rows: [{ productCode, productName, actualQty, warehouse, note }], warehouse, countDate }
  *
  * 建立一張盤點單（StockCount）含多個明細（StockCountItem）。
- * systemQty 從目前庫存快取取得，diff = actualQty - systemQty。
+ * systemQty 由 getSystemQty() 即時計算（與手動建立盤點一致）。
  */
 export async function POST(request) {
   const auth = await requirePermission(PERMISSIONS.INVENTORY_EDIT);
@@ -27,65 +28,75 @@ export async function POST(request) {
 
     const errors    = [];
     const today     = todayStr();
-    const warehouse = whParam?.trim() || rows[0]?.warehouse?.trim() || '';
+    const warehouse = whParam?.trim() || rows.find(r => r.warehouse?.trim())?.warehouse?.trim() || '';
     const countDate = cdParam?.trim() || today;
 
-    // 預載商品（代碼 → {id, currentQty}）
-    const products = await prisma.product.findMany({
-      select: { id: true, productCode: true, name: true },
-    });
-    const prodMap = Object.fromEntries(products.map(p => [p.productCode?.trim(), p]));
-
-    // 預載庫存數量（productId+warehouse → qty）
-    const inventoryRows = await prisma.inventoryItem.findMany({
-      where:  warehouse ? { warehouse } : {},
-      select: { productId: true, quantity: true, warehouse: true },
-    });
-    const invMap = Object.fromEntries(
-      inventoryRows.map(i => [`${i.productId}||${i.warehouse}`, Number(i.quantity)])
-    );
-
-    const items = [];
-    for (const r of rows) {
-      const rowNum     = r._row ?? '?';
-      const code       = r.productCode?.trim();
-      const actualQty  = parseInt(r.actualQty);
-      const rowWarehouse = r.warehouse?.trim() || warehouse;
-
-      if (!code)               { errors.push({ row: rowNum, message: '商品代碼為必填' }); continue; }
-      if (isNaN(actualQty))    { errors.push({ row: rowNum, message: '實際數量需為整數' }); continue; }
-
-      const product = prodMap[code];
-      if (!product) { errors.push({ row: rowNum, message: `找不到商品代碼「${code}」` }); continue; }
-
-      const systemQty = invMap[`${product.id}||${rowWarehouse}`] ?? 0;
-      items.push({
-        productId: product.id,
-        systemQty,
-        actualQty,
-        diff:      actualQty - systemQty,
-        note:      r.note?.trim() || null,
-      });
+    if (!warehouse) {
+      return NextResponse.json({ error: '倉庫為必填，請在匯入時指定或在每列填寫倉庫欄位' }, { status: 400 });
     }
 
-    if (items.length === 0) {
+    // 預載商品（code → {id, name}），Product 主鍵欄位為 code
+    const products = await prisma.product.findMany({
+      select: { id: true, code: true, name: true },
+    });
+    const prodMap = Object.fromEntries(products.map(p => [p.code?.trim(), p]));
+
+    // 驗證並整理明細
+    const validRows = [];
+    const seenCodes = new Set();
+
+    for (const r of rows) {
+      const rowNum    = r._row ?? '?';
+      const code      = r.productCode?.trim();
+      const actualQty = parseInt(r.actualQty);
+      const rowWh     = (r.warehouse?.trim() || warehouse);
+
+      if (!code)            { errors.push({ row: rowNum, message: '商品代碼為必填' }); continue; }
+      if (isNaN(actualQty)) { errors.push({ row: rowNum, message: '實際數量需為整數' }); continue; }
+
+      const product = prodMap[code];
+      if (!product) { errors.push({ row: rowNum, message: `找不到商品代碼「${code}」，請先在商品管理中建立` }); continue; }
+
+      if (seenCodes.has(`${code}||${rowWh}`)) {
+        errors.push({ row: rowNum, message: `商品「${code}」在同一倉庫重複，每件商品只能盤點一次` }); continue;
+      }
+      seenCodes.add(`${code}||${rowWh}`);
+
+      validRows.push({ productId: product.id, actualQty, note: r.note?.trim() || null, rowWh });
+    }
+
+    if (validRows.length === 0) {
       return NextResponse.json({ count: 0, errors });
     }
 
     let createdCount = 0;
     await prisma.$transaction(async tx => {
+      // 即時計算每品項的帳面數量（與手動建立盤點邏輯一致）
+      const itemData = await Promise.all(
+        validRows.map(async r => {
+          const sys = await getSystemQty(tx, r.productId, r.rowWh);
+          return {
+            productId: r.productId,
+            systemQty: sys,
+            actualQty: r.actualQty,
+            diff:      r.actualQty - sys,
+            note:      r.note,
+          };
+        })
+      );
+
       const countNo = await nextSequence(tx, 'stockCount', 'countNo', `CNT-${countDate.replace(/-/g, '')}-`);
       await tx.stockCount.create({
-      data: {
-        countNo,
-        warehouse,
-        countDate,
-        status: '已確認',
-        type:   'count',
-        items:  { create: items },
+        data: {
+          countNo,
+          warehouse,
+          countDate,
+          status: '已確認',
+          type:   'count',
+          items:  { create: itemData },
         },
       });
-      createdCount = items.length;
+      createdCount = itemData.length;
     });
 
     return NextResponse.json({ count: createdCount, errors });
