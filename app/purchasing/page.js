@@ -20,6 +20,7 @@ import { useWarehouseDepartments } from '@/hooks/useWarehouseDepartments';
 import { useReorderSuggestions } from '@/hooks/useReorderSuggestions';
 import ReorderSuggestionsPanel from '@/components/purchasing/ReorderSuggestionsPanel';
 import MonthlyExpenseTab from '@/components/purchasing/MonthlyExpenseTab';
+import ExcelBatchImport from '@/components/ExcelBatchImport';
 
 function PurchasingPageInner() {
   const searchParams = useSearchParams();
@@ -700,18 +701,44 @@ function PurchasingPageInner() {
               </button>
             )}
             {isLoggedIn && (
-              <button
-                onClick={() => {
-                  setShowAddForm(s => !s);
-                  setEditingPurchase(null);
-                  setItems([]);
-                  setSupplierSearch('');
-                  setFormData({ warehouse: '', department: '', supplierId: '', purchaseDate: todayStr(), paymentTerms: '月結' });
-                }}
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-              >
-                ➕ 新增進貨單
-              </button>
+              <>
+                <ExcelBatchImport
+                  title="進貨單批次匯入"
+                  hint="相同日期+廠商的多列會合併為一張進貨單。廠商必須先存在於廠商管理中。"
+                  columns={[
+                    { key: 'date',         header: '採購日期',  example: todayStr(),   required: true,  width: 14, note: 'YYYY-MM-DD' },
+                    { key: 'supplierName', header: '廠商名稱',  example: '統一超商',   required: true,  width: 18 },
+                    { key: 'productCode',  header: '商品代碼',  example: 'PROD-001',   required: true,  width: 14 },
+                    { key: 'productName',  header: '商品名稱',  example: '礦泉水',     required: false, width: 16, note: '新商品必填' },
+                    { key: 'qty',          header: '數量',      example: '10',         required: true,  width: 8 },
+                    { key: 'unitPrice',    header: '單價',      example: '25',         required: true,  width: 10 },
+                    { key: 'taxed',        header: '含稅',      example: '否',         required: false, width: 8,  note: '是/否' },
+                    { key: 'warehouse',    header: '倉庫',      example: '館別A',      required: false, width: 12 },
+                  ]}
+                  onImport={async rows => {
+                    const res = await fetch('/api/purchasing/import-excel', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ rows }),
+                    });
+                    const json = await res.json();
+                    if (res.ok) { fetchPurchases(); return json; }
+                    throw new Error(json.error || '匯入失敗');
+                  }}
+                />
+                <button
+                  onClick={() => {
+                    setShowAddForm(s => !s);
+                    setEditingPurchase(null);
+                    setItems([]);
+                    setSupplierSearch('');
+                    setFormData({ warehouse: '', department: '', supplierId: '', purchaseDate: todayStr(), paymentTerms: '月結' });
+                  }}
+                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                >
+                  ➕ 新增進貨單
+                </button>
+              </>
             )}
           </div>
         </div>

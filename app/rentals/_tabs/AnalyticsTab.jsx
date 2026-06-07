@@ -5,6 +5,7 @@ import { todayStr } from '@/lib/localDate';
 import { CONTRACT_STATUSES, getContractDisplayStatus } from '../_lib/rentalHelpers';
 import StatusBadge from '../_components/StatusBadge';
 import { exportToXlsx } from '@/lib/export';
+import ExcelBatchImport from '@/components/ExcelBatchImport';
 
 const fmt = n => Number(n || 0).toLocaleString('zh-TW');
 
@@ -289,6 +290,29 @@ export default function AnalyticsTab({
             >
               ↓ Excel
             </button>
+            <ExcelBatchImport
+              title="租屋收款批次確認"
+              hint="批次確認已到期的租金收款。合約號需與系統一致，年月需有待收記錄。"
+              columns={[
+                { key: 'contractNo',    header: '合約號',    example: 'RC-20240101', required: true,  width: 18 },
+                { key: 'year',          header: '年',        example: String(new Date().getFullYear()), required: true, width: 8 },
+                { key: 'month',         header: '月',        example: String(new Date().getMonth() + 1), required: true, width: 6 },
+                { key: 'amount',        header: '收款金額',  example: '15000',       required: true,  width: 12 },
+                { key: 'actualDate',    header: '收款日期',  example: todayStr(),    required: true,  width: 14, note: 'YYYY-MM-DD' },
+                { key: 'paymentMethod', header: '付款方式',  example: '匯款',        required: false, width: 10, note: '現金/匯款/轉帳' },
+                { key: 'accountName',   header: '收款帳戶',  example: '玉山銀行',    required: false, width: 14 },
+              ]}
+              onImport={async rows => {
+                const res = await fetch('/api/rentals/income/import-excel', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ rows }),
+                });
+                const json = await res.json();
+                if (res.ok) { fetchIncomeReport(); return json; }
+                throw new Error(json.error || '匯入失敗');
+              }}
+            />
           </div>
           <h2 className="text-lg font-bold text-gray-800 mb-2 print:block">租屋收入分析報表 — {incomeReportData.year || reportYear} 年</h2>
           {reportLoading ? (

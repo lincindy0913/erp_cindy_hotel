@@ -11,6 +11,7 @@ import { EXPORT_CONFIGS } from '@/lib/export-columns';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 import { useConfirm } from '@/context/ConfirmContext';
 import { todayStr } from '@/lib/localDate';
+import ExcelBatchImport from '@/components/ExcelBatchImport';
 
 const TABS = [
   { key: 'query', label: '庫存查詢', icon: '📦' },
@@ -662,6 +663,30 @@ export default function InventoryPage() {
           </div>
           <div className="flex items-center gap-2">
             <HelpButton anchor="四採購與庫存" />
+            {activeTab === 'count' && (
+              <ExcelBatchImport
+                title="庫存盤點批次匯入"
+                hint="上傳實際盤點數量，系統自動比對帳面數量並計算差異，建立一張盤點記錄。"
+                columns={[
+                  { key: 'productCode', header: '商品代碼',  example: 'PROD-001',  required: true,  width: 14 },
+                  { key: 'productName', header: '商品名稱',  example: '礦泉水',    required: false, width: 18, note: '僅供參考' },
+                  { key: 'actualQty',   header: '實際數量',  example: '50',        required: true,  width: 10 },
+                  { key: 'warehouse',   header: '倉庫',      example: '館別A',     required: false, width: 12, note: '留空用目前篩選' },
+                  { key: 'note',        header: '備註',      example: '',          required: false, width: 16 },
+                ]}
+                onImport={async rows => {
+                  const res = await fetch('/api/inventory/stock-counts/import-excel', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ rows, warehouse, countDate: todayStr() }),
+                  });
+                  const json = await res.json();
+                  if (res.ok) { fetchStockCounts(); return json; }
+                  throw new Error(json.error || '匯入失敗');
+                }}
+                buttonClass="bg-amber-500 text-white px-3 py-2 rounded-lg hover:bg-amber-600 flex items-center gap-1.5 text-sm font-medium"
+              />
+            )}
             <WarehouseSelect
               value={warehouse}
               onChange={setWarehouse}
