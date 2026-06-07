@@ -4,8 +4,209 @@ import Link from 'next/link';
 import { todayStr } from '@/lib/localDate';
 import { CONTRACT_STATUSES, getContractDisplayStatus } from '../_lib/rentalHelpers';
 import StatusBadge from '../_components/StatusBadge';
+import { exportToXlsx } from '@/lib/export';
 
 const fmt = n => Number(n || 0).toLocaleString('zh-TW');
+
+// ── Excel 匯出工具函式 ──────────────────────────────────────────
+
+async function exportIncomeExcel({ rows, year }) {
+  if (!rows?.length) return;
+  const months = [1,2,3,4,5,6,7,8,9,10,11,12];
+  const columns = [
+    { header: '序號',  key: 'idx',   width: 6 },
+    { header: '房號',  key: 'label', width: 22 },
+    ...months.map(m => ({ header: `${m}月`, key: `m${m}`, width: 12, format: 'amount' })),
+    { header: '合計',  key: 'total', width: 14, format: 'amount' },
+  ];
+  const sorted = [
+    ...rows.filter(r => !r.isTerminated),
+    ...rows.filter(r => r.isTerminated),
+  ];
+  const data = sorted.map((r, i) => {
+    const row = {
+      idx:   r.sortOrder ?? (i + 1),
+      label: r.tenantName ? `${r.propertyLabel}(${r.tenantName})` : r.propertyLabel,
+      total: r.total || 0,
+    };
+    months.forEach(m => {
+      const st  = r.monthStatus?.[m] || 'empty';
+      const act = r.months?.[m] || 0;
+      const exp = r.monthsExpected?.[m] || 0;
+      if (st === 'completed' || st === 'partial') row[`m${m}`] = act;
+      else if (st === 'pending')  row[`m${m}`] = `待收 ${exp.toLocaleString('zh-TW')}`;
+      else if (st === 'overdue')  row[`m${m}`] = `逾期 ${exp.toLocaleString('zh-TW')}`;
+      else row[`m${m}`] = '';
+    });
+    return row;
+  });
+  // 合計列
+  const sumRow = { idx: '', label: '合計', _isSummary: true, total: rows.reduce((s, r) => s + (r.total || 0), 0) };
+  months.forEach(m => { sumRow[`m${m}`] = rows.reduce((s, r) => s + (r.months?.[m] || 0), 0) || ''; });
+  data.push(sumRow);
+
+  await exportToXlsx({
+    filename:  `租屋收入分析_${year}年`,
+    sheetName: '收入分析',
+    title:     `租屋收入分析報表 — ${year} 年`,
+    columns,
+    data,
+  });
+}
+
+async function exportOperatingExcel({ rows, year }) {
+  if (!rows?.length) return;
+  const columns = [
+    { header: '序號',       key: 'idx',    width: 6 },
+    { header: '物業',       key: 'label',  width: 24 },
+    { header: '租金實收',   key: 'rent',   width: 14, format: 'amount' },
+    { header: '水電實收',   key: 'util',   width: 14, format: 'amount' },
+    { header: '維修金額',   key: 'maint',  width: 14, format: 'amount' },
+    { header: '房務稅/地價稅', key: 'tax', width: 16, format: 'amount' },
+    { header: '總支出',     key: 'exp',    width: 14, format: 'amount' },
+    { header: '淨利',       key: 'profit', width: 14, format: 'amount' },
+    { header: '淨利率%',   key: 'margin', width: 10 },
+  ];
+  const data = rows.map((r, i) => ({
+    idx:    r.sortOrder ?? (i + 1),
+    label:  r.propertyLabel,
+    rent:   r.rentOnly ?? r.rentIncome ?? 0,
+    util:   r.utilityIncome || 0,
+    maint:  r.maintenanceAmount || 0,
+    tax:    r.taxAmount || 0,
+    exp:    r.totalExpense || 0,
+    profit: r.netProfit || 0,
+    margin: r.profitMarginPercent != null ? `${r.profitMarginPercent}%` : '-',
+  }));
+  const sumRent   = rows.reduce((s, r) => s + (r.rentOnly ?? r.rentIncome ?? 0), 0);
+  const sumUtil   = rows.reduce((s, r) => s + (r.utilityIncome || 0), 0);
+  const sumMaint  = rows.reduce((s, r) => s + (r.maintenanceAmount || 0), 0);
+  const sumTax    = rows.reduce((s, r) => s + (r.taxAmount || 0), 0);
+  const sumExp    = rows.reduce((s, r) => s + (r.totalExpense || 0), 0);
+  const sumProfit = rows.reduce((s, r) => s + (r.netProfit || 0), 0);
+  const sumIncome = sumRent + sumUtil;
+  const totalMgn  = sumIncome > 0 ? `${Math.round((sumProfit / sumIncome) * 10000) / 100}%` : '-';
+  data.push({ idx: '', label: '合計', rent: sumRent, util: sumUtil, maint: sumMaint, tax: sumTax, exp: sumExp, profit: sumProfit, margin: totalMgn, _isSummary: true });
+
+  await exportToXlsx({
+    filename:  `物業營運分析_${year}年`,
+    sheetName: '營運分析',
+    title:     `物業營運狀況分析報表 — ${year} 年`,
+    columns,
+    data,
+  });
+}
+
+async function exportOverdueExcel({ items }) {
+  if (!items?.length) return;
+  const today = todayStr();
+  const columns = [
+    { header: '序號',     key: 'idx',     width: 6 },
+    { header: '物業',     key: 'prop',    width: 22 },
+    { header: '租客',     key: 'tenant',  width: 16 },
+    { header: '聯絡電話', key: 'phone',   width: 16 },
+    { header: '租期',     key: 'period',  width: 10 },
+    { header: '應收金額', key: 'amount',  width: 14, format: 'amount' },
+    { header: '到期日',   key: 'due',     width: 12 },
+    { header: '逾期天數', key: 'days',    width: 10 },
+  ];
+  const data = items.map((i, idx) => ({
+    idx:    i.contractSortOrder ?? (idx + 1),
+    prop:   i.propertyName,
+    tenant: i.tenantName || i.tenant?.companyName || i.tenant?.fullName || '—',
+    phone:  i.tenant?.phone || '—',
+    period: `${i.incomeYear}/${String(i.incomeMonth).padStart(2, '0')}`,
+    amount: Number(i.expectedAmount || 0),
+    due:    i.dueDate,
+    days:   Math.floor((new Date(today) - new Date(i.dueDate)) / 86400000),
+  }));
+  const totalAmount = items.reduce((s, i) => s + Number(i.expectedAmount || 0), 0);
+  data.push({ idx: '', prop: '合計', tenant: '', phone: '', period: '', amount: totalAmount, due: '', days: '', _isSummary: true });
+
+  await exportToXlsx({
+    filename:  `逾期催繳報表_${today}`,
+    sheetName: '逾期催繳',
+    title:     `逾期租金催繳報表 — ${today}`,
+    columns,
+    data,
+  });
+}
+
+async function exportVacancyExcel({ rows, year }) {
+  if (!rows?.length) return;
+  const months = [1,2,3,4,5,6,7,8,9,10,11,12];
+  const columns = [
+    { header: '序號',   key: 'idx',     width: 6 },
+    { header: '物業',   key: 'label',   width: 22 },
+    ...months.map(m => ({ header: `${m}月`, key: `m${m}`, width: 6 })),
+    { header: '出租月數', key: 'rentedCount', width: 10 },
+    { header: '空置率%',  key: 'vacancy',     width: 10 },
+    { header: '平均月租', key: 'avgRent',     width: 12, format: 'amount' },
+  ];
+  const data = rows.map((r, i) => {
+    const row = {
+      idx:        i + 1,
+      label:      r.propertyLabel,
+      rentedCount: r.rentedCount,
+      vacancy:    `${r.vacancyRate}%`,
+      avgRent:    r.avgRent || 0,
+    };
+    months.forEach((m, mi) => { row[`m${m}`] = r.monthRented[mi] ? '●出租' : '○空置'; });
+    return row;
+  });
+
+  await exportToXlsx({
+    filename:  `空置率分析_${year}年`,
+    sheetName: '空置率',
+    title:     `物業空置率分析報表 — ${year} 年`,
+    columns,
+    data,
+  });
+}
+
+async function exportDepositExcel({ contracts, depositFilter }) {
+  const all = contracts.filter(c => Number(c.depositAmount) > 0);
+  const filtered = depositFilter === 'pending_receive' ? all.filter(c => !c.depositReceived)
+    : depositFilter === 'received'  ? all.filter(c => c.depositReceived && !c.depositRefunded)
+    : depositFilter === 'refunded'  ? all.filter(c => c.depositRefunded)
+    : all;
+  if (!filtered.length) return;
+  const FILTER_LABEL = { all: '全部', pending_receive: '待收押金', received: '已收持有中', refunded: '已退' };
+  const columns = [
+    { header: '序號',     key: 'idx',      width: 6 },
+    { header: '合約號',   key: 'contractNo', width: 16 },
+    { header: '物業',     key: 'prop',     width: 22 },
+    { header: '租客',     key: 'tenant',   width: 16 },
+    { header: '合約期間', key: 'period',   width: 24 },
+    { header: '月租',     key: 'rent',     width: 12, format: 'amount' },
+    { header: '押金金額', key: 'deposit',  width: 12, format: 'amount' },
+    { header: '收款狀態', key: 'received', width: 10 },
+    { header: '退款狀態', key: 'refunded', width: 10 },
+    { header: '合約狀態', key: 'status',   width: 12 },
+  ];
+  const data = filtered.map((c, i) => ({
+    idx:        i + 1,
+    contractNo: c.contractNo,
+    prop:       c.propertyName,
+    tenant:     c.tenantName,
+    period:     `${c.startDate} ~ ${c.endDate}`,
+    rent:       Number(c.monthlyRent || 0),
+    deposit:    Number(c.depositAmount || 0),
+    received:   c.depositReceived ? '已收' : '未收',
+    refunded:   c.depositRefunded ? '已退' : c.depositRefundPaymentOrderId ? '待出納' : '—',
+    status:     getContractDisplayStatus(c),
+  }));
+  const total = filtered.reduce((s, c) => s + Number(c.depositAmount || 0), 0);
+  data.push({ idx: '', contractNo: '合計', prop: '', tenant: '', period: '', rent: '', deposit: total, received: '', refunded: '', status: '', _isSummary: true });
+
+  await exportToXlsx({
+    filename:  `押金追蹤_${FILTER_LABEL[depositFilter] || '全部'}`,
+    sheetName: '押金追蹤',
+    title:     `租屋押金追蹤 — ${FILTER_LABEL[depositFilter] || '全部'}`,
+    columns,
+    data,
+  });
+}
 
 const PAYMENT_METHODS = ['現金', 'transfer', '支票', '匯款'];
 const VALID_ANALYTICS_SUB = ['income', 'operating', 'overdue', 'deposit', 'vacancy'];
@@ -81,6 +282,13 @@ export default function AnalyticsTab({
             </select>
             <button onClick={fetchIncomeReport} disabled={reportLoading} className="bg-teal-600 text-white px-3 py-1.5 rounded text-sm hover:bg-teal-700 disabled:opacity-50">查詢</button>
             <button onClick={() => window.print()} className="bg-gray-700 text-white px-3 py-1.5 rounded text-sm hover:bg-gray-800 no-print">列印</button>
+            <button
+              onClick={() => exportIncomeExcel({ rows: incomeReportData.rows, year: incomeReportData.year || reportYear })}
+              disabled={reportLoading || !incomeReportData.rows?.length}
+              className="bg-emerald-600 text-white px-3 py-1.5 rounded text-sm hover:bg-emerald-700 disabled:opacity-40 no-print flex items-center gap-1"
+            >
+              ↓ Excel
+            </button>
           </div>
           <h2 className="text-lg font-bold text-gray-800 mb-2 print:block">租屋收入分析報表 — {incomeReportData.year || reportYear} 年</h2>
           {reportLoading ? (
@@ -202,6 +410,13 @@ export default function AnalyticsTab({
             </select>
             <button onClick={fetchOperatingReport} disabled={reportLoading} className="bg-teal-600 text-white px-3 py-1.5 rounded text-sm hover:bg-teal-700 disabled:opacity-50">查詢</button>
             <button onClick={() => window.print()} className="bg-gray-700 text-white px-3 py-1.5 rounded text-sm hover:bg-gray-800 no-print">列印</button>
+            <button
+              onClick={() => exportOperatingExcel({ rows: operatingReportData.rows, year: operatingReportData.year || reportYear })}
+              disabled={reportLoading || !operatingReportData.rows?.length}
+              className="bg-emerald-600 text-white px-3 py-1.5 rounded text-sm hover:bg-emerald-700 disabled:opacity-40 no-print flex items-center gap-1"
+            >
+              ↓ Excel
+            </button>
           </div>
           <h2 className="text-lg font-bold text-gray-800 mb-2 print:block">物業營運狀況分析報表 — {operatingReportData.year || reportYear} 年</h2>
           <p className="text-sm text-gray-600 mb-2 no-print">收租金額、維修、房務稅/地價稅等支出，淨利與淨利率（投報率需物業成本，可於設定中維護後顯示）。</p>
@@ -283,7 +498,14 @@ export default function AnalyticsTab({
               className="bg-teal-600 text-white px-3 py-1.5 rounded text-sm hover:bg-teal-700 disabled:opacity-50 ml-auto">
               {overdueReportLoading ? '載入中…' : '重新整理'}
             </button>
-            <button onClick={() => window.print()} className="bg-gray-700 text-white px-3 py-1.5 rounded text-sm hover:bg-gray-800">列印 / 匯出</button>
+            <button onClick={() => window.print()} className="bg-gray-700 text-white px-3 py-1.5 rounded text-sm hover:bg-gray-800">列印</button>
+            <button
+              onClick={() => exportOverdueExcel({ items: overdueReportData })}
+              disabled={overdueReportLoading || !overdueReportData?.length}
+              className="bg-emerald-600 text-white px-3 py-1.5 rounded text-sm hover:bg-emerald-700 disabled:opacity-40 no-print flex items-center gap-1"
+            >
+              ↓ Excel
+            </button>
           </div>
           <h2 className="hidden print:block text-lg font-bold mb-2">逾期租金催繳報表 — 列印日期：{new Date().toLocaleDateString('zh-TW')}</h2>
 
@@ -462,11 +684,20 @@ export default function AnalyticsTab({
                 <p className="text-xl font-bold text-orange-700">{pendingRefund} 筆</p>
               </div>
             </div>
-            <div className="flex gap-2 mb-3">
+            <div className="flex flex-wrap gap-2 mb-3 items-center">
               {[['all', '全部'], ['pending_receive', '待收押金'], ['received', '已收持有中'], ['refunded', '已退']].map(([v, l]) => (
                 <button key={v} onClick={() => setDepositFilter(v)}
                   className={`text-sm px-3 py-1 rounded-full border ${depositFilter === v ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>{l}</button>
               ))}
+              <div className="ml-auto flex gap-2">
+                <button
+                  onClick={() => exportDepositExcel({ contracts, depositFilter })}
+                  disabled={!contracts?.filter(c => Number(c.depositAmount) > 0).length}
+                  className="bg-emerald-600 text-white px-3 py-1.5 rounded text-sm hover:bg-emerald-700 disabled:opacity-40 flex items-center gap-1"
+                >
+                  ↓ Excel
+                </button>
+              </div>
             </div>
             <div className="bg-white rounded-lg shadow tbl-wrap">
               <table className="w-full text-sm">
@@ -546,6 +777,13 @@ export default function AnalyticsTab({
             </select>
             <button onClick={fetchVacancyReport} disabled={vacancyLoading} className="bg-teal-600 text-white px-3 py-1.5 rounded text-sm hover:bg-teal-700 disabled:opacity-50">查詢</button>
             <button onClick={() => window.print()} className="bg-gray-700 text-white px-3 py-1.5 rounded text-sm hover:bg-gray-800 no-print">列印</button>
+            <button
+              onClick={() => exportVacancyExcel({ rows: vacancyData.rows, year: vacancyYear })}
+              disabled={vacancyLoading || !vacancyData.rows?.length}
+              className="bg-emerald-600 text-white px-3 py-1.5 rounded text-sm hover:bg-emerald-700 disabled:opacity-40 no-print flex items-center gap-1"
+            >
+              ↓ Excel
+            </button>
           </div>
 
           {vacancyLoading ? (
