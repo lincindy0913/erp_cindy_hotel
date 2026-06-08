@@ -17,6 +17,7 @@ const CHIPS = [
   { key: 'noInvoice',        label: (n) => `退房逾3天未開發票 ${n} 筆`,     tab: 'invoiceQuery',        color: () => 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 border-indigo-200' },
   { key: 'otaUnrecon',       label: (n) => `OTA佣金未記錄 ${n} 筆`,         tab: 'otaCommission',       color: () => 'bg-sky-100 text-sky-700 hover:bg-sky-200 border-sky-200' },
   { key: 'otaBillingUnrecon',label: (n, d) => `OTA傭金帳單未對帳 ${n} 個來源（${d?.otaBillingMonth || '上月'}）`, tab: 'otaCommission', color: () => 'bg-cyan-100 text-cyan-800 hover:bg-cyan-200 border-cyan-300' },
+  { key: 'checksDueSoon',    label: (n) => `支票 7 天內到期 ${n} 張`,        tab: null,                  color: () => 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200 border-yellow-300', href: '/checks' },
   { key: 'apPending',        label: (n) => `廠商應付未結 ${n} 筆`,          tab: 'vendorBilling',       color: () => 'bg-red-100 text-red-700 hover:bg-red-200 border-red-200' },
   { key: 'apOverdue',        label: (n) => `應付帳款逾期 ${n} 筆`,          tab: null,                  color: () => 'bg-rose-100 text-rose-700 hover:bg-rose-200 border-rose-300', expandable: true },
 ];

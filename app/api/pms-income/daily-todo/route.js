@@ -32,6 +32,11 @@ export async function GET(request) {
     // 訂金待入存簿：不限月份，含「待確認」與「逾期未入」（跨月積壓也要計算）
     const depositPendingWhere = { ...baseWhere, depositIn: { gt: 0 }, depositStatus: { in: ['待確認', '逾期未入'] } };
 
+    // 支票 7 天內到期
+    const sevenDaysLater = new Date(today);
+    sevenDaysLater.setDate(sevenDaysLater.getDate() + 7);
+    const sevenDaysLaterStr = sevenDaysLater.toISOString().slice(0, 10);
+
     // 上月月份（OTA 帳單對帳判斷）
     const lastMonthDate  = new Date(today);
     lastMonthDate.setDate(1);
@@ -41,7 +46,7 @@ export async function GET(request) {
     const lastMonthMonth = lastMonthDate.getMonth() + 1;
 
     const [ccPending, depositPendingRows, depositOverdue, noInvoice, apPending, otaUnrecon, apOverdue,
-           lastMonthOtaSources, lastMonthReconSources, lastMonthClosed, apOverdueItems] = await Promise.all([
+           lastMonthOtaSources, lastMonthReconSources, lastMonthClosed, checksDueSoon, apOverdueItems] = await Promise.all([
       // 信用卡有金額但尚未核對（本月）
       prisma.pmsReservationRecord.count({
         where: { ...monthWhere, creditCard: { gt: 0 }, creditCardStatus: { notIn: ['已核對', '已建帳', 'cc_已建帳'] } },
@@ -124,6 +129,14 @@ export async function GET(request) {
         },
         select: { id: true },
       }),
+      // 7 天內到期支票（尚未兌現）
+      prisma.check.count({
+        where: {
+          ...(warehouse ? { warehouse } : {}),
+          status: 'pending',
+          dueDate: { gte: today, lte: sevenDaysLaterStr },
+        },
+      }),
       // 逾期應付帳款詳情（前 5 筆，供待辦列展開顯示）
       prisma.paymentOrder.findMany({
         where: {
@@ -159,7 +172,7 @@ export async function GET(request) {
       daysOverdue: Math.max(0, Math.floor((new Date(today) - new Date(o.dueDate)) / 86400000)),
     }));
 
-    return NextResponse.json({ today, yearMonth: thisMonth, ccPending, depositPending, depositOldestDays, depositOverdue, noInvoice, apPending, otaUnrecon, apOverdue, otaBillingUnrecon, otaBillingMonth: lastMonthStr, apOverdueDetail });
+    return NextResponse.json({ today, yearMonth: thisMonth, ccPending, depositPending, depositOldestDays, depositOverdue, noInvoice, apPending, otaUnrecon, apOverdue, otaBillingUnrecon, otaBillingMonth: lastMonthStr, checksDueSoon, apOverdueDetail });
   } catch (error) {
     return handleApiError(error);
   }

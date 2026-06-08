@@ -124,13 +124,17 @@ export async function GET(request) {
         prisma.loanMaster.count({
           where: { status: '使用中', endDate: { lte: localDateStr(sixMonthsLater) } },
         }),
+        // 7 天內到期支票（尚未兌現）
+        prisma.check.count({
+          where: { status: 'pending', dueDate: { gte: todayStr, lte: localDateStr(new Date(new Date(todayStr).getTime() + 7 * 86400000)) } },
+        }),
       ]);
 
       countsData = setCached(countsKey, {
         cashAccounts, lowInventoryCount, thisMonthExpenses,
         pendingExpenses, pendingPayments,
         recentSales, recentPurchases, recentExpenseRecords,
-        overdueChecks, expiringLoans,
+        overdueChecks, expiringLoans, checksDueSoon,
       }, COUNTS_TTL);
     }
 
@@ -138,7 +142,7 @@ export async function GET(request) {
       cashAccounts, lowInventoryCount, thisMonthExpenses,
       pendingExpenses, pendingPayments,
       recentSales, recentPurchases, recentExpenseRecords,
-      overdueChecks, expiringLoans,
+      overdueChecks, expiringLoans, checksDueSoon,
     } = countsData.data;
 
     const totalCashBalance = cashAccounts.reduce((s, a) => s + Number(a.currentBalance || 0), 0);
@@ -163,7 +167,7 @@ export async function GET(request) {
         pendingExpenses,
       },
       recentTransactions,
-      riskAlerts: { overdueChecks, expiringLoans },
+      riskAlerts: { overdueChecks, expiringLoans, checksDueSoon },
       cashAccounts: cashAccounts.map(a => ({ ...a, currentBalance: Number(a.currentBalance) })),
       thisMonthTrend: { purchases: recentPurchases.length, sales: recentSales.length },
       cacheStatus,
@@ -182,7 +186,7 @@ export async function GET(request) {
         totalCashBalance: 0,
         cashAccounts: [],
         pendingPayments: 0,
-        riskAlerts: { overdueChecks: 0, expiringLoans: 0 },
+        riskAlerts: { overdueChecks: 0, expiringLoans: 0, checksDueSoon: 0 },
         cacheStatus: 'offline',
       });
     }

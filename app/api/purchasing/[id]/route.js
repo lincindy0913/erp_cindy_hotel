@@ -6,6 +6,8 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { assertWarehouseAccess } from '@/lib/warehouse-access';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 import { assertPeriodOpen } from '@/lib/period-lock';
+import { nextSequence } from '@/lib/sequence-generator';
+import { todayStr } from '@/lib/localDate';
 
 // PATCH: 更新單一進貨明細的入庫狀態（由庫存管理頁面呼叫）
 export async function PATCH(request, { params }) {
@@ -32,20 +34,80 @@ export async function PATCH(request, { params }) {
     const wa = assertWarehouseAccess(auth.session, detail.purchaseMaster.warehouse);
     if (!wa.ok) return wa.response;
 
-    const updated = await prisma.purchaseDetail.update({
-      where: { id: parseInt(detailId) },
-      data: {
-        status,
-        ...(inventoryWarehouse !== undefined ? { inventoryWarehouse: inventoryWarehouse || null } : {}),
-      },
-      include: { product: { select: { name: true } } },
+    const result = await prisma.$transaction(async tx => {
+      const updated = await tx.purchaseDetail.update({
+        where: { id: parseInt(detailId) },
+        data: {
+          status,
+          ...(inventoryWarehouse !== undefined ? { inventoryWarehouse: inventoryWarehouse || null } : {}),
+        },
+        include: { product: { select: { name: true } } },
+      });
+
+      // 確認入庫後：若整張進貨單所有明細都已入庫/不需入庫，自動更新主單狀態並建草稿付款單
+      let autoPaymentOrder = null;
+      if (status === '已入庫') {
+        const allDetails = await tx.purchaseDetail.findMany({
+          where: { purchaseId: id },
+          select: { status: true },
+        });
+        const allDone = allDetails.every(d => ['已入庫', '不需入庫'].includes(d.status));
+
+        if (allDone) {
+          // 更新進貨主單狀態
+          await tx.purchaseMaster.update({
+            where: { id },
+            data:  { status: '已入庫' },
+          });
+
+          // 若尚未有付款單，自動建草稿付款單
+          const existingPO = await tx.paymentOrder.findFirst({
+            where: { sourceType: 'Purchase', sourceRecordId: id },
+            select: { id: true },
+          });
+
+          if (!existingPO) {
+            const master = detail.purchaseMaster;
+            const today  = todayStr();
+            const orderNo = await nextSequence(tx, 'paymentOrder', 'orderNo', `PAY-${today.replace(/-/g, '')}-`);
+
+            // 計算到期日（月結30天；否則開立日+30天）
+            const dueDate = (() => {
+              const d = new Date(master.purchaseDate);
+              d.setDate(d.getDate() + 30);
+              return d.toISOString().slice(0, 10);
+            })();
+
+            autoPaymentOrder = await tx.paymentOrder.create({
+              data: {
+                orderNo,
+                supplierId:   master.supplierId,
+                supplierName: (await tx.supplier.findUnique({ where: { id: master.supplierId }, select: { name: true } }))?.name || '',
+                warehouse:    master.warehouse,
+                paymentMethod: '匯款',
+                amount:       master.totalAmount,
+                discount:     0,
+                netAmount:    master.totalAmount,
+                dueDate,
+                status:       '草稿',
+                sourceType:   'Purchase',
+                sourceRecordId: id,
+                summary:      `進貨單 ${master.purchaseNo} 入庫完成（自動建立）`,
+              },
+            });
+          }
+        }
+      }
+
+      return { updated, autoPaymentOrder };
     });
 
     return NextResponse.json({
-      id: updated.id,
-      status: updated.status,
-      inventoryWarehouse: updated.inventoryWarehouse || '',
-      productName: updated.product?.name || '',
+      id:                  result.updated.id,
+      status:              result.updated.status,
+      inventoryWarehouse:  result.updated.inventoryWarehouse || '',
+      productName:         result.updated.product?.name || '',
+      autoPaymentOrderNo:  result.autoPaymentOrder?.orderNo || null,
     });
   } catch (error) {
     return handleApiError(error);

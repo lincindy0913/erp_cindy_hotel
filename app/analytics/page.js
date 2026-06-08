@@ -37,9 +37,13 @@ import OccupancyCostTab from './_tabs/OccupancyCostTab';
 import OccupancyStatsTab from './_tabs/OccupancyStatsTab';
 import RentalRoiTab from './_tabs/RentalRoiTab';
 import UtilityOccTab from './_tabs/UtilityOccTab';
+import RealtimePnlTab from './_tabs/RealtimePnlTab';
+import ReceivablesTab from './_tabs/ReceivablesTab';
 
 const TABS = [
   { key: 'overview',        label: '經營總覽' },
+  { key: 'pnl-realtime',    label: '即時損益' },
+  { key: 'receivables',     label: '應收帳款' },
   { key: 'pnl-warehouse',   label: '館別損益' },
   { key: 'pnl-supplier',    label: '廠商損益' },
   { key: 'pnl-summary',     label: '損益彙總' },
@@ -261,6 +265,16 @@ function AnalyticsPageContent() {
           overviewLoading ? <Loading text="載入經營總覽..." /> :
           overview ? <OverviewTab data={overview} onTabSwitch={selectTab} /> :
           <FetchErrorBanner message="經營總覽資料載入失敗，請重試。" onRetry={fetchOverview} />
+        )}
+
+        {/* ══ 即時損益 ═══════════════════════════════════════════ */}
+        {activeTab === 'pnl-realtime' && (
+          <RealtimePnlTab warehouses={warehouses} />
+        )}
+
+        {/* ══ 應收帳款 ═══════════════════════════════════════════ */}
+        {activeTab === 'receivables' && (
+          <ReceivablesTab />
         )}
 
         {/* ══ 館別損益 ═══════════════════════════════════════════ */}

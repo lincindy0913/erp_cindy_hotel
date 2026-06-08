@@ -537,6 +537,14 @@ export default function Dashboard() {
                 borderClass="border-l-4 border-l-yellow-400"
               />
               <KpiCard
+                label="7 天內到期支票"
+                value={loading ? '—' : `${dashboardData.riskAlerts?.checksDueSoon || 0} 張`}
+                sub={<Link href="/checks" className="text-blue-600 hover:underline">查看支票 →</Link>}
+                icon="⏰"
+                colorClass={(dashboardData.riskAlerts?.checksDueSoon || 0) > 0 ? 'text-orange-600' : 'text-gray-400'}
+                borderClass={(dashboardData.riskAlerts?.checksDueSoon || 0) > 0 ? 'border-l-4 border-l-orange-400' : 'border-l-4 border-l-gray-200'}
+              />
+              <KpiCard
                 label="即將到期貸款"
                 value={loading ? '—' : `${dashboardData.riskAlerts?.expiringLoans || 0} 筆`}
                 sub={<Link href="/loans" className="text-blue-600 hover:underline">查看詳情 →</Link>}
