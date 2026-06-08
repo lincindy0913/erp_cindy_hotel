@@ -200,6 +200,7 @@ function BnbPage() {
     inlineEdit, setInlineEdit,
     editMode, editMap, dirtyIds, batchSaving, locking, rowErrors,
     roomNoList,
+    auditSummary, auditSummaryLoading, fetchAuditSummary,
     fetchRecords,
     handleBatchApply,
     handleInlineSave,
@@ -962,6 +963,9 @@ function BnbPage() {
             warehouseList={warehouseList}
             recStats={recStats}
             roomStats={roomStats}
+            auditSummary={auditSummary}
+            auditSummaryLoading={auditSummaryLoading}
+            fetchAuditSummary={fetchAuditSummary}
             setActiveTab={setActiveTab} router={router}
             doPrint={doPrint}
             onGoToPayAudit={() => { setActiveTab('payAudit'); router.replace('?tab=payAudit', { scroll: false }); }}

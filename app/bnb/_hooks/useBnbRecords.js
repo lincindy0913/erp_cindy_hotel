@@ -38,6 +38,24 @@ export function useBnbRecords() {
   useEffect(() => { try { localStorage.setItem('bnb_pageSize', String(pageSize)); } catch {} }, [pageSize]);
   const [filterPayment,  setFilterPayment]  = useState(''); // '' | 'unfilled' | 'filled'
 
+  // ── 全月稽核摘要（不受分頁限制）─────────────────────────────────
+  const [auditSummary,    setAuditSummary]    = useState(null);
+  const [auditSummaryLoading, setAuditSummaryLoading] = useState(false);
+
+  const fetchAuditSummary = useCallback(async () => {
+    setAuditSummaryLoading(true);
+    try {
+      const p = new URLSearchParams({ month: filterMonth });
+      if (filterWarehouse) p.set('warehouse', filterWarehouse);
+      const res = await fetch(`/api/bnb/audit-summary?${p}`);
+      if (res.ok) setAuditSummary(await res.json());
+    } catch {}
+    finally { setAuditSummaryLoading(false); }
+  }, [filterMonth, filterWarehouse]);
+
+  // 月份或館別切換時重新取全月稽核摘要
+  useEffect(() => { fetchAuditSummary(); }, [fetchAuditSummary]);
+
   // ── 批次填入 state ────────────────────────────────────────────
   const [selectedIds,   setSelectedIds]   = useState(new Set());
   const [batchField,    setBatchField]    = useState('status');
@@ -394,6 +412,7 @@ export function useBnbRecords() {
     inlineEdit, setInlineEdit,
     editMode, editMap, dirtyIds, batchSaving, locking, rowErrors,
     roomNoList,
+    auditSummary, auditSummaryLoading, fetchAuditSummary,
     // actions
     fetchRecords,
     handleBatchApply,

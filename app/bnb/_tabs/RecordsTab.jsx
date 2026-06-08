@@ -94,6 +94,9 @@ export default function RecordsTab({
   warehouseList,
   recStats,
   roomStats,
+  auditSummary,        // 全月稽核摘要（不受分頁限制）
+  auditSummaryLoading,
+  fetchAuditSummary,
 
   // ── navigation ───────────────────────────────────────────────
   setActiveTab, router,
@@ -150,33 +153,37 @@ export default function RecordsTab({
       <div>
         {recError && <div className="mb-4"><FetchErrorBanner message={recError} onRetry={() => fetchRecords(1)} /></div>}
 
+        {/* 分頁溢出提示 */}
         {recTotal > records.length && (
-          <div className="mb-4 flex items-center gap-2 bg-yellow-50 border border-yellow-300 rounded-xl px-4 py-2.5 text-sm text-yellow-800">
-            <span>⚠ 目前顯示 <strong>{records.length}</strong> / <strong>{recTotal}</strong> 筆；以下統計、金額、鎖帳範圍僅含本頁資料，請翻頁或縮小篩選條件後再執行批次操作。</span>
+          <div className="mb-3 flex items-center gap-2 bg-yellow-50 border border-yellow-300 rounded-xl px-4 py-2.5 text-sm text-yellow-800">
+            <span>⚠ 目前顯示 <strong>{records.length}</strong> / <strong>{recTotal}</strong> 筆。</span>
+            <span className="text-yellow-700">稽核數字和金額合計已切換為<strong>全月</strong>來源（API 即時計算），批次操作、鎖帳仍限本頁，請縮小篩選範圍再執行。</span>
           </div>
         )}
 
-        {recStats.overdueUnpaid > 0 && (
-          <div className="mb-4 flex items-center gap-3 bg-amber-50 border border-amber-300 rounded-xl px-4 py-2.5">
-            <span className="text-sm text-amber-800">⚠ 已退房未填款：<strong>{recStats.overdueUnpaid}</strong> 筆{recTotal > records.length ? '（本頁）' : ''}</span>
-            <button
-              onClick={goToPayAudit}
-              className="ml-auto text-xs px-3 py-1 rounded-lg bg-amber-600 text-white hover:bg-amber-700 whitespace-nowrap">
-              → 付款稽核
-            </button>
-          </div>
-        )}
+        {/* 全月稽核橫幅：已退房未填款 */}
+        {(() => {
+          const cnt = auditSummary?.overdueUnpaid ?? recStats.overdueUnpaid;
+          const label = auditSummary ? '（全月）' : (recTotal > records.length ? '（本頁）' : '');
+          return cnt > 0 ? (
+            <div className="mb-3 flex items-center gap-3 bg-amber-50 border border-amber-300 rounded-xl px-4 py-2.5">
+              <span className="text-sm text-amber-800">⚠ 已退房未填款：<strong>{cnt}</strong> 筆{label}</span>
+              <button onClick={goToPayAudit} className="ml-auto text-xs px-3 py-1 rounded-lg bg-amber-600 text-white hover:bg-amber-700 whitespace-nowrap">→ 付款稽核</button>
+            </div>
+          ) : null;
+        })()}
 
-        {recStats.cardDateMissing > 0 && (
-          <div className="mb-4 flex items-center gap-3 bg-purple-50 border border-purple-300 rounded-xl px-4 py-2.5">
-            <span className="text-sm text-purple-800">卡？ 刷卡入帳日未填：<strong>{recStats.cardDateMissing}</strong> 筆{recTotal > records.length ? '（本頁）' : ''}</span>
-            <button
-              onClick={goToPayAudit}
-              className="ml-auto text-xs px-3 py-1 rounded-lg bg-purple-600 text-white hover:bg-purple-700 whitespace-nowrap">
-              → 付款稽核
-            </button>
-          </div>
-        )}
+        {/* 全月稽核橫幅：刷卡入帳日未填 */}
+        {(() => {
+          const cnt = auditSummary?.cardDateMissing ?? recStats.cardDateMissing;
+          const label = auditSummary ? '（全月）' : (recTotal > records.length ? '（本頁）' : '');
+          return cnt > 0 ? (
+            <div className="mb-3 flex items-center gap-3 bg-purple-50 border border-purple-300 rounded-xl px-4 py-2.5">
+              <span className="text-sm text-purple-800">卡？ 刷卡入帳日未填：<strong>{cnt}</strong> 筆{label}</span>
+              <button onClick={goToPayAudit} className="ml-auto text-xs px-3 py-1 rounded-lg bg-purple-600 text-white hover:bg-purple-700 whitespace-nowrap">→ 付款稽核</button>
+            </div>
+          ) : null;
+        })()}
 
         {/* 篩選列 */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4 flex flex-wrap gap-3 items-end">
@@ -423,61 +430,89 @@ export default function RecordsTab({
           </div>
         )}
 
-        {/* 摘要卡 */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 mb-4">
-          {[
-            { label: '筆數',      val: recStats.rooms },
-            { label: '房費+消費', val: NT(recStats.revenue) },
-            { label: '訂金匯款',  val: NT(recStats.deposit) },
-            { label: '當天匯款',  val: NT(recStats.transfer) },
-            { label: '刷卡',      val: NT(recStats.card) },
-            { label: '現金',      val: NT(recStats.cash) },
-            { label: '住宿卷',    val: NT(recStats.voucher) },
-            { label: '刷卡手續費', val: NT(recStats.cardFee) },
-          ].map(c => (
-            <div key={c.label} className="bg-white rounded-xl border border-gray-100 shadow-sm p-3">
-              <p className="text-xs text-gray-500">{c.label}</p>
-              <p className="font-bold text-gray-800 text-sm mt-0.5">{c.val}</p>
+        {/* 摘要卡（有全月數據時顯示全月；否則顯示本頁） */}
+        {(() => {
+          const src = auditSummary || recStats;
+          const isMonthly = !!auditSummary;
+          const tag = recTotal > records.length
+            ? (isMonthly ? '全月' : '本頁')
+            : '';
+          return (
+            <div className="mb-4">
+              {tag && (
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <span className={`text-xs px-2 py-0.5 rounded font-medium ${isMonthly ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
+                    {isMonthly ? '📊 全月合計' : '⚠ 本頁合計'}
+                  </span>
+                  {auditSummaryLoading && <span className="text-xs text-gray-400 animate-pulse">更新中…</span>}
+                </div>
+              )}
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+                {[
+                  { label: '筆數',      val: (isMonthly ? auditSummary.totalCount : recStats.rooms) },
+                  { label: '房費+消費', val: NT(isMonthly ? auditSummary.revenue    : recStats.revenue) },
+                  { label: '訂金匯款',  val: NT(isMonthly ? auditSummary.payDeposit  : recStats.deposit) },
+                  { label: '當天匯款',  val: NT(isMonthly ? auditSummary.payTransfer : recStats.transfer) },
+                  { label: '刷卡',      val: NT(isMonthly ? auditSummary.payCard     : recStats.card) },
+                  { label: '現金',      val: NT(isMonthly ? auditSummary.payCash     : recStats.cash) },
+                  { label: '住宿卷',    val: NT(isMonthly ? auditSummary.payVoucher  : recStats.voucher) },
+                  { label: '刷卡手續費', val: NT(isMonthly ? auditSummary.cardFee    : recStats.cardFee) },
+                ].map(c => (
+                  <div key={c.label} className="bg-white rounded-xl border border-gray-100 shadow-sm p-3">
+                    <p className="text-xs text-gray-500">{c.label}</p>
+                    <p className="font-bold text-gray-800 text-sm mt-0.5">{c.val}</p>
+                  </div>
+                ))}
+              </div>
             </div>
-          ))}
-        </div>
+          );
+        })()}
 
-        {/* 付款完成度橫幅 */}
-        <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 bg-white rounded-xl shadow-sm border border-gray-100 text-sm">
-          <span className="text-gray-500">{recTotal > records.length ? '本頁' : '本月'}共</span>
-          <span className="font-semibold text-gray-800">{recStats.rooms} 筆</span>
+        {/* 付款完成度橫幅（全月數字優先） */}
+        {(() => {
+          const isMonthly = !!auditSummary;
+          const total      = isMonthly ? auditSummary.totalCount  : recStats.rooms;
+          const unf        = isMonthly ? auditSummary.unfilled     : recStats.unfilled;
+          const comp       = isMonthly ? auditSummary.complimentary : recStats.complimentary;
+          const lck        = isMonthly ? auditSummary.locked        : recStats.locked;
+          const mis        = isMonthly ? auditSummary.mismatch      : recStats.mismatch;
+          const srcLabel   = isMonthly ? '全月' : (recTotal > records.length ? '本頁' : '本月');
+          return (
+          <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 bg-white rounded-xl shadow-sm border border-gray-100 text-sm">
+          <span className="text-gray-500">{srcLabel}共</span>
+          <span className="font-semibold text-gray-800">{total} 筆</span>
           <span className="text-gray-300">|</span>
           <button
             onClick={() => setFilterPayment(filterPayment === 'filled' ? '' : 'filled')}
             className={`rounded px-2 py-0.5 transition-colors ${filterPayment === 'filled' ? 'bg-green-100 text-green-800 font-semibold' : 'text-green-600 hover:bg-green-50'}`}>
-            已填付款 {recStats.rooms - recStats.unfilled}
+            已填付款 {total - unf}
           </button>
           <span className="text-gray-300">|</span>
           <button
             onClick={() => setFilterPayment(filterPayment === 'unfilled' ? '' : 'unfilled')}
-            className={`rounded px-2 py-0.5 transition-colors ${filterPayment === 'unfilled' ? 'bg-amber-100 text-amber-800 font-semibold' : recStats.unfilled > 0 ? 'text-amber-600 hover:bg-amber-50' : 'text-gray-400 cursor-default'}`}
-            disabled={recStats.unfilled === 0}>
-            未填 {recStats.unfilled} 筆
+            className={`rounded px-2 py-0.5 transition-colors ${filterPayment === 'unfilled' ? 'bg-amber-100 text-amber-800 font-semibold' : unf > 0 ? 'text-amber-600 hover:bg-amber-50' : 'text-gray-400 cursor-default'}`}
+            disabled={unf === 0}>
+            未填 {unf} 筆
           </button>
-          {recStats.complimentary > 0 && (
+          {comp > 0 && (
             <>
               <span className="text-gray-300">|</span>
-              <span className="text-rose-500">招待 {recStats.complimentary} 筆</span>
+              <span className="text-rose-500">招待 {comp} 筆</span>
             </>
           )}
           <span className="text-gray-300">|</span>
-          <span className="text-slate-500">已鎖帳 <span className={recStats.locked === recStats.rooms && recStats.rooms > 0 ? 'text-green-600 font-semibold' : 'text-slate-700'}>{recStats.locked}</span></span>
-          {recStats.mismatch > 0 && (
+          <span className="text-slate-500">已鎖帳 <span className={lck === total && total > 0 ? 'text-green-600 font-semibold' : 'text-slate-700'}>{lck}</span></span>
+          {mis > 0 && (
             <>
               <span className="text-gray-300">|</span>
               <button
                 onClick={() => setFilterPayment(filterPayment === 'mismatch' ? '' : 'mismatch')}
                 className={`rounded px-2 py-0.5 transition-colors ${filterPayment === 'mismatch' ? 'bg-red-100 text-red-800 font-semibold' : 'text-red-500 hover:bg-red-50 font-medium'}`}>
-                金額不符 {recStats.mismatch} 筆{recTotal > records.length ? '（本頁）' : ''}
+                金額不符 {mis} 筆{isMonthly ? '（全月）' : (recTotal > records.length ? '（本頁）' : '')}
               </button>
             </>
           )}
-          {(recStats.mismatch > 0 || recStats.unfilled > 0) && (
+          {(mis > 0 || unf > 0) && (
             <>
               <span className="text-gray-300">|</span>
               <button
@@ -518,7 +553,9 @@ export default function RecordsTab({
               清除篩選
             </button>
           )}
-        </div>
+          </div>
+          );
+        })()}
 
         {/* 房號分析面板（僅有房號資料時顯示） */}
         {roomStats.length > 1 && (
