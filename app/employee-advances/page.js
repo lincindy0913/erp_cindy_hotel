@@ -8,6 +8,7 @@ import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort, SortableThInline } from '@/components/SortableTh';
 import { todayStr } from '@/lib/localDate';
 import FetchErrorBanner from '@/components/FetchErrorBanner';
+import ExcelBatchImport from '@/components/ExcelBatchImport';
 
 export default function EmployeeAdvancesPage() {
   const { data: session } = useSession();
@@ -454,9 +455,31 @@ export default function EmployeeAdvancesPage() {
               </button>
             ))}
           </div>
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
             <button onClick={handlePrint} style={{ padding: '6px 14px', background: '#fff', border: '1px solid #d1d5db', borderRadius: 6, cursor: 'pointer', fontSize: 16, color: '#374151' }}>列印</button>
             <button onClick={handleExportExcel} style={{ padding: '6px 14px', background: '#fff', border: '1px solid #d1d5db', borderRadius: 6, cursor: 'pointer', fontSize: 16, color: '#374151' }}>匯出 Excel</button>
+            <ExcelBatchImport
+              title="員工代墊批次匯入"
+              hint="批次建立員工代墊記錄，狀態預設為「待結算」。"
+              columns={[
+                { key: 'date',          header: '日期',     example: todayStr(), required: false, width: 14, note: 'YYYY-MM-DD，空白用今天' },
+                { key: 'employeeName',  header: '員工姓名', example: '王小明',   required: true,  width: 14 },
+                { key: 'amount',        header: '代墊金額', example: '2500',     required: true,  width: 12 },
+                { key: 'description',   header: '費用說明', example: '採購材料', required: false, width: 20 },
+                { key: 'paymentMethod', header: '付款方式', example: '現金',     required: false, width: 10, note: '現金/信用卡' },
+              ]}
+              onImport={async rows => {
+                const res = await fetch('/api/employee-advances/import-excel', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ rows }),
+                });
+                const json = await res.json();
+                if (res.ok) { fetchAll(); return json; }
+                throw new Error(json.error || '匯入失敗');
+              }}
+              buttonClass="px-3 py-1.5 bg-emerald-600 text-white rounded text-sm hover:bg-emerald-700 flex items-center gap-1"
+            />
           </div>
         </div>
 

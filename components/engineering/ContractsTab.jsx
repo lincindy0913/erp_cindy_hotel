@@ -8,6 +8,7 @@ import AttachmentSection from '@/components/AttachmentSection';
 import { getActualPaid } from '@/lib/engineering/payment-utils';
 import { formatNum } from '@/lib/engineering/format-utils';
 import FetchErrorBanner from '@/components/FetchErrorBanner';
+import { exportToXlsx } from '@/lib/export';
 
 export default function ContractsTab({
   projects, suppliers, contracts, paymentOrders,
@@ -307,6 +308,32 @@ export default function ContractsTab({
           {projects.map(p => <option key={p.id} value={p.id}>{p.code} {p.name}</option>)}
         </select>
         <button onClick={openAddContract} className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 text-sm">＋ 新增合約</button>
+        <button
+          onClick={() => exportToXlsx({
+            filename: '工程合約清單',
+            sheetName: '合約',
+            title: '工程合約清單',
+            columns: [
+              { header: '工程案', key: 'projectLabel', width: 24 },
+              { header: '合約編號', key: 'contractNo', width: 18 },
+              { header: '廠商', key: 'supplier', width: 20 },
+              { header: '類型', key: 'contractType', width: 10 },
+              { header: '合約總額', key: 'totalAmount', width: 14, format: 'amount' },
+              { header: '簽約日', key: 'signDate', width: 12 },
+            ],
+            data: contracts.map(c => ({
+              projectLabel: c.project?.code ? `${c.project.code} ${c.project.name}` : '',
+              contractNo:   c.contractNo || '',
+              supplier:     c.supplier?.name || '',
+              contractType: c.contractType || '',
+              totalAmount:  Number(c.totalAmount || 0),
+              signDate:     c.signDate || '',
+            })),
+          })}
+          className="px-3 py-1.5 bg-white border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 text-sm"
+        >
+          ↓ Excel
+        </button>
       </div>
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">

@@ -12,6 +12,7 @@ import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort, SortableThInline } from '@/components/SortableTh';
 import { todayStr } from '@/lib/localDate';
 import { getApiError } from '@/lib/get-api-error';
+import ExcelBatchImport from '@/components/ExcelBatchImport';
 
 // 進銷存每月費用已移至 /purchasing 小分頁
 const MAIN_TABS = [
@@ -2095,6 +2096,28 @@ function ExpensesPageInner() {
                     exportName="費用記錄"
                     period={recordFilter.month}
                     title={`費用記錄 ${recordFilter.month || ''} ${recordFilter.warehouse || ''}`}
+                  />
+                  <ExcelBatchImport
+                    title="部門費用批次匯入"
+                    hint="批次建立部門費用月彙總。相同年月+部門+類別會覆蓋更新。"
+                    columns={[
+                      { key: 'year',       header: '年份',     example: String(new Date().getFullYear()), required: true,  width: 8 },
+                      { key: 'month',      header: '月份',     example: String(new Date().getMonth() + 1), required: true, width: 6, note: '1-12' },
+                      { key: 'department', header: '部門',     example: '餐飲部',  required: true,  width: 16 },
+                      { key: 'category',   header: '費用類別', example: '薪資',    required: true,  width: 16 },
+                      { key: 'amount',     header: '金額',     example: '50000',   required: true,  width: 12 },
+                      { key: 'tax',        header: '稅額',     example: '0',       required: false, width: 10 },
+                    ]}
+                    onImport={async rows => {
+                      const res = await fetch('/api/department-expenses/import-excel', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ rows }),
+                      });
+                      const json = await res.json();
+                      if (res.ok) return json;
+                      throw new Error(json.error || '匯入失敗');
+                    }}
                   />
                 </div>
               </div>

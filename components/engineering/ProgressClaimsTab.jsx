@@ -5,6 +5,7 @@ import ConfirmModal, { useConfirmDialog } from '@/components/ConfirmModal';
 import { todayStr } from '@/lib/localDate';
 import FetchErrorBanner from '@/components/FetchErrorBanner';
 import { formatNum } from '@/lib/engineering/format-utils';
+import { exportToXlsx } from '@/lib/export';
 
 const STATUS_LABELS = { draft: '草稿', submitted: '已提交', certified: '已核定', rejected: '退件' };
 const STATUS_COLORS = {
@@ -119,9 +120,39 @@ export default function ProgressClaimsTab({ projects }) {
           </select>
           <span className="text-sm text-gray-500">共 {claims.length} 筆</span>
         </div>
-        <button onClick={openAdd} className="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700">
-          ＋ 新增估驗單
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => exportToXlsx({
+              filename: '工程估驗計價清單',
+              sheetName: '估驗計價',
+              title: '工程估驗計價清單',
+              columns: [
+                { header: '工程案', key: 'project', width: 22 },
+                { header: '估驗單號', key: 'claimNo', width: 16 },
+                { header: '期數', key: 'period', width: 8 },
+                { header: '狀態', key: 'status', width: 10 },
+                { header: '估驗金額', key: 'claimAmount', width: 14, format: 'amount' },
+                { header: '核定日期', key: 'certifiedDate', width: 12 },
+                { header: '備註', key: 'note', width: 24 },
+              ],
+              data: claims.map(c => ({
+                project:       c.project?.code ? `${c.project.code} ${c.project.name}` : '',
+                claimNo:       c.claimNo || '',
+                period:        c.period ?? '',
+                status:        STATUS_LABELS[c.status] || c.status,
+                claimAmount:   Number(c.claimAmount || 0),
+                certifiedDate: c.certifiedDate || '',
+                note:          c.note || '',
+              })),
+            })}
+            className="px-3 py-1.5 bg-white border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 text-sm"
+          >
+            ↓ Excel
+          </button>
+          <button onClick={openAdd} className="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700">
+            ＋ 新增估驗單
+          </button>
+        </div>
       </div>
 
       {grouped.length === 0 ? (

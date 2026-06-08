@@ -109,7 +109,12 @@ export default function ExcelBatchImport({
         return;
       }
 
-      // 讀資料列（跳過第 1 列標題、第 2 列範例、第 3 列備註）
+      // 偵測是否為本系統產生的範本（第 2 列使用斜體格式）
+      const firstColIdx = Object.values(headerMap)[0];
+      const row2Cell    = firstColIdx ? sheet.getRow(2).getCell(firstColIdx) : null;
+      const isTemplate  = !!row2Cell?.font?.italic; // 本系統範本：範例列有斜體
+
+      // 讀資料列（本系統範本跳過第 2 列範例、第 3 列備註；自製 Excel 從第 2 列開始讀）
       const dataRows = [];
       const totalRows = sheet.rowCount;
       for (let ri = 2; ri <= totalRows; ri++) {
@@ -120,10 +125,10 @@ export default function ExcelBatchImport({
           return !ci || row.getCell(ci).value == null || String(row.getCell(ci).value).trim() === '';
         });
         if (allEmpty) continue;
-        // 跳過範例列（斜體 + 灰色字）
-        if (ri === 2) continue;
-        // 跳過備註列
-        if (ri === 3 && columns.some(c => {
+        // 本系統範本：跳過範例列（斜體）
+        if (isTemplate && ri === 2) continue;
+        // 本系統範本：跳過備註列（含「必填」文字）
+        if (isTemplate && ri === 3 && columns.some(c => {
           const ci = headerMap[c.header];
           return ci && String(row.getCell(ci).value || '').includes('必填');
         })) continue;
@@ -141,7 +146,12 @@ export default function ExcelBatchImport({
         dataRows.push(obj);
       }
 
-      if (dataRows.length === 0) { setParseErr('檔案中未找到有效資料列（請確認資料從第 4 列開始）'); return; }
+      if (dataRows.length === 0) {
+        setParseErr(isTemplate
+          ? '檔案中未找到有效資料列（範本第 4 列以後填寫資料）'
+          : '檔案中未找到有效資料列（請確認標題列在第 1 列，資料從第 2 列開始）');
+        return;
+      }
       setRows(dataRows);
     } catch (e) {
       console.error('[ExcelBatchImport] parse error', e);

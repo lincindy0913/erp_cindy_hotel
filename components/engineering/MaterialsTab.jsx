@@ -6,6 +6,7 @@ import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 import { todayStr } from '@/lib/localDate';
 import FetchErrorBanner from '@/components/FetchErrorBanner';
 import { formatNum as _formatNum } from '@/lib/engineering/format-utils';
+import { exportToXlsx } from '@/lib/export';
 
 function formatNum(n) { return _formatNum(n, 4); }
 function fmtMoney(n) { return _formatNum(n); }
@@ -281,7 +282,37 @@ export default function MaterialsTab({ projects, contracts }) {
       {/* ── 領料記錄 ── */}
       {subTab === 'issues' && (
         <>
-          <div className="flex justify-end mb-3">
+          <div className="flex justify-end gap-2 mb-3">
+            <button
+              onClick={() => exportToXlsx({
+                filename: '工程領料記錄',
+                sheetName: '領料',
+                title: '工程領料記錄',
+                columns: [
+                  { header: '工程案', key: 'project', width: 20 },
+                  { header: '領料日期', key: 'issueDate', width: 12 },
+                  { header: '材料名稱', key: 'name', width: 22 },
+                  { header: '規格', key: 'spec', width: 14 },
+                  { header: '數量', key: 'quantity', width: 8, format: 'amount' },
+                  { header: '單位', key: 'unit', width: 8 },
+                  { header: '單價', key: 'unitPrice', width: 12, format: 'amount' },
+                  { header: '金額', key: 'totalAmount', width: 12, format: 'amount' },
+                ],
+                data: (materials || []).map(m => ({
+                  project:     m.project?.code ? `${m.project.code} ${m.project.name}` : '',
+                  issueDate:   m.issueDate || '',
+                  name:        m.materialName || '',
+                  spec:        m.specification || '',
+                  quantity:    Number(m.quantity || 0),
+                  unit:        m.unit || '',
+                  unitPrice:   Number(m.unitPrice || 0),
+                  totalAmount: Number(m.totalAmount || 0),
+                })),
+              })}
+              className="px-3 py-1.5 bg-white border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 text-sm"
+            >
+              ↓ Excel
+            </button>
             <button onClick={openAddMaterial} className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 text-sm">＋ 新增材料</button>
           </div>
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
