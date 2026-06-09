@@ -24,7 +24,7 @@ export async function GET(request) {
     const year = searchParams.get('year');
     const y = year ? parseInt(year, 10) : new Date().getFullYear();
     if (Number.isNaN(y)) {
-      return NextResponse.json({ error: 'Invalid year' }, { status: 400 });
+      return createErrorResponse('VALIDATION_FAILED', 'Invalid year', 400);
     }
 
     const [properties, taxes] = await Promise.all([

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { handleApiError } from '@/lib/error-handler';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 
@@ -171,12 +171,12 @@ export async function GET(request) {
 export async function PATCH(request) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!session) return createErrorResponse('UNAUTHORIZED', 'Unauthorized', 401);
 
     const { searchParams } = new URL(request.url);
     const monthStr = searchParams.get('month');
     if (!monthStr || monthStr.length !== 6) {
-      return NextResponse.json({ error: 'month 參數必填（格式 YYYYMM）' }, { status: 400 });
+      return createErrorResponse('REQUIRED_FIELD_MISSING', 'month 參數必填（格式 YYYYMM）', 400);
     }
 
     const year = parseInt(monthStr.substring(0, 4));
@@ -187,7 +187,7 @@ export async function PATCH(request) {
     });
 
     if (!report) {
-      return NextResponse.json({ error: '報告不存在，請先完成月結以生成報告' }, { status: 404 });
+      return createErrorResponse('NOT_FOUND', '報告不存在，請先完成月結以生成報告', 404);
     }
 
     const updated = await prisma.monthlyBusinessReport.update({

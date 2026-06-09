@@ -57,18 +57,24 @@ export async function PATCH(request) {
       let skipped = 0;
       const failures = [];
 
+      // 批次查詢所有明細，避免迴圈內 N+1
+      const allDetails = await prisma.bnbBookingRecord.findMany({
+        where: { id: { in: allIds } },
+        select: {
+          id: true, paymentLocked: true, payCard: true, cardFeeRate: true,
+          payCash: true, cashDestination: true, guestName: true,
+          warehouse: true, checkInDate: true, checkOutDate: true, bossWithdrawNote: true,
+          cashDepositDate: true, cardSettlementDate: true,
+          payDeposit: true, payTransfer: true, payVoucher: true, isComplimentary: true,
+        },
+      });
+      const detailMap = new Map(allDetails.map(r => [r.id, r]));
+
       for (const rec of records) {
         const id = parseInt(rec.id);
         if (!id) continue;
 
-        const existing = await prisma.bnbBookingRecord.findUnique({
-          where: { id },
-          select: { paymentLocked: true, payCard: true, cardFeeRate: true,
-                    payCash: true, cashDestination: true, guestName: true,
-                    warehouse: true, checkInDate: true, checkOutDate: true, bossWithdrawNote: true,
-                    cashDepositDate: true, cardSettlementDate: true,
-                    payDeposit: true, payTransfer: true, payVoucher: true, isComplimentary: true },
-        });
+        const existing = detailMap.get(id);
         if (!existing) continue;
         if (existing.paymentLocked) { skipped++; continue; }
 

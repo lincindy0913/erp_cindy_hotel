@@ -1,6 +1,6 @@
 ﻿import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { handleApiError } from '@/lib/error-handler';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { getServerSession } from 'next-auth';
@@ -31,12 +31,12 @@ export async function GET(request, { params }) {
 
   try {
     const id = parseInt((await params).id, 10);
-    if (isNaN(id)) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
+    if (isNaN(id)) return createErrorResponse('VALIDATION_FAILED', 'Invalid id', 400);
 
     const record = await prisma.utilityBillRecord.findUnique({
       where: { id },
     });
-    if (!record) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    if (!record) return createErrorResponse('NOT_FOUND', '找不到水電帳單記錄', 404);
 
     return NextResponse.json({
       id: record.id,
@@ -59,13 +59,13 @@ export async function PUT(request, { params }) {
 
   try {
     const id = parseInt((await params).id, 10);
-    if (isNaN(id)) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
+    if (isNaN(id)) return createErrorResponse('VALIDATION_FAILED', 'Invalid id', 400);
 
     const body = await request.json();
     const { summaryJson, fileName } = body;
 
     if (summaryJson == null && fileName === undefined) {
-      return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
+      return createErrorResponse('VALIDATION_FAILED', 'No fields to update', 400);
     }
 
     const { record, totalAmount, paymentOrderSynced } = await prisma.$transaction(async (tx) => {
@@ -134,10 +134,10 @@ export async function PATCH(request, { params }) {
 
   try {
     const id = parseInt((await params).id, 10);
-    if (isNaN(id)) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
+    if (isNaN(id)) return createErrorResponse('VALIDATION_FAILED', 'Invalid id', 400);
 
     const record = await prisma.utilityBillRecord.findUnique({ where: { id } });
-    if (!record) return NextResponse.json({ error: '找不到記錄' }, { status: 404 });
+    if (!record) return createErrorResponse('NOT_FOUND', '找不到水電帳單記錄', 404);
 
     // 若已有有效付款單，直接回傳
     if (record.paymentOrderId) {
@@ -153,7 +153,7 @@ export async function PATCH(request, { params }) {
     // 計算金額
     const totalAmount = calcTotal(record.summaryJson, record.billType);
     if (totalAmount <= 0) {
-      return NextResponse.json({ error: '無法計算繳費金額，請先確認帳單明細中的金額欄位' }, { status: 400 });
+      return createErrorResponse('VALIDATION_FAILED', '無法計算繳費金額，請先確認帳單明細中的金額欄位', 400);
     }
 
     const session = auth.session;
@@ -217,13 +217,13 @@ export async function DELETE(request, { params }) {
 
   try {
     const id = parseInt((await params).id, 10);
-    if (isNaN(id)) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
+    if (isNaN(id)) return createErrorResponse('VALIDATION_FAILED', 'Invalid id', 400);
 
     const record = await prisma.utilityBillRecord.findUnique({
       where: { id },
       select: { id: true, paymentOrderId: true, billType: true, billYear: true, billMonth: true, warehouse: true },
     });
-    if (!record) return NextResponse.json({ error: '找不到記錄' }, { status: 404 });
+    if (!record) return createErrorResponse('NOT_FOUND', '找不到水電帳單記錄', 404);
 
     // Check associated payment order before deleting
     if (record.paymentOrderId) {

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import prisma from '@/lib/prisma';
-import { handleApiError } from '@/lib/error-handler';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,7 +14,7 @@ export async function GET() {
   try {
     const session = await getServerSession(authOptions);
     if (!session || session.user.role !== 'admin') {
-      return NextResponse.json({ error: '權限不足', code: 'FORBIDDEN' }, { status: 403 });
+      return createErrorResponse('FORBIDDEN', '權限不足', 403);
     }
 
     const sessions = await prisma.importSession.findMany({
@@ -40,7 +40,7 @@ export async function POST(request) {
   try {
     const session = await getServerSession(authOptions);
     if (!session || session.user.role !== 'admin') {
-      return NextResponse.json({ error: '權限不足', code: 'FORBIDDEN' }, { status: 403 });
+      return createErrorResponse('FORBIDDEN', '權限不足', 403);
     }
     const userName = session.user.name || session.user.email || 'system';
 
@@ -48,7 +48,7 @@ export async function POST(request) {
     const { openingDate, note } = body;
 
     if (!openingDate) {
-      return NextResponse.json({ error: '開帳基準日為必填', code: 'REQUIRED_FIELD_MISSING' }, { status: 400 });
+      return createErrorResponse('REQUIRED_FIELD_MISSING', '開帳基準日為必填', 400);
     }
 
     // Generate session number

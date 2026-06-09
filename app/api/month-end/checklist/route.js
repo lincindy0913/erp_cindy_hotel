@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
-import { handleApiError } from '@/lib/error-handler';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { localDateStr } from '@/lib/localDate';
 import { calcBalanceDelta } from '@/lib/calc-balance-delta';
 
@@ -18,7 +18,7 @@ export async function GET(request) {
     const month = parseInt(searchParams.get('month'));
 
     if (!year || !month || month < 1 || month > 12) {
-      return NextResponse.json({ error: '請提供有效的年份和月份' }, { status: 400 });
+      return createErrorResponse('REQUIRED_FIELD_MISSING', '請提供有效的年份和月份', 400);
     }
 
     const monthStr   = String(month).padStart(2, '0');

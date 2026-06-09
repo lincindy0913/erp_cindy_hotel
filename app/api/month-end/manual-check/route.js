@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
-import { handleApiError } from '@/lib/error-handler';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 
 export const dynamic = 'force-dynamic';
 
@@ -58,7 +58,7 @@ export async function POST(request) {
   try {
     const { year, month, key, value } = await request.json();
     if (!year || !month || !key) {
-      return NextResponse.json({ error: 'year, month, key 為必填' }, { status: 400 });
+      return createErrorResponse('REQUIRED_FIELD_MISSING', 'year, month, key 為必填', 400);
     }
 
     const existing = await prisma.monthEndStatus.findFirst({

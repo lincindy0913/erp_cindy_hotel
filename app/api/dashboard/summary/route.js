@@ -136,6 +136,6 @@ export async function GET(request) {
       });
     }
     console.error('Dashboard summary error:', error.message);
-    return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+    return createErrorResponse('INTERNAL_ERROR', 'Internal error', 500);
   }
 }

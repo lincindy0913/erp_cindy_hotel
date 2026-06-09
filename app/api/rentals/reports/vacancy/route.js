@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { handleApiError } from '@/lib/error-handler';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { todayStr } from '@/lib/localDate';
@@ -16,7 +16,7 @@ export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const year = parseInt(searchParams.get('year') || new Date().getFullYear(), 10);
-    if (Number.isNaN(year)) return NextResponse.json({ error: 'Invalid year' }, { status: 400 });
+    if (Number.isNaN(year)) return createErrorResponse('VALIDATION_FAILED', 'Invalid year', 400);
 
     const yearStart = `${year}-01-01`;
     const yearEnd = `${year}-12-31`;

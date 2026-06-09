@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
-import { handleApiError } from '@/lib/error-handler';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,7 +20,7 @@ export async function POST(request) {
   try {
     const { rows } = await request.json();
     if (!Array.isArray(rows) || rows.length === 0) {
-      return NextResponse.json({ error: '無有效資料' }, { status: 400 });
+      return createErrorResponse('VALIDATION_FAILED', '無有效資料', 400);
     }
 
     const errors  = [];

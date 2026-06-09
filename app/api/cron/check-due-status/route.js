@@ -8,7 +8,7 @@
  */
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { handleApiError } from '@/lib/error-handler';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { todayStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
@@ -22,7 +22,7 @@ function checkAuth(request) {
 
 export async function POST(request) {
   if (!checkAuth(request)) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return createErrorResponse('UNAUTHORIZED', 'Unauthorized', 401);
   }
 
   try {

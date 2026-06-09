@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useState, useEffect, useCallback, Suspense, lazy } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Navigation from '@/components/Navigation';
 import NotificationBanner from '@/components/NotificationBanner';
@@ -9,30 +9,32 @@ import { EXPORT_CONFIGS } from '@/lib/export-columns';
 import { TABS, TAB_GROUPS, WAREHOUSES_FALLBACK, DEFAULT_PMS_COLUMNS } from '@/components/pms-income/pmsIncomeConstants';
 import PmsIncomeUploadModal from '@/components/pms-income/PmsIncomeUploadModal';
 import PmsIncomeAddRecordModal from '@/components/pms-income/PmsIncomeAddRecordModal';
-import PmsIncomeOverviewTab from '@/components/pms-income/PmsIncomeOverviewTab';
-import PmsIncomeRecordsTab from '@/components/pms-income/PmsIncomeRecordsTab';
-import PmsIncomeSettlementTab from '@/components/pms-income/PmsIncomeSettlementTab';
-import PmsIncomeStatisticsTab from '@/components/pms-income/PmsIncomeStatisticsTab';
-import PmsIncomeTravelAgencyTab from '@/components/pms-income/PmsIncomeTravelAgencyTab';
-import PmsIncomeManualCommissionTab from '@/components/pms-income/PmsIncomeManualCommissionTab';
-import PmsIncomePaymentConfigTab from '@/components/pms-income/PmsIncomePaymentConfigTab';
-import PmsIncomeMappingTab from '@/components/pms-income/PmsIncomeMappingTab';
-import PmsIncomeExcelImportTab from '@/components/pms-income/PmsIncomeExcelImportTab';
-import PmsIncomePresetRecordsTab from '@/components/pms-income/PmsIncomePresetRecordsTab';
-import PmsIncomeBookingCenterTab from '@/components/pms-income/PmsIncomeBookingCenterTab';
-import PmsIncomeOtaReconTab from '@/components/pms-income/PmsIncomeOtaReconTab';
-import PmsIncomeOtaCommissionTab from '@/components/pms-income/PmsIncomeOtaCommissionTab';
-import FetchErrorBanner from '@/components/FetchErrorBanner';
-import PmsIncomeVendorBillingTab from '@/components/pms-income/PmsIncomeVendorBillingTab';
-import PmsIncomeReservationTab from '@/components/pms-income/PmsIncomeReservationTab';
-import PmsIncomeDepositReconTab from '@/components/pms-income/PmsIncomeDepositReconTab';
-import PmsIncomeMonthCloseTab from '@/components/pms-income/PmsIncomeMonthCloseTab';
-import PmsIncomeCashierSummaryTab from '@/components/pms-income/PmsIncomeCashierSummaryTab';
-import PmsIncomeInvoiceTab from '@/components/pms-income/PmsIncomeInvoiceTab';
-import PmsIncomeCCFeeReconTab from '@/components/pms-income/PmsIncomeCCFeeReconTab';
-import PmsIncomeCreditCardTab from '@/components/pms-income/PmsIncomeCreditCardTab';
 import PmsIncomeMiniDashboard from '@/components/pms-income/PmsIncomeMiniDashboard';
 import PmsIncomeDailyTodoBar from '@/components/pms-income/PmsIncomeDailyTodoBar';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
+
+// Tab components loaded lazily — only downloaded when the tab is first opened
+const PmsIncomeOverviewTab = lazy(() => import('@/components/pms-income/PmsIncomeOverviewTab'));
+const PmsIncomeRecordsTab = lazy(() => import('@/components/pms-income/PmsIncomeRecordsTab'));
+const PmsIncomeSettlementTab = lazy(() => import('@/components/pms-income/PmsIncomeSettlementTab'));
+const PmsIncomeStatisticsTab = lazy(() => import('@/components/pms-income/PmsIncomeStatisticsTab'));
+const PmsIncomeTravelAgencyTab = lazy(() => import('@/components/pms-income/PmsIncomeTravelAgencyTab'));
+const PmsIncomeManualCommissionTab = lazy(() => import('@/components/pms-income/PmsIncomeManualCommissionTab'));
+const PmsIncomePaymentConfigTab = lazy(() => import('@/components/pms-income/PmsIncomePaymentConfigTab'));
+const PmsIncomeMappingTab = lazy(() => import('@/components/pms-income/PmsIncomeMappingTab'));
+const PmsIncomeExcelImportTab = lazy(() => import('@/components/pms-income/PmsIncomeExcelImportTab'));
+const PmsIncomePresetRecordsTab = lazy(() => import('@/components/pms-income/PmsIncomePresetRecordsTab'));
+const PmsIncomeBookingCenterTab = lazy(() => import('@/components/pms-income/PmsIncomeBookingCenterTab'));
+const PmsIncomeOtaReconTab = lazy(() => import('@/components/pms-income/PmsIncomeOtaReconTab'));
+const PmsIncomeOtaCommissionTab = lazy(() => import('@/components/pms-income/PmsIncomeOtaCommissionTab'));
+const PmsIncomeVendorBillingTab = lazy(() => import('@/components/pms-income/PmsIncomeVendorBillingTab'));
+const PmsIncomeReservationTab = lazy(() => import('@/components/pms-income/PmsIncomeReservationTab'));
+const PmsIncomeDepositReconTab = lazy(() => import('@/components/pms-income/PmsIncomeDepositReconTab'));
+const PmsIncomeMonthCloseTab = lazy(() => import('@/components/pms-income/PmsIncomeMonthCloseTab'));
+const PmsIncomeCashierSummaryTab = lazy(() => import('@/components/pms-income/PmsIncomeCashierSummaryTab'));
+const PmsIncomeInvoiceTab = lazy(() => import('@/components/pms-income/PmsIncomeInvoiceTab'));
+const PmsIncomeCCFeeReconTab = lazy(() => import('@/components/pms-income/PmsIncomeCCFeeReconTab'));
+const PmsIncomeCreditCardTab = lazy(() => import('@/components/pms-income/PmsIncomeCreditCardTab'));
 import { usePmsIncomeOverview } from '@/components/pms-income/usePmsIncomeOverview';
 import { usePmsIncomeRecords } from '@/components/pms-income/usePmsIncomeRecords';
 import { usePmsIncomeSettlement } from '@/components/pms-income/usePmsIncomeSettlement';
@@ -544,6 +546,7 @@ function PmsIncomePage() {
 
           {/* Content area */}
           <div className="flex-1 min-w-0">
+          <Suspense fallback={<div className="p-8 text-center text-gray-400">載入中…</div>}>
 
         {activeTab === 'overview' && (
           <PmsIncomeOverviewTab
@@ -741,6 +744,7 @@ function PmsIncomePage() {
         {activeTab === 'mapping' && (
           <PmsIncomeMappingTab loading={loading} mappingRules={mappingRules} />
         )}
+          </Suspense>
           </div>{/* end content area */}
         </div>{/* end sidebar + content flex */}
       </div>

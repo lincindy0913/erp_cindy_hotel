@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { createErrorResponse } from '@/lib/error-handler';
 
 export const maxDuration = 300; // 5 minutes for AI inference
 
@@ -33,7 +34,7 @@ export async function POST(request) {
   try {
     if (!validateOcrUrl(OCR_SERVICE_URL)) {
       console.error('[OCR] blocked SSRF-risk URL:', OCR_SERVICE_URL);
-      return NextResponse.json({ error: 'OCR 服務 URL 設定異常' }, { status: 500 });
+      return createErrorResponse('INTERNAL_ERROR', 'OCR 服務 URL 設定異常', 500);
     }
 
     const formData = await request.formData();
@@ -42,18 +43,18 @@ export async function POST(request) {
     const page = formData.get('page') || '0';
 
     if (!file) {
-      return NextResponse.json({ error: '請上傳 PDF 檔案' }, { status: 400 });
+      return createErrorResponse('REQUIRED_FIELD_MISSING', '請上傳 PDF 檔案', 400);
     }
 
     // Guard against oversized files (100MB max)
     if (file.size > 100 * 1024 * 1024) {
-      return NextResponse.json({ error: '檔案大小超過 100MB 上限' }, { status: 400 });
+      return createErrorResponse('VALIDATION_FAILED', '檔案大小超過 100MB 上限', 400);
     }
 
     // Validate page is a numeric string to prevent injection into URL
     const pageNum = parseInt(page, 10);
     if (Number.isNaN(pageNum) || pageNum < 0) {
-      return NextResponse.json({ error: 'page 參數格式錯誤' }, { status: 400 });
+      return createErrorResponse('VALIDATION_FAILED', 'page 參數格式錯誤', 400);
     }
 
     const ocrForm = new FormData();
@@ -68,7 +69,7 @@ export async function POST(request) {
 
     if (!ocrRes.ok) {
       const err = await ocrRes.text();
-      return NextResponse.json({ error: `OCR 服務錯誤: ${err}` }, { status: 500 });
+      return createErrorResponse('INTERNAL_ERROR', `OCR 服務錯誤: ${err}`, 500);
     }
 
     const data = await ocrRes.json();

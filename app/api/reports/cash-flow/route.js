@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { handleApiError } from '@/lib/error-handler';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 
@@ -34,7 +34,7 @@ export async function GET(request) {
     const warehouse = searchParams.get('warehouse');
 
     if (!yearMonth) {
-      return NextResponse.json({ error: { message: 'yearMonth 為必填' } }, { status: 400 });
+      return createErrorResponse('REQUIRED_FIELD_MISSING', 'yearMonth 為必填', 400);
     }
 
     const [y, m]    = yearMonth.split('-').map(Number);

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { handleApiError } from '@/lib/error-handler';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 
@@ -30,7 +30,7 @@ export async function GET(request) {
     const yearMonth  = searchParams.get('yearMonth') || '';
 
     if (!yearMonth) {
-      return NextResponse.json({ error: { message: 'yearMonth 為必填（YYYY-MM）' } }, { status: 400 });
+      return createErrorResponse('REQUIRED_FIELD_MISSING', 'yearMonth 為必填（YYYY-MM）', 400);
     }
 
     const where = { businessDate: { startsWith: yearMonth } };

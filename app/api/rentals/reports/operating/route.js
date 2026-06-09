@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { handleApiError } from '@/lib/error-handler';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 
@@ -36,7 +36,7 @@ export async function GET(request) {
 
     if (startDate && endDate) {
       if (startDate > endDate) {
-        return NextResponse.json({ error: '結束日期不可早於開始日期' }, { status: 400 });
+        return createErrorResponse('VALIDATION_FAILED', '結束日期不可早於開始日期', 400);
       }
       const sDate = new Date(startDate);
       const eDate = new Date(endDate);
@@ -49,7 +49,7 @@ export async function GET(request) {
     } else {
       const y = year ? parseInt(year, 10) : new Date().getFullYear();
       if (Number.isNaN(y)) {
-        return NextResponse.json({ error: 'Invalid year' }, { status: 400 });
+        return createErrorResponse('VALIDATION_FAILED', 'Invalid year', 400);
       }
       displayYear = y;
       incomeYearFilter = { incomeYear: y };

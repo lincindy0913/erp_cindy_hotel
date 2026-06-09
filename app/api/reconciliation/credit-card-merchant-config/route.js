@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { handleApiError } from '@/lib/error-handler';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 
@@ -32,7 +32,7 @@ export async function POST(request) {
     const { warehouseId, bankName, merchantId, merchantName, accountNo, accountName, cashAccountId, domesticFeeRate, foreignFeeRate, selfFeeRate } = data;
 
     if (!warehouseId || !bankName || !merchantId) {
-      return NextResponse.json({ error: '館別、銀行名稱、特店代號為必填' }, { status: 400 });
+      return createErrorResponse('REQUIRED_FIELD_MISSING', '館別、銀行名稱、特店代號為必填', 400);
     }
 
     const result = await prisma.creditCardMerchantConfig.upsert({
@@ -75,7 +75,7 @@ export async function DELETE(request) {
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
-    if (!id) return NextResponse.json({ error: '缺少 id' }, { status: 400 });
+    if (!id) return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少 id', 400);
 
     await prisma.creditCardMerchantConfig.delete({ where: { id: parseInt(id) } });
     return NextResponse.json({ success: true });

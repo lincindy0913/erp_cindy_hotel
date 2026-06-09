@@ -2,7 +2,7 @@
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import prisma from '@/lib/prisma';
-import { handleApiError } from '@/lib/error-handler';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,13 +25,13 @@ export async function POST(request, { params }) {
     });
 
     if (!batch || batch.sessionId !== sessionId) {
-      return NextResponse.json({ error: '批次不存在', code: 'NOT_FOUND' }, { status: 404 });
+      return createErrorResponse('NOT_FOUND', '批次不存在', 404);
     }
     if (batch.status === 'imported') {
-      return NextResponse.json({ error: { message: '此批次已匯入' } }, { status: 400 });
+      return createErrorResponse('VALIDATION_FAILED', '此批次已匯入', 400);
     }
     if (batch.status === 'error') {
-      return NextResponse.json({ error: '批次有驗證錯誤，請修正後重新上傳', code: 'VALIDATION_FAILED' }, { status: 400 });
+      return createErrorResponse('VALIDATION_FAILED', '批次有驗證錯誤，請修正後重新上傳', 400);
     }
 
     const body = await request.json();

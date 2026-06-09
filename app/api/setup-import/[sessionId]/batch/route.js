@@ -2,7 +2,7 @@
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import prisma from '@/lib/prisma';
-import { handleApiError } from '@/lib/error-handler';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,20 +24,20 @@ export async function POST(request, { params }) {
     const sessionId = parseInt((await params).sessionId);
     const importSession = await prisma.importSession.findUnique({ where: { id: sessionId } });
     if (!importSession) {
-      return NextResponse.json({ error: '匯入作業不存在', code: 'NOT_FOUND' }, { status: 404 });
+      return createErrorResponse('NOT_FOUND', '匯入作業不存在', 404);
     }
     if (importSession.status === 'archived') {
-      return NextResponse.json({ error: '匯入作業已封存，無法繼續匯入', code: 'FORBIDDEN' }, { status: 403 });
+      return createErrorResponse('FORBIDDEN', '匯入作業已封存，無法繼續匯入', 403);
     }
 
     const body = await request.json();
     const { importType, fileName, rows } = body;
 
     if (!VALID_TYPES.includes(importType)) {
-      return NextResponse.json({ error: { message: `無效的匯入類型: ${importType}` } }, { status: 400 });
+      return createErrorResponse('VALIDATION_FAILED', `無效的匯入類型: ${importType}`, 400);
     }
     if (!Array.isArray(rows) || rows.length === 0) {
-      return NextResponse.json({ error: '無匯入資料', code: 'VALIDATION_FAILED' }, { status: 400 });
+      return createErrorResponse('VALIDATION_FAILED', '無匯入資料', 400);
     }
 
     // Validate rows according to type

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { handleApiError } from '@/lib/error-handler';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { assertEngineeringProjectOpen } from '@/lib/engineering-lock';
@@ -20,7 +20,7 @@ export async function PUT(request, { params }) {
         where: { invoiceNo: body.invoiceNo.trim(), id: { not: id } },
         select: { id: true },
       });
-      if (dup) return NextResponse.json({ error: `發票號碼 ${body.invoiceNo.trim()} 已登錄，請確認是否重複申報` }, { status: 409 });
+      if (dup) return createErrorResponse('CONFLICT', `發票號碼 ${body.invoiceNo.trim()} 已登錄，請確認是否重複申報`, 409);
     }
     const amount = parseFloat(body.amount || 0);
     const taxAmount = parseFloat(body.taxAmount || 0);

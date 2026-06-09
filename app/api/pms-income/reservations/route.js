@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { handleApiError } from '@/lib/error-handler';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 
@@ -19,7 +19,7 @@ export async function POST(request) {
     } = body;
 
     if (!warehouse || !businessDate) {
-      return NextResponse.json({ error: { message: '館別和日期為必填' } }, { status: 400 });
+      return createErrorResponse('REQUIRED_FIELD_MISSING', '館別和日期為必填', 400);
     }
 
     // Find or create a manual batch for this warehouse+date

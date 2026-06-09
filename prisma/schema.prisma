@@ -246,8 +246,10 @@ model SalesMaster {
   @@index([invoiceNo])
   @@index([invoiceDate])
   @@index([invoiceType])
+  @@index([status])
   @@index([invoiceType, invoiceDate]) // spec24: 月統計業主私帳篩選
   @@index([invoiceTitle, invoiceDate]) // spec24: 抬頭+日期月統計
+  @@index([status, invoiceDate]) // 月結按狀態+日期篩選
   @@map("sales_masters")
 }
 
@@ -297,6 +299,7 @@ model Payment {
   updatedAt      DateTime @updatedAt @map("updated_at")
 
   @@index([paymentDate])
+  @@index([status]) // 付款對帳狀態篩選
   @@map("payments")
 }
 
@@ -327,6 +330,9 @@ model Expense {
   @@index([invoiceId])
   @@index([supplierId])
   @@index([status])
+  @@index([invoiceDate])
+  @@index([warehouse, invoiceDate]) // 月結/分析按館別+日期篩選
+  @@index([status, invoiceDate]) // AP aging 按狀態+日期排序
   @@map("expenses")
 }
 
@@ -3255,6 +3261,9 @@ model BnbBookingRecord {
   @@index([transferBankLineId])
   @@index([cardBankLineId])
   @@index([cashBankLineId])
+  @@index([importMonth, warehouse]) // 月份+館別聯合篩選（最常見查詢）
+  @@index([importMonth, warehouse, paymentLocked]) // 批次鎖帳/解鎖查詢
+  @@index([importMonth, warehouse, status]) // 月報統計篩選
   @@map("bnb_booking_records")
 }
 
@@ -3674,6 +3683,8 @@ model PmsReservationRecord {
   @@index([batchId])
   @@index([source])
   @@index([vendorBillingId])
+  @@index([warehouse, businessDate]) // 館別+日期聯合查詢（出納彙總最常用）
+  @@index([warehouse, source]) // 館別+來源統計分析
   @@map("pms_reservation_records")
 }
 

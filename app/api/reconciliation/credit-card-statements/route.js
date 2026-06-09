@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { handleApiError } from '@/lib/error-handler';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 
@@ -73,7 +73,7 @@ export async function POST(request) {
       batchLines, feeDetails, note } = data;
 
     if (!warehouseId || !billingDate || totalAmount == null) {
-      return NextResponse.json({ error: '館別、請款日、請款金額為必填' }, { status: 400 });
+      return createErrorResponse('REQUIRED_FIELD_MISSING', '館別、請款日、請款金額為必填', 400);
     }
 
     const result = await prisma.$transaction(async (tx) => {
@@ -141,7 +141,7 @@ export async function POST(request) {
 async function handleParsedUpload(data) {
   const { statements } = data;
   if (!Array.isArray(statements) || statements.length === 0) {
-    return NextResponse.json({ error: '無有效的對帳單資料' }, { status: 400 });
+    return createErrorResponse('VALIDATION_FAILED', '無有效的對帳單資料', 400);
   }
 
   const results = [];
@@ -228,12 +228,12 @@ export async function DELETE(request) {
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
-    if (!id) return NextResponse.json({ error: '缺少 id' }, { status: 400 });
+    if (!id) return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少 id', 400);
 
     const stmt = await prisma.creditCardStatement.findUnique({ where: { id: parseInt(id) } });
-    if (!stmt) return NextResponse.json({ error: '找不到對帳單' }, { status: 404 });
+    if (!stmt) return createErrorResponse('NOT_FOUND', '找不到對帳單', 404);
     if (stmt.status === 'confirmed') {
-      return NextResponse.json({ error: '已確認的對帳單不可刪除' }, { status: 400 });
+      return createErrorResponse('VALIDATION_FAILED', '已確認的對帳單不可刪除', 400);
     }
 
     await prisma.creditCardStatement.delete({ where: { id: parseInt(id) } });
@@ -252,7 +252,7 @@ export async function PUT(request) {
     const data = await request.json();
     const { id, action } = data;
 
-    if (!id) return NextResponse.json({ error: '缺少 id' }, { status: 400 });
+    if (!id) return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少 id', 400);
 
     if (action === 'match_pms') {
       // 比對 PMS 信用卡收入
@@ -260,7 +260,7 @@ export async function PUT(request) {
         where: { id: parseInt(id) },
         include: { batchLines: true },
       });
-      if (!stmt) return NextResponse.json({ error: '找不到對帳單' }, { status: 404 });
+      if (!stmt) return createErrorResponse('NOT_FOUND', '找不到對帳單', 404);
 
       // Collect all unique dates: billing date + all batch settlement dates
       // (a card swiped on 03/09 can appear in the 03/10 billing)
@@ -302,7 +302,7 @@ export async function PUT(request) {
 
     if (action === 'confirm') {
       const stmt = await prisma.creditCardStatement.findUnique({ where: { id: parseInt(id) } });
-      if (!stmt) return NextResponse.json({ error: '找不到對帳單' }, { status: 404 });
+      if (!stmt) return createErrorResponse('NOT_FOUND', '找不到對帳單', 404);
 
       const result = await prisma.$transaction(async (tx) => {
         const updated = await tx.creditCardStatement.update({
@@ -346,7 +346,7 @@ export async function PUT(request) {
       return NextResponse.json(updated);
     }
 
-    return NextResponse.json({ error: '未知的 action' }, { status: 400 });
+    return createErrorResponse('VALIDATION_FAILED', '未知的 action', 400);
   } catch (error) {
     return handleApiError(error);
   }

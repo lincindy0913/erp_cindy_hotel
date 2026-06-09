@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
-import { handleApiError } from '@/lib/error-handler';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { nextSequence } from '@/lib/sequence-generator';
 import { todayStr } from '@/lib/localDate';
 import { getSystemQty } from '@/lib/inventory-helpers';
@@ -23,7 +23,7 @@ export async function POST(request) {
   try {
     const { rows, warehouse: whParam, countDate: cdParam } = await request.json();
     if (!Array.isArray(rows) || rows.length === 0) {
-      return NextResponse.json({ error: '無有效資料' }, { status: 400 });
+      return createErrorResponse('VALIDATION_FAILED', '無有效資料', 400);
     }
 
     const errors    = [];
@@ -32,7 +32,7 @@ export async function POST(request) {
     const countDate = cdParam?.trim() || today;
 
     if (!warehouse) {
-      return NextResponse.json({ error: '倉庫為必填，請在匯入時指定或在每列填寫倉庫欄位' }, { status: 400 });
+      return createErrorResponse('REQUIRED_FIELD_MISSING', '倉庫為必填，請在匯入時指定或在每列填寫倉庫欄位', 400);
     }
 
     // 預載商品（code → {id, name}），Product 主鍵欄位為 code

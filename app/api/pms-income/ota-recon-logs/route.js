@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { handleApiError } from '@/lib/error-handler';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 
@@ -24,7 +24,7 @@ export async function GET(request) {
         where: { id: parseInt(logId) },
         include: { lines: { orderBy: { id: 'asc' } } },
       });
-      if (!log) return NextResponse.json({ error: 'NOT_FOUND' }, { status: 404 });
+      if (!log) return createErrorResponse('NOT_FOUND', '找不到記錄', 404);
       return NextResponse.json({
         ...log,
         totalDiff: Number(log.totalDiff),

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../auth/[...nextauth]/route';
-import { handleApiError } from '@/lib/error-handler';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { applyWarehouseFilter } from '@/lib/warehouse-access';
@@ -99,16 +99,13 @@ export async function POST(request) {
     const { warehouse, billYear, billMonth, billType, summaryJson, fileName } = body;
 
     if (!warehouse || billYear == null || billMonth == null || !billType || !summaryJson) {
-      return NextResponse.json(
-        { error: '缺少欄位：warehouse, billYear, billMonth, billType, summaryJson' },
-        { status: 400 }
-      );
+      return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少欄位：warehouse, billYear, billMonth, billType, summaryJson', 400);
     }
 
     const year = parseInt(billYear, 10);
     const month = parseInt(billMonth, 10);
     if (isNaN(year) || isNaN(month) || month < 1 || month > 12) {
-      return NextResponse.json({ error: '年度或月份不正確' }, { status: 400 });
+      return createErrorResponse('VALIDATION_FAILED', '年度或月份不正確', 400);
     }
 
     const jsonStr = typeof summaryJson === 'string' ? summaryJson : JSON.stringify(summaryJson);
