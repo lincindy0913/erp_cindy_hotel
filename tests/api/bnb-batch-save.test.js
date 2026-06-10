@@ -61,8 +61,9 @@ const EXISTING = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // route.js uses findMany twice: first for importMonth/warehouse, second for full details
   prisma.bnbBookingRecord.findMany.mockResolvedValue([
-    { id: 1, importMonth: '2026-05', warehouse: '麗格' },
+    { id: 1, importMonth: '2026-05', warehouse: '麗格', ...EXISTING },
   ]);
   prisma.bnbBookingRecord.findUnique.mockResolvedValue(EXISTING);
   prisma.bnbBookingRecord.update.mockResolvedValue({});
@@ -72,7 +73,9 @@ beforeEach(() => {
 
 describe('PATCH /api/bnb/batch — savePayment', () => {
   it('鎖定的記錄被跳過', async () => {
-    prisma.bnbBookingRecord.findUnique.mockResolvedValue({ ...EXISTING, paymentLocked: true });
+    prisma.bnbBookingRecord.findMany.mockResolvedValue([
+      { id: 1, importMonth: '2026-05', warehouse: '麗格', ...EXISTING, paymentLocked: true },
+    ]);
 
     const res = await PATCH(makeRequest({
       action: 'savePayment',
