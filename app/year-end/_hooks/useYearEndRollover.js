@@ -27,6 +27,9 @@ export function useYearEndRollover({ selectedYear, userName, onRecordsRefresh })
   const [executing, setExecuting] = useState(false);
   const [executionResult, setExecutionResult] = useState(null);
 
+  // Admin bypass for negative-inventory blocker
+  const [ignoreNegativeStock, setIgnoreNegativeStock] = useState(false);
+
   useEffect(() => {
     if (!selectedYear) return;
     fetch(`/api/month-end?year=${selectedYear}`)
@@ -114,7 +117,7 @@ export function useYearEndRollover({ selectedYear, userName, onRecordsRefresh })
       const res = await fetch('/api/year-end/validate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ year: selectedYear })
+        body: JSON.stringify({ year: selectedYear, ignoreNegativeStock })
       });
       const data = await res.json();
       setValidationResult(data);
@@ -138,7 +141,8 @@ export function useYearEndRollover({ selectedYear, userName, onRecordsRefresh })
         body: JSON.stringify({
           year: selectedYear,
           rolledOverBy: userName,
-          preCheckSummary: validationResult?.summary || null
+          preCheckSummary: validationResult?.summary || null,
+          ignoreNegativeStock,
         })
       });
       const data = await res.json();
@@ -162,6 +166,7 @@ export function useYearEndRollover({ selectedYear, userName, onRecordsRefresh })
     setPreviewError(null);
     setConfirmText('');
     setBackupReady(null);
+    setIgnoreNegativeStock(false);
   }
 
   return {
@@ -184,5 +189,7 @@ export function useYearEndRollover({ selectedYear, userName, onRecordsRefresh })
     handleValidate,
     handleExecute,
     handleReset,
+    ignoreNegativeStock,
+    setIgnoreNegativeStock,
   };
 }

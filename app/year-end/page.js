@@ -152,6 +152,8 @@ export default function YearEndPage() {
               handleExecute={rollover.handleExecute}
               handleReset={rollover.handleReset}
               handleViewStatement={handleViewStatement}
+              ignoreNegativeStock={rollover.ignoreNegativeStock}
+              setIgnoreNegativeStock={rollover.setIgnoreNegativeStock}
             />
           </div>
         )}

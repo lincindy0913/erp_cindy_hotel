@@ -1,6 +1,7 @@
 'use client';
 
 import { sortRows, SortableTh } from '@/components/SortableTh';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 
 const STATUS_MAP = {
   not_started: { label: '未開始', color: 'bg-red-100 text-red-700 border-red-300', dot: 'bg-red-500' },
@@ -18,6 +19,7 @@ export function DashboardTab({
   dashboardData, dashLoading, dashFilter, setDashFilter,
   dashSearch, setDashSearch, dashSortKey, dashSortDir, dashToggleSort,
   navigateToAccount,
+  fetchError, onRetryFetch,
 }) {
   const dashSortAccessors = {
     currentBalance: i => Number(i.currentBalance ?? 0),
@@ -35,6 +37,7 @@ export function DashboardTab({
 
   return (
     <div>
+      {fetchError && <FetchErrorBanner message={fetchError} onRetry={onRetryFetch} />}
       {/* Year/Month + Filters */}
       <div className="bg-white rounded-xl shadow-sm border p-4 mb-6">
         <div className="flex flex-wrap items-center gap-4">

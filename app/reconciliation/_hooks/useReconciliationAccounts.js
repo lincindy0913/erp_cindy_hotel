@@ -7,20 +7,22 @@ import { useState, useCallback, useEffect } from 'react';
  */
 export function useReconciliationAccounts({ showMessage }) {
   const [accounts, setAccounts] = useState([]);
+  const [accountsFetchError, setAccountsFetchError] = useState(null);
 
   const fetchAccounts = useCallback(async () => {
+    setAccountsFetchError(null);
     try {
       const res = await fetch('/api/cashflow/accounts');
       const data = await res.json();
       setAccounts(Array.isArray(data) ? data.filter(a => a.isActive) : []);
     } catch (e) {
-      showMessage('載入帳戶失敗：' + (e.message || '請稍後再試'), 'error');
+      setAccountsFetchError('載入帳戶失敗：' + (e.message || '請稍後再試'));
     }
-  }, [showMessage]);
+  }, []);
 
   useEffect(() => {
     fetchAccounts();
   }, [fetchAccounts]);
 
-  return { accounts, fetchAccounts };
+  return { accounts, fetchAccounts, accountsFetchError };
 }

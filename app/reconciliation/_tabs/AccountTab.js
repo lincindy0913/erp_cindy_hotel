@@ -1,5 +1,7 @@
 'use client';
 
+import FetchErrorBanner from '@/components/FetchErrorBanner';
+
 function formatMoney(val) {
   if (val == null || isNaN(val)) return '0';
   return Number(val).toLocaleString('zh-TW', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
@@ -23,6 +25,7 @@ export function AccountTab({
   // actions
   updateBankBalance, confirmReconciliation,
   matchPair, unmatchLine, handleFileUpload, submitImport, submitAdjustment,
+  fetchError, onRetryFetch,
 }) {
   // Matched / unmatched helpers
   const matchedTxIds = new Set(bankLines.filter(l => l.matchedTransactionId).map(l => l.matchedTransactionId));
@@ -38,6 +41,7 @@ export function AccountTab({
 
   return (
     <div>
+      {fetchError && <FetchErrorBanner message={fetchError} onRetry={onRetryFetch} />}
       {/* Selectors */}
       <div className="bg-white rounded-xl shadow-sm border p-4 mb-4">
         <div className="flex flex-wrap items-center gap-4">

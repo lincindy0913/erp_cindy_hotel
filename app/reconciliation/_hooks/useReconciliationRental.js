@@ -9,6 +9,7 @@ export function useReconciliationRental({ activeTab, showMessage }) {
   const now = new Date();
   const [rentalPayments, setRentalPayments] = useState([]);
   const [rentalReconLoading, setRentalReconLoading] = useState(false);
+  const [rentalFetchError, setRentalFetchError] = useState(null);
   const [rentalReconYear, setRentalReconYear] = useState(now.getFullYear());
   const [rentalReconMonth, setRentalReconMonth] = useState(now.getMonth() + 1);
   const [rentalReconAccountId, setRentalReconAccountId] = useState('');
@@ -17,6 +18,7 @@ export function useReconciliationRental({ activeTab, showMessage }) {
 
   const fetchRentalPayments = useCallback(async () => {
     setRentalReconLoading(true);
+    setRentalFetchError(null);
     try {
       const params = new URLSearchParams();
       params.set('year', rentalReconYear);
@@ -28,10 +30,10 @@ export function useReconciliationRental({ activeTab, showMessage }) {
       const data = await res.json();
       setRentalPayments(data.data || []);
     } catch (e) {
-      showMessage('載入租金付款紀錄失敗：' + (e.message || '請稍後再試'), 'error');
+      setRentalFetchError('載入租金付款紀錄失敗：' + (e.message || '請稍後再試'));
     }
     setRentalReconLoading(false);
-  }, [rentalReconYear, rentalReconMonth, rentalReconAccountId, rentalReconMethodFilter, showMessage]);
+  }, [rentalReconYear, rentalReconMonth, rentalReconAccountId, rentalReconMethodFilter]);
 
   useEffect(() => {
     if (activeTab === 'rental') fetchRentalPayments();
@@ -40,6 +42,7 @@ export function useReconciliationRental({ activeTab, showMessage }) {
   return {
     rentalPayments,
     rentalReconLoading,
+    rentalFetchError,
     rentalReconYear, setRentalReconYear,
     rentalReconMonth, setRentalReconMonth,
     rentalReconAccountId, setRentalReconAccountId,

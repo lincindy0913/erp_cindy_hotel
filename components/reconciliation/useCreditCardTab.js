@@ -25,6 +25,7 @@ export function useCreditCardTab({ activeTab, showMessage }) {
   const [ccSummary, setCcSummary] = useState(null);
   const [ccMerchantConfigs, setCcMerchantConfigs] = useState([]);
   const [ccLoading, setCcLoading] = useState(false);
+  const [ccFetchError, setCcFetchError] = useState(null);
   const [ccMonth, setCcMonth] = useState(
     `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
   );
@@ -58,6 +59,7 @@ export function useCreditCardTab({ activeTab, showMessage }) {
 
   const fetchCcData = useCallback(async () => {
     setCcLoading(true);
+    setCcFetchError(null);
     try {
       const params = new URLSearchParams({ month: ccMonth });
       if (ccWarehouseFilter) params.set('warehouseId', ccWarehouseFilter);
@@ -78,10 +80,10 @@ export function useCreditCardTab({ activeTab, showMessage }) {
         setCcBuildings((bData.list || []).filter(w => w.type === 'building'));
       }
     } catch (e) {
-      showMessage('載入信用卡對帳失敗：' + (e.message || '請稍後再試'), 'error');
+      setCcFetchError('載入信用卡對帳失敗：' + (e.message || '請稍後再試'));
     }
     setCcLoading(false);
-  }, [ccMonth, ccWarehouseFilter, ccStatusFilter, showMessage]);
+  }, [ccMonth, ccWarehouseFilter, ccStatusFilter]);
 
   useEffect(() => {
     if (activeTab === 'credit-card') fetchCcData();
@@ -294,6 +296,7 @@ export function useCreditCardTab({ activeTab, showMessage }) {
   return {
     ccStatements, setCcStatements,
     ccSummary,
+    ccFetchError,
     ccMerchantConfigs,
     ccLoading,
     ccMonth, setCcMonth,

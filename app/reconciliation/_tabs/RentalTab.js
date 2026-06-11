@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 
 function formatMoney(val) {
   if (val == null || isNaN(val)) return '0';
@@ -16,6 +17,7 @@ export function RentalTab({
   rentalReconSearch, setRentalReconSearch,
   fetchRentalPayments,
   accounts,
+  fetchError, onRetryFetch,
 }) {
   const filtered = rentalPayments.filter(p => {
     if (!rentalReconSearch) return true;
@@ -35,6 +37,7 @@ export function RentalTab({
 
   return (
     <div>
+      {fetchError && <FetchErrorBanner message={fetchError} onRetry={onRetryFetch} />}
       {/* Filters */}
       <div className="bg-white rounded-xl shadow-sm border p-4 mb-4">
         <div className="flex flex-wrap items-center gap-3">

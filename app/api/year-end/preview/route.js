@@ -28,7 +28,7 @@ export async function POST(request) {
 
   try {
     const body = await request.json();
-    const { year } = body;
+    const { year, ignoreNegativeStock = false } = body;
 
     if (!year) return createErrorResponse('REQUIRED_FIELD_MISSING', '請提供年份', 400);
 
@@ -42,7 +42,7 @@ export async function POST(request) {
     const yearEndDate = `${year}-12-31`;
 
     // ── 1. Blocker checks（與正式 POST 共用同一函式）────────────────────
-    const blockers = await checkYearEndBlockers(prisma, year);
+    const { blockers } = await checkYearEndBlockers(prisma, year, { ignoreNegativeStock });
 
     // ── 2. Cash account preview ─────────────────────────────────────────
     const cashAccounts = await prisma.cashAccount.findMany({

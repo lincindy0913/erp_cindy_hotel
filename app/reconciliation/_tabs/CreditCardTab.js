@@ -3,6 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { CC_STATUS_MAP } from '@/components/reconciliation/useCreditCardTab';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 
 function formatMoney(val) {
   if (val == null || isNaN(val)) return '0';
@@ -24,6 +25,7 @@ export function CreditCardTab({
   fetchCcPmsData, handleCcPdfUpload,
   saveParsedCcStatement, matchCcPms, matchAllCcPms,
   toggleCcConfirm, deleteCcStatement, saveCcConfig,
+  fetchError, onRetryFetch,
 }) {
   const summaryRows = ccSummary?.summary || [];
   const grandTotal = ccSummary?.grandTotal || {};
@@ -44,6 +46,7 @@ export function CreditCardTab({
 
   return (
     <div className="space-y-4">
+      {fetchError && <FetchErrorBanner message={fetchError} onRetry={onRetryFetch} />}
       {/* 提示：已整合到 PMS 收入 */}
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">

@@ -64,7 +64,7 @@ function ReconciliationPageInner() {
   };
 
   // ---- Shared hooks ----
-  const { accounts } = useReconciliationAccounts({ showMessage });
+  const { accounts, fetchAccounts, accountsFetchError } = useReconciliationAccounts({ showMessage });
 
   const bankAccountsOnly = useMemo(
     () => accounts.filter(a => a.type === '銀行存款' && a.isActive),
@@ -72,14 +72,15 @@ function ReconciliationPageInner() {
   );
 
   const {
-    formats, formatsLoading,
+    formats, formatsLoading, formatsFetchError,
     showFormatForm, setShowFormatForm,
     formatForm, setFormatForm,
     formatSaving, submitFormat,
+    fetchFormats,
   } = useReconciliationFormats({ activeTab, showMessage });
 
   const {
-    rentalPayments, rentalReconLoading,
+    rentalPayments, rentalReconLoading, rentalFetchError,
     rentalReconYear, setRentalReconYear,
     rentalReconMonth, setRentalReconMonth,
     rentalReconAccountId, setRentalReconAccountId,
@@ -91,14 +92,16 @@ function ReconciliationPageInner() {
   // ---- Feature hooks (from components/reconciliation/) ----
   const {
     dashYear, setDashYear, dashMonth, setDashMonth,
-    dashboardData, dashLoading, dashFilter, setDashFilter,
+    dashboardData, dashLoading, dashFetchError,
+    dashFilter, setDashFilter,
     dashSearch, setDashSearch, dashSortKey, dashSortDir, dashToggleSort,
+    fetchDashboard,
   } = useDashboardTab({ activeTab, showMessage });
 
   const {
     selectedAccountId, setSelectedAccountId,
     acctYear, setAcctYear, acctMonth, setAcctMonth,
-    reconciliation, bankLines, systemTxs, acctLoading,
+    reconciliation, acctFetchError, bankLines, systemTxs, acctLoading,
     bankBalanceInput, setBankBalanceInput,
     confirmNote, setConfirmNote, diffExplained, setDiffExplained,
     selectedBankLine, setSelectedBankLine, selectedSystemTx, setSelectedSystemTx,
@@ -108,10 +111,11 @@ function ReconciliationPageInner() {
     importSubmitting, adjustmentSubmitting,
     updateBankBalance, confirmReconciliation,
     matchPair, unmatchLine, handleFileUpload, submitImport, submitAdjustment,
+    loadReconciliation,
   } = useAccountTab({ activeTab, showMessage, session, formats });
 
   const {
-    ccStatements, ccSummary, ccMerchantConfigs, ccLoading,
+    ccStatements, ccSummary, ccFetchError, ccMerchantConfigs, ccLoading,
     ccMonth, setCcMonth, ccWarehouseFilter, setCcWarehouseFilter,
     ccStatusFilter, setCcStatusFilter, ccExpandedId, setCcExpandedId,
     ccBuildings, ccShowUpload, setCcShowUpload,
@@ -122,7 +126,7 @@ function ReconciliationPageInner() {
     ccPmsWarehouse, setCcPmsWarehouse,
     ccShowConfigModal, setCcShowConfigModal,
     ccConfigForm, setCcConfigForm, ccBankType, setCcBankType, ccConfigSaving,
-    fetchCcPmsData, handleCcPdfUpload,
+    fetchCcData, fetchCcPmsData, handleCcPdfUpload,
     saveParsedCcStatement, matchCcPms, matchAllCcPms,
     toggleCcConfirm, deleteCcStatement, saveCcConfig,
   } = useCreditCardTab({ activeTab, showMessage });
@@ -173,6 +177,9 @@ function ReconciliationPageInner() {
           ))}
         </div>
 
+        {/* Shared data error banner (accounts) */}
+        {accountsFetchError && <FetchErrorBanner message={accountsFetchError} onRetry={fetchAccounts} className="mb-4" />}
+
         {/* ======== TAB: Dashboard ======== */}
         {activeTab === 'dashboard' && (
           <DashboardTab
@@ -183,6 +190,7 @@ function ReconciliationPageInner() {
             dashSearch={dashSearch} setDashSearch={setDashSearch}
             dashSortKey={dashSortKey} dashSortDir={dashSortDir} dashToggleSort={dashToggleSort}
             navigateToAccount={navigateToAccount}
+            fetchError={dashFetchError} onRetryFetch={fetchDashboard}
           />
         )}
 
@@ -211,6 +219,7 @@ function ReconciliationPageInner() {
             matchPair={matchPair} unmatchLine={unmatchLine}
             handleFileUpload={handleFileUpload} submitImport={submitImport}
             submitAdjustment={submitAdjustment}
+            fetchError={acctFetchError} onRetryFetch={loadReconciliation}
           />
         )}
 
@@ -225,6 +234,7 @@ function ReconciliationPageInner() {
             rentalReconSearch={rentalReconSearch} setRentalReconSearch={setRentalReconSearch}
             fetchRentalPayments={fetchRentalPayments}
             accounts={accounts}
+            fetchError={rentalFetchError} onRetryFetch={fetchRentalPayments}
           />
         )}
 
@@ -236,6 +246,7 @@ function ReconciliationPageInner() {
             showFormatForm={showFormatForm} setShowFormatForm={setShowFormatForm}
             formatForm={formatForm} setFormatForm={setFormatForm}
             formatSaving={formatSaving} submitFormat={submitFormat}
+            fetchError={formatsFetchError} onRetryFetch={fetchFormats}
           />
         )}
 
@@ -265,6 +276,7 @@ function ReconciliationPageInner() {
             saveParsedCcStatement={saveParsedCcStatement} matchCcPms={matchCcPms}
             matchAllCcPms={matchAllCcPms} toggleCcConfirm={toggleCcConfirm}
             deleteCcStatement={deleteCcStatement} saveCcConfig={saveCcConfig}
+            fetchError={ccFetchError} onRetryFetch={fetchCcData}
           />
         )}
       </div>

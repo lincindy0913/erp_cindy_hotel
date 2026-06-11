@@ -31,6 +31,8 @@ export default function RolloverTab({
   handleExecute,
   handleReset,
   handleViewStatement,
+  ignoreNegativeStock,
+  setIgnoreNegativeStock,
 }) {
   const expectedConfirmText = `確認結轉 ${selectedYear} 年度`;
 
@@ -275,11 +277,32 @@ export default function RolloverTab({
                       </div>
                     )}
 
-                    {!validationResult.alreadyCompleted && (
-                      <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
-                        <strong>提醒：</strong>請解決上述所有阻擋事項後重新驗證，才能執行年度結轉。
-                      </div>
-                    )}
+                    {!validationResult.alreadyCompleted && (() => {
+                      const hasNegativeStockBlocker = validationResult.blockers?.some(b => b.includes('庫存為負數'));
+                      const otherBlockersCount = (validationResult.blockers?.length ?? 0) - (hasNegativeStockBlocker ? 1 : 0);
+                      return (
+                        <>
+                          {hasNegativeStockBlocker && (
+                            <label className="flex items-start gap-3 bg-orange-50 border border-orange-300 rounded-lg p-3 cursor-pointer select-none">
+                              <input
+                                type="checkbox"
+                                checked={ignoreNegativeStock}
+                                onChange={e => setIgnoreNegativeStock(e.target.checked)}
+                                className="mt-0.5 h-4 w-4 rounded border-orange-400 accent-orange-600 cursor-pointer"
+                              />
+                              <span className="text-sm text-orange-800">
+                                <strong>忽略負庫存並繼續（管理員確認）：</strong>
+                                我已確認負庫存屬已知盤點誤差，同意在期初庫存值可能不準確的情況下執行年結。
+                                {otherBlockersCount > 0 && <span className="block mt-1 text-orange-600 font-medium">注意：仍有 {otherBlockersCount} 個其他阻擋事項需先解決。</span>}
+                              </span>
+                            </label>
+                          )}
+                          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
+                            <strong>提醒：</strong>請解決上述所有阻擋事項後重新驗證，才能執行年度結轉。
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
                 )}
               </div>

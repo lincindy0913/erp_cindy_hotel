@@ -59,7 +59,7 @@ export async function POST(request) {
 
   try {
     const body = await request.json();
-    const { year, rolledOverBy, note, preCheckSummary } = body;
+    const { year, rolledOverBy, note, preCheckSummary, ignoreNegativeStock = false } = body;
 
     if (!year) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '請提供年份', 400);
@@ -94,7 +94,7 @@ export async function POST(request) {
     }
 
     // 1b. Verify all pre-conditions (與 preview 共用同一 blockerChecks，確保一致性)
-    const blockers = await checkYearEndBlockers(prisma, year);
+    const { blockers } = await checkYearEndBlockers(prisma, year, { ignoreNegativeStock });
     if (blockers.length > 0) {
       return createErrorResponse(
         'YEAR_END_BLOCKED',

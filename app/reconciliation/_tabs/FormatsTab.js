@@ -1,14 +1,18 @@
 'use client';
 
+import FetchErrorBanner from '@/components/FetchErrorBanner';
+
 export function FormatsTab({
   isLoggedIn,
   formats, formatsLoading,
   showFormatForm, setShowFormatForm,
   formatForm, setFormatForm,
   formatSaving, submitFormat,
+  fetchError, onRetryFetch,
 }) {
   return (
     <div>
+      {fetchError && <FetchErrorBanner message={fetchError} onRetry={onRetryFetch} />}
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold text-gray-800">銀行格式管理</h3>
         {isLoggedIn && (

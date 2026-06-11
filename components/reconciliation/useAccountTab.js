@@ -15,6 +15,7 @@ export function useAccountTab({ activeTab, showMessage, session, formats }) {
   const [bankLines, setBankLines] = useState([]);
   const [systemTxs, setSystemTxs] = useState([]);
   const [acctLoading, setAcctLoading] = useState(false);
+  const [acctFetchError, setAcctFetchError] = useState(null);
   const [bankBalanceInput, setBankBalanceInput] = useState('');
   const [confirmNote, setConfirmNote] = useState('');
   const [diffExplained, setDiffExplained] = useState('');
@@ -32,6 +33,7 @@ export function useAccountTab({ activeTab, showMessage, session, formats }) {
   const loadReconciliation = useCallback(async () => {
     if (!selectedAccountId) return;
     setAcctLoading(true);
+    setAcctFetchError(null);
     try {
       const res = await fetch('/api/reconciliation', {
         method: 'POST',
@@ -40,7 +42,7 @@ export function useAccountTab({ activeTab, showMessage, session, formats }) {
       });
       const recon = await res.json();
       if (recon.error) {
-        showMessage(recon.error, 'error');
+        setAcctFetchError(recon.error);
         setAcctLoading(false);
         return;
       }
@@ -54,10 +56,10 @@ export function useAccountTab({ activeTab, showMessage, session, formats }) {
         setReconciliation(prev => ({ ...prev, ...detail }));
       }
     } catch (e) {
-      showMessage('載入對帳資料失敗：' + (e.message || '請稍後再試'), 'error');
+      setAcctFetchError('載入對帳資料失敗：' + (e.message || '請稍後再試'));
     }
     setAcctLoading(false);
-  }, [selectedAccountId, acctYear, acctMonth, showMessage]);
+  }, [selectedAccountId, acctYear, acctMonth]);
 
   useEffect(() => {
     if (activeTab === 'account' && selectedAccountId) loadReconciliation();
@@ -458,6 +460,7 @@ export function useAccountTab({ activeTab, showMessage, session, formats }) {
     acctYear, setAcctYear,
     acctMonth, setAcctMonth,
     reconciliation, setReconciliation,
+    acctFetchError,
     bankLines,
     systemTxs,
     acctLoading,

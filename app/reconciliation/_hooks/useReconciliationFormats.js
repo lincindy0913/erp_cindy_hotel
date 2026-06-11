@@ -14,21 +14,23 @@ const DEFAULT_FORMAT_FORM = {
 export function useReconciliationFormats({ activeTab, showMessage }) {
   const [formats, setFormats] = useState([]);
   const [formatsLoading, setFormatsLoading] = useState(false);
+  const [formatsFetchError, setFormatsFetchError] = useState(null);
   const [showFormatForm, setShowFormatForm] = useState(false);
   const [formatForm, setFormatForm] = useState(DEFAULT_FORMAT_FORM);
   const [formatSaving, setFormatSaving] = useState(false);
 
   const fetchFormats = useCallback(async () => {
     setFormatsLoading(true);
+    setFormatsFetchError(null);
     try {
       const res = await fetch('/api/reconciliation/bank-formats');
       const data = await res.json();
       setFormats(Array.isArray(data) ? data : []);
     } catch (e) {
-      showMessage('載入銀行格式失敗：' + (e.message || '請稍後再試'), 'error');
+      setFormatsFetchError('載入銀行格式失敗：' + (e.message || '請稍後再試'));
     }
     setFormatsLoading(false);
-  }, [showMessage]);
+  }, []);
 
   useEffect(() => {
     if (activeTab === 'formats' || activeTab === 'account') fetchFormats();
@@ -65,6 +67,7 @@ export function useReconciliationFormats({ activeTab, showMessage }) {
   return {
     formats,
     formatsLoading,
+    formatsFetchError,
     showFormatForm, setShowFormatForm,
     formatForm, setFormatForm,
     formatSaving,
