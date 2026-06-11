@@ -23,6 +23,12 @@ export function usePaymentOptions({ orders = [] } = {}) {
   // 付款帳戶（CashAccount）
   const [cashAccounts, setCashAccounts] = useState([]);
 
+  // 初始載入帳戶資料
+  useEffect(() => {
+    fetchCashAccounts();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // 從現有付款紀錄中提取開票賬戶選項
   useEffect(() => {
     if (orders.length > 0) {

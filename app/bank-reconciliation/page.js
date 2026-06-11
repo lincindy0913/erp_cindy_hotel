@@ -1,231 +1,25 @@
 'use client';
-import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import Navigation from '@/components/Navigation';
 import FetchErrorBanner from '@/components/FetchErrorBanner';
 import ModuleGuideCard from '@/components/ModuleGuideCard';
 import HelpButton from '@/components/HelpButton';
-import { useConfirm } from '@/context/ConfirmContext';
-import { RECON_STATUS, RECON_LINE_STATUS } from '@/lib/recon-statuses';
-
-const fmt = (n) => (n == null ? '—' : Number(n).toLocaleString('zh-TW'));
-const fmtDate = (d) => d || '—';
-
-const STATUS_BADGE = {
-  [RECON_STATUS.IN_PROGRESS]: 'bg-amber-100 text-amber-700',
-  [RECON_STATUS.BALANCED]:    'bg-green-100 text-green-700',
-  [RECON_STATUS.DIFF]:        'bg-red-100 text-red-700',
-};
-
-const MATCH_BADGE = {
-  [RECON_LINE_STATUS.UNMATCHED]:  'bg-gray-100 text-gray-600',
-  [RECON_LINE_STATUS.MATCHED]:    'bg-green-100 text-green-700',
-  [RECON_LINE_STATUS.EXCEPTION]:  'bg-blue-100 text-blue-700',
-};
+import { useBankReconciliation } from './_hooks/useBankReconciliation';
+import BuildTxModal from './_components/BuildTxModal';
+import ReconSummary from './_components/ReconSummary';
+import BankLinesPanel from './_components/BankLinesPanel';
+import SystemTxPanel from './_components/SystemTxPanel';
+import StmtList from './_components/StmtList';
 
 export default function BankReconciliationPage() {
-  const confirm = useConfirm();
-  const [accounts, setAccounts]   = useState([]);
-  const [accountId, setAccountId] = useState('');
-  const [yearMonth, setYearMonth] = useState(() => {
-    const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-  });
-  const [stmts, setStmts]         = useState([]);
-  const [detail, setDetail]       = useState(null);  // 目前開啟的調節表
-  const [loading, setLoading]     = useState(false);
-  const [error, setError]         = useState('');
-  const [success, setSuccess]     = useState('');
-  const [autoMatching, setAutoMatching] = useState(false);
-
-  // 新增存摺明細的表單狀態
-  const [lineForm, setLineForm]   = useState({ txDate: '', description: '', creditAmount: '', debitAmount: '', runningBalance: '', note: '' });
-  const [addingLine, setAddingLine] = useState(false);
-  const lineDateRef = useRef(null);
-
-  // 補建現金流 modal
-  const [buildModal, setBuildModal] = useState(null); // { line } or null
-  const [buildCategoryId, setBuildCategoryId] = useState('');
-  const [buildDesc, setBuildDesc] = useState('');
-  const [buildLoading, setBuildLoading] = useState(false);
-  const [categories, setCategories] = useState([]);
-
-  // 載入現金流科目（補建用）
-  useEffect(() => {
-    fetch('/api/cashflow/categories')
-      .then(r => r.ok ? r.json() : [])
-      .then(d => setCategories(Array.isArray(d) ? d.filter(c => c.isActive) : []))
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    fetch('/api/cashflow/accounts')
-      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-      .then(d => {
-        const bankAccts = Array.isArray(d) ? d.filter(a => a.type === '銀行存款' && a.isActive) : [];
-        setAccounts(bankAccts);
-        if (bankAccts.length) setAccountId(String(bankAccts[0].id));
-      })
-      .catch(e => {
-        console.error('[bank-reconciliation] failed to load accounts', e);
-        setError('銀行帳戶列表載入失敗，請重新整理頁面。');
-      });
-  }, []);
-
-  const loadList = useCallback(async () => {
-    if (!accountId) return;
-    setLoading(true); setError('');
-    try {
-      const res  = await fetch(`/api/bank-reconciliation?accountId=${accountId}&yearMonth=${yearMonth}`);
-      const data = await res.json();
-      setStmts(Array.isArray(data) ? data : []);
-    } catch { setError('載入失敗'); }
-    setLoading(false);
-  }, [accountId, yearMonth]);
-
-  useEffect(() => { loadList(); }, [loadList]);
-
-  async function openOrCreate() {
-    if (!accountId) return;
-    setError(''); setSuccess('');
-    const res  = await fetch('/api/bank-reconciliation', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ accountId: parseInt(accountId), yearMonth }),
-    });
-    const data = await res.json();
-    if (!res.ok) { setError(data.error?.message || '建立失敗'); return; }
-    await loadDetail(data.id);
-    loadList();
-  }
-
-  async function loadDetail(id) {
-    setLoading(true);
-    try {
-      const res  = await fetch(`/api/bank-reconciliation/${id}`);
-      const data = await res.json();
-      setDetail(data);
-    } catch { setError('載入詳情失敗'); }
-    setLoading(false);
-  }
-
-  async function updateStmt(patch) {
-    if (!detail) return;
-    const res  = await fetch(`/api/bank-reconciliation/${detail.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(patch),
-    });
-    const data = await res.json();
-    if (res.ok) { setDetail(prev => ({ ...prev, ...data })); setSuccess('已更新'); loadList(); }
-    else setError(data.error?.message || '更新失敗');
-  }
-
-  async function addLine() {
-    if (!detail || !lineForm.txDate) return;
-    setAddingLine(true);
-    const res  = await fetch(`/api/bank-reconciliation/${detail.id}/lines`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        txDate:        lineForm.txDate,
-        description:   lineForm.description || null,
-        creditAmount:  parseFloat(lineForm.creditAmount) || 0,
-        debitAmount:   parseFloat(lineForm.debitAmount)  || 0,
-        runningBalance: lineForm.runningBalance ? parseFloat(lineForm.runningBalance) : null,
-        note:          lineForm.note || null,
-      }),
-    });
-    if (res.ok) {
-      setLineForm({ txDate: '', description: '', creditAmount: '', debitAmount: '', runningBalance: '', note: '' });
-      setSuccess('已新增明細');
-      await loadDetail(detail.id);
-      setTimeout(() => lineDateRef.current?.focus(), 50);
-    } else {
-      const d = await res.json(); setError(d.error?.message || '新增失敗');
-    }
-    setAddingLine(false);
-  }
-
-  async function matchLine(lineId, txId) {
-    await fetch(`/api/bank-reconciliation/${detail.id}/lines/${lineId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ matchedTxId: txId, matchStatus: txId ? RECON_LINE_STATUS.MATCHED : RECON_LINE_STATUS.UNMATCHED }),
-    });
-    await loadDetail(detail.id);
-  }
-
-  async function approveException(lineId) {
-    await fetch(`/api/bank-reconciliation/${detail.id}/lines/${lineId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ matchStatus: RECON_LINE_STATUS.EXCEPTION }),
-    });
-    await loadDetail(detail.id);
-  }
-
-  async function deleteLine(lineId) {
-    if (!(await confirm('確定刪除此行？', { title: '刪除確認', danger: true }))) return;
-    await fetch(`/api/bank-reconciliation/${detail.id}/lines/${lineId}`, { method: 'DELETE' });
-    await loadDetail(detail.id);
-  }
-
-  async function autoMatch() {
-    if (!detail) return;
-    setAutoMatching(true); setError(''); setSuccess('');
-    const res  = await fetch(`/api/bank-reconciliation/${detail.id}/auto-match`, { method: 'POST' });
-    const data = await res.json();
-    if (res.ok) { setSuccess(`自動配對完成：新配對 ${data.matched} 筆，剩餘未配對 ${data.unmatchedAfter} 筆`); await loadDetail(detail.id); }
-    else setError(data.error?.message || '自動配對失敗');
-    setAutoMatching(false);
-  }
-
-  async function handleBuildTx() {
-    if (!buildModal || !detail) return;
-    setBuildLoading(true);
-    const res  = await fetch(
-      `/api/bank-reconciliation/${detail.id}/lines/${buildModal.line.id}/build-transaction`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ categoryId: buildCategoryId || undefined, description: buildDesc || undefined }),
-      }
-    );
-    const data = await res.json();
-    if (res.ok) {
-      setSuccess(`補建完成：${data.transactionNo}（${data.type} ${Number(data.amount).toLocaleString('zh-TW')}）`);
-      setBuildModal(null);
-      await loadDetail(detail.id);
-    } else {
-      setError(data.error?.message || '補建失敗');
-    }
-    setBuildLoading(false);
-  }
-
-  function openBuildModal(line) {
-    setBuildModal({ line });
-    setBuildDesc(line.description || '');
-    setBuildCategoryId('');
-  }
-
-  // 計算統計
-  const calcStats = () => {
-    if (!detail) return {};
-    const sysBalance = detail.closingSystemBalance ?? 0;
-    const bankBalance = detail.closingBankBalance ?? null;
-    const diff = bankBalance != null ? bankBalance - sysBalance : null;
-    const unmatchedLines = (detail.lines || []).filter(l => l.matchStatus === RECON_LINE_STATUS.UNMATCHED).length;
-    const unmatchedSysTxs = (detail.systemTransactions || []).filter(t => !t.isMatched).length;
-    return { sysBalance, bankBalance, diff, unmatchedLines, unmatchedSysTxs };
-  };
-  const stats = calcStats();
+  const h = useBankReconciliation();
 
   return (
     <div className="min-h-screen bg-gray-50">
       <Navigation />
-      {error && (
+      {h.error && (
         <div className="max-w-7xl mx-auto px-4 pt-4">
-          <FetchErrorBanner message={error} onRetry={loadList} />
+          <FetchErrorBanner message={h.error} onRetry={h.loadList} />
         </div>
       )}
       <div className="max-w-7xl mx-auto px-4 py-6 space-y-4">
@@ -242,23 +36,10 @@ export default function BankReconciliationPage() {
           color="slate"
           storageKey="guide:bank-recon"
           steps={[
-            {
-              label: '建立月份調節表',
-              desc: '選擇帳戶與月份 → 點擊「新增月份調節表」。系統自動帶入期初餘額（上月期末）與當月系統交易合計。',
-            },
-            {
-              label: '輸入銀行結單數字',
-              desc: '對照銀行寄來的月結對帳單，填入「銀行期末餘額」。差異欄位若非 0 代表有未核對項目。',
-            },
-            {
-              label: '新增未達帳項目',
-              desc: '若有已記帳但銀行尚未入帳（或反之）的項目，在「未達帳項目」區新增說明與金額，直到調節後餘額歸零。',
-            },
-            {
-              label: '確認對帳完成',
-              desc: '差異為 0 後點擊「確認完成」。12 月份必須完成，否則年結被擋。',
-              link: { href: '/manual#九銀行對帳', text: '查看手冊說明' },
-            },
+            { label: '建立月份調節表', desc: '選擇帳戶與月份 → 點擊「新增月份調節表」。系統自動帶入期初餘額（上月期末）與當月系統交易合計。' },
+            { label: '輸入銀行結單數字', desc: '對照銀行寄來的月結對帳單，填入「銀行期末餘額」。差異欄位若非 0 代表有未核對項目。' },
+            { label: '新增未達帳項目', desc: '若有已記帳但銀行尚未入帳（或反之）的項目，在「未達帳項目」區新增說明與金額，直到調節後餘額歸零。' },
+            { label: '確認對帳完成', desc: '差異為 0 後點擊「確認完成」。12 月份必須完成，否則年結被擋。', link: { href: '/manual#九銀行對帳', text: '查看手冊說明' } },
           ]}
         />
 
@@ -277,187 +58,44 @@ export default function BankReconciliationPage() {
         <div className="bg-white rounded-xl shadow-sm p-4 flex flex-wrap gap-3 items-end">
           <div>
             <label htmlFor="f" className="block text-xs text-gray-500 mb-1">銀行帳戶</label>
-            <select id="f" value={accountId} onChange={e => setAccountId(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm min-w-[200px]">
+            <select id="f" value={h.accountId} onChange={e => h.setAccountId(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm min-w-[200px]">
               <option value="">— 請選擇 —</option>
-              {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              {h.accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
           </div>
           <div>
             <label htmlFor="f-2" className="block text-xs text-gray-500 mb-1">月份</label>
-            <input id="f-2" type="month" value={yearMonth} onChange={e => setYearMonth(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm" />
+            <input id="f-2" type="month" value={h.yearMonth} onChange={e => h.setYearMonth(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm" />
           </div>
-          <button onClick={openOrCreate} className="bg-blue-600 text-white px-4 py-1.5 rounded-lg text-sm hover:bg-blue-700">
+          <button onClick={h.openOrCreate} className="bg-blue-600 text-white px-4 py-1.5 rounded-lg text-sm hover:bg-blue-700">
             開啟 / 建立調節表
           </button>
         </div>
 
-        {error   && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded-lg text-sm">{error}</div>}
-        {success && <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-2 rounded-lg text-sm">{success}</div>}
+        {h.error   && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded-lg text-sm">{h.error}</div>}
+        {h.success && <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-2 rounded-lg text-sm">{h.success}</div>}
 
         {/* 調節表主畫面 */}
-        {detail && (
+        {h.detail && (
           <div className="space-y-4">
-            {/* 調節摘要 */}
-            <div className="bg-white rounded-xl shadow-sm p-5 border-l-4 border-blue-500">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="font-bold text-gray-800">{detail.yearMonth} 調節表</h2>
-                <span className={`text-xs px-3 py-1 rounded-full ${STATUS_BADGE[detail.status] || 'bg-gray-100 text-gray-600'}`}>{detail.status}</span>
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div>
-                  <p className="text-xs text-gray-500">系統期初餘額</p>
-                  <p className="font-bold text-gray-800">{fmt(detail.openingBalance)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">系統期末餘額（計算值）</p>
-                  <p className="font-bold text-blue-700">{fmt(stats.sysBalance)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 mb-1">存摺期末餘額（人工輸入）</p>
-                  <input type="number" step="1"
-                    defaultValue={detail.closingBankBalance ?? ''}
-                    onBlur={e => updateStmt({ closingBankBalance: parseFloat(e.target.value) || null })}
-                    className="border rounded-lg px-3 py-1.5 text-sm w-full text-right"
-                    placeholder="輸入存摺期末餘額" />
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">差異</p>
-                  <p className={`font-bold text-xl ${stats.diff == null ? 'text-gray-400' : Math.abs(stats.diff) < 1 ? 'text-green-600' : 'text-red-600'}`}>
-                    {stats.diff == null ? '—' : (stats.diff >= 0 ? '+' : '') + fmt(stats.diff)}
-                  </p>
-                  {stats.diff != null && Math.abs(stats.diff) < 1 && (
-                    <button onClick={() => updateStmt({ status: RECON_STATUS.BALANCED })} className="mt-1 text-xs text-green-700 underline">
-                      標記為已平衡
-                    </button>
-                  )}
-                </div>
-              </div>
-              <div className="mt-3 flex gap-3 text-xs text-gray-500">
-                <span>未配對存摺明細：<b className={stats.unmatchedLines ? 'text-red-600' : 'text-green-600'}>{stats.unmatchedLines} 筆</b></span>
-                <span>未配對系統交易：<b className={stats.unmatchedSysTxs ? 'text-amber-600' : 'text-green-600'}>{stats.unmatchedSysTxs} 筆</b></span>
-              </div>
-            </div>
+            <ReconSummary detail={h.detail} stats={h.stats} onUpdateStmt={h.updateStmt} />
 
-            {/* 兩欄並列：存摺明細 vs 系統交易 */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {/* 左：存摺明細 */}
-              <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-                <div className="flex items-center justify-between px-4 py-3 border-b">
-                  <h3 className="font-medium text-sm text-gray-700">銀行存摺明細</h3>
-                  <button onClick={autoMatch} disabled={autoMatching} className="text-xs bg-teal-600 text-white px-3 py-1 rounded-lg hover:bg-teal-700 disabled:opacity-50">
-                    {autoMatching ? '配對中…' : '自動配對'}
-                  </button>
-                </div>
-
-                {/* 新增存摺行 */}
-                <div className="p-3 border-b bg-gray-50">
-                  <p className="text-xs text-gray-500 mb-2">新增存摺行</p>
-                  <div className="grid grid-cols-3 gap-2">
-                    <input ref={lineDateRef} type="date" value={lineForm.txDate} onChange={e => setLineForm(p => ({ ...p, txDate: e.target.value }))}
-                      className="border rounded px-2 py-1 text-xs" placeholder="日期" />
-                    <input type="text" value={lineForm.description} onChange={e => setLineForm(p => ({ ...p, description: e.target.value }))}
-                      className="border rounded px-2 py-1 text-xs" placeholder="說明" />
-                    <div className="flex gap-1">
-                      <input type="number" step="1" value={lineForm.creditAmount} onChange={e => setLineForm(p => ({ ...p, creditAmount: e.target.value }))}
-                        className="border rounded px-2 py-1 text-xs w-full" placeholder="存入" />
-                      <input type="number" step="1" value={lineForm.debitAmount} onChange={e => setLineForm(p => ({ ...p, debitAmount: e.target.value }))}
-                        className="border rounded px-2 py-1 text-xs w-full" placeholder="提出" />
-                    </div>
-                    <input type="number" step="1" value={lineForm.runningBalance} onChange={e => setLineForm(p => ({ ...p, runningBalance: e.target.value }))}
-                      className="border rounded px-2 py-1 text-xs col-span-2" placeholder="存摺餘額（選填）" />
-                    <button onClick={addLine} disabled={addingLine || !lineForm.txDate} className="text-xs bg-green-600 text-white rounded px-2 py-1 hover:bg-green-700 disabled:opacity-50">
-                      {addingLine ? '…' : '新增'}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="overflow-y-auto max-h-96">
-                  <table className="w-full text-xs">
-                    <thead className="bg-gray-50 text-gray-500 sticky top-0">
-                      <tr>
-                        <th className="px-3 py-2 text-left">日期</th>
-                        <th className="px-3 py-2 text-left">說明</th>
-                        <th className="px-3 py-2 text-right">存入</th>
-                        <th className="px-3 py-2 text-right">提出</th>
-                        <th className="px-3 py-2 text-center">狀態</th>
-                        <th className="px-3 py-2 text-center">操作</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50">
-                      {(detail.lines || []).length === 0 && (
-                        <tr><td colSpan={6} className="text-center py-6 text-gray-400">尚無存摺明細</td></tr>
-                      )}
-                      {(detail.lines || []).map(line => (
-                        <tr key={line.id} className={`hover:bg-gray-50 ${line.matchStatus === RECON_LINE_STATUS.UNMATCHED ? 'bg-amber-50/30' : ''}`}>
-                          <td className="px-3 py-2 font-mono">{line.txDate}</td>
-                          <td className="px-3 py-2 text-gray-500 max-w-[100px] truncate" title={line.description}>{line.description || '—'}</td>
-                          <td className="px-3 py-2 text-right text-green-700">{line.creditAmount > 0 ? fmt(line.creditAmount) : ''}</td>
-                          <td className="px-3 py-2 text-right text-red-600">{line.debitAmount > 0 ? fmt(line.debitAmount) : ''}</td>
-                          <td className="px-3 py-2 text-center">
-                            <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${MATCH_BADGE[line.matchStatus] || 'bg-gray-100'}`}>
-                              {line.matchStatus}
-                              {line.matchedTxId && ` #${line.matchedTxId}`}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2 text-center">
-                            <div className="flex gap-1 justify-center flex-wrap">
-                              {line.matchStatus === RECON_LINE_STATUS.UNMATCHED && (
-                                <>
-                                  <button onClick={() => approveException(line.id)} className="text-[10px] text-blue-600 hover:underline">例外</button>
-                                  <button onClick={() => openBuildModal(line)} className="text-[10px] text-green-600 hover:underline font-medium">補建</button>
-                                </>
-                              )}
-                              {line.matchedTxId && (
-                                <button onClick={() => matchLine(line.id, null)} className="text-[10px] text-amber-600 hover:underline">解除</button>
-                              )}
-                              <button onClick={() => deleteLine(line.id)} className="text-[10px] text-red-500 hover:underline">刪</button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* 右：系統交易 */}
-              <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-                <div className="px-4 py-3 border-b">
-                  <h3 className="font-medium text-sm text-gray-700">系統現金流交易（本月）</h3>
-                </div>
-                <div className="overflow-y-auto max-h-[508px]">
-                  <table className="w-full text-xs">
-                    <thead className="bg-gray-50 text-gray-500 sticky top-0">
-                      <tr>
-                        <th className="px-3 py-2 text-left">日期</th>
-                        <th className="px-3 py-2 text-left">說明</th>
-                        <th className="px-3 py-2 text-right">金額</th>
-                        <th className="px-3 py-2 text-center">配對</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50">
-                      {(detail.systemTransactions || []).length === 0 && (
-                        <tr><td colSpan={4} className="text-center py-6 text-gray-400">本月無系統交易</td></tr>
-                      )}
-                      {(detail.systemTransactions || []).map(t => (
-                        <tr key={t.id} className={`hover:bg-gray-50 ${!t.isMatched ? 'bg-yellow-50/30' : ''}`}>
-                          <td className="px-3 py-2 font-mono">{t.transactionDate}</td>
-                          <td className="px-3 py-2 text-gray-500 max-w-[120px] truncate" title={t.description}>{t.description || t.sourceType}</td>
-                          <td className={`px-3 py-2 text-right font-medium ${t.type === '收入' ? 'text-green-700' : 'text-red-600'}`}>
-                            {t.type === '收入' ? '+' : '-'}{fmt(t.amount)}
-                          </td>
-                          <td className="px-3 py-2 text-center">
-                            {t.isMatched
-                              ? <span className="text-[10px] text-green-600">✓</span>
-                              : <span className="text-[10px] text-amber-500">未配對</span>
-                            }
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+              <BankLinesPanel
+                lines={h.detail.lines || []}
+                lineForm={h.lineForm}
+                setLineForm={h.setLineForm}
+                addingLine={h.addingLine}
+                lineDateRef={h.lineDateRef}
+                autoMatching={h.autoMatching}
+                onAddLine={h.addLine}
+                onAutoMatch={h.autoMatch}
+                onApproveException={h.approveException}
+                onOpenBuildModal={h.openBuildModal}
+                onMatchLine={h.matchLine}
+                onDeleteLine={h.deleteLine}
+              />
+              <SystemTxPanel systemTransactions={h.detail.systemTransactions} />
             </div>
 
             {/* 說明 */}
@@ -469,108 +107,24 @@ export default function BankReconciliationPage() {
           </div>
         )}
 
-        {/* 歷史調節表列表 */}
-        {stmts.length > 0 && !detail && (
-          <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 text-xs text-gray-500 sticky top-0 z-10">
-                <tr>
-                  <th className="px-4 py-3 text-left">月份</th>
-                  <th className="px-4 py-3 text-left">帳戶</th>
-                  <th className="px-4 py-3 text-right">系統期初</th>
-                  <th className="px-4 py-3 text-right">存摺期末</th>
-                  <th className="px-4 py-3 text-center">明細筆數</th>
-                  <th className="px-4 py-3 text-center">狀態</th>
-                  <th className="px-4 py-3 text-center">操作</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {stmts.map(s => (
-                  <tr key={s.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 font-mono">{s.yearMonth}</td>
-                    <td className="px-4 py-3">{s.account?.name || s.accountId}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{fmt(s.openingBalance)}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{fmt(s.closingBankBalance)}</td>
-                    <td className="px-4 py-3 text-center">{s.lineCount}</td>
-                    <td className="px-4 py-3 text-center">
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_BADGE[s.status] || 'bg-gray-100'}`}>{s.status}</span>
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <button onClick={() => loadDetail(s.id)} className="text-xs text-blue-600 hover:underline">開啟</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <StmtList stmts={h.stmts.length && !h.detail ? h.stmts : []} onOpen={h.loadDetail} />
 
-        {detail && (
-          <button onClick={() => setDetail(null)} className="text-sm text-gray-500 hover:underline">← 返回列表</button>
+        {h.detail && (
+          <button onClick={() => h.setDetail(null)} className="text-sm text-gray-500 hover:underline">← 返回列表</button>
         )}
       </div>
 
-      {/* 補建現金流 Modal */}
-      {buildModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
-            <h3 className="font-bold text-gray-800 mb-4">補建現金流交易</h3>
-
-            <div className="space-y-3 mb-5">
-              <div className="bg-gray-50 rounded-lg p-3 text-sm">
-                <p className="text-gray-500 text-xs mb-1">來源存摺明細</p>
-                <p className="font-medium">{buildModal.line.txDate} · {buildModal.line.description || '（無說明）'}</p>
-                <p className={`font-bold mt-1 ${Number(buildModal.line.creditAmount) > 0 ? 'text-green-700' : 'text-red-600'}`}>
-                  {Number(buildModal.line.creditAmount) > 0
-                    ? `存入 ${Number(buildModal.line.creditAmount).toLocaleString('zh-TW')}`
-                    : `提出 ${Number(buildModal.line.debitAmount).toLocaleString('zh-TW')}`}
-                </p>
-              </div>
-
-              <div>
-                <label htmlFor="f-3" className="block text-xs text-gray-500 mb-1">交易說明（可修改）</label>
-                <input
-                  id="f-3"
-                  type="text"
-                  value={buildDesc}
-                  onChange={e => setBuildDesc(e.target.value)}
-                  className="border rounded-lg px-3 py-2 text-sm w-full"
-                  placeholder="說明"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="f-4" className="block text-xs text-gray-500 mb-1">損益科目（選填）</label>
-                <select
-                  id="f-4"
-                  value={buildCategoryId}
-                  onChange={e => setBuildCategoryId(e.target.value)}
-                  className="border rounded-lg px-3 py-2 text-sm w-full"
-                >
-                  <option value="">— 不指定 —</option>
-                  {categories.map(c => (
-                    <option key={c.id} value={c.id}>{c.name}{c.plGroup ? ` (${c.plGroup})` : ''}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => setBuildModal(null)}
-                className="px-4 py-2 text-sm text-gray-600 border rounded-lg hover:bg-gray-50"
-              >取消</button>
-              <button
-                onClick={handleBuildTx}
-                disabled={buildLoading}
-                className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
-              >
-                {buildLoading ? '補建中…' : '確認補建'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <BuildTxModal
+        buildModal={h.buildModal}
+        setBuildModal={h.setBuildModal}
+        buildDesc={h.buildDesc}
+        setBuildDesc={h.setBuildDesc}
+        buildCategoryId={h.buildCategoryId}
+        setBuildCategoryId={h.setBuildCategoryId}
+        categories={h.categories}
+        buildLoading={h.buildLoading}
+        onConfirm={h.handleBuildTx}
+      />
     </div>
   );
 }

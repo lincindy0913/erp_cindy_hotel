@@ -20,6 +20,11 @@ export function usePaymentOrders() {
   const [submittedToCashier, setSubmittedToCashier] = useState(false);
 
   useEffect(() => {
+    fetchOrders();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     setHighlightOrderNo(params.get('highlight'));
     const tabParam = params.get('tab');

@@ -1,17 +1,14 @@
 'use client';
 
-import { useState, useMemo, useEffect, Suspense } from 'react';
-import Link from 'next/link';
-import { useSession } from 'next-auth/react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { Suspense } from 'react';
 import Navigation from '@/components/Navigation';
 import NotificationBanner from '@/components/NotificationBanner';
 import EngineeringHeaderInsights from '@/components/engineering/EngineeringHeaderInsights';
 import HelpButton from '@/components/HelpButton';
-import { useToast } from '@/context/ToastContext';
-import { useConfirm } from '@/context/ConfirmContext';
-import ConfirmModal, { useConfirmDialog } from '@/components/ConfirmModal';
-import { todayStr, localDateStr } from '@/lib/localDate';
+import ConfirmModal from '@/components/ConfirmModal';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
+import ProjectFormModal from '@/components/engineering/ProjectFormModal';
+import PaymentOrderModal from '@/components/engineering/PaymentOrderModal';
 import IncomeTab from '@/components/engineering/IncomeTab';
 import MaterialsTab from '@/components/engineering/MaterialsTab';
 import InputInvoicesTab from '@/components/engineering/InputInvoicesTab';
@@ -22,13 +19,9 @@ import ProjectMgmtTab from '@/components/engineering/ProjectMgmtTab';
 import PaymentsTab from '@/components/engineering/PaymentsTab';
 import ProgressClaimsTab from '@/components/engineering/ProgressClaimsTab';
 import BudgetReportTab from '@/components/engineering/BudgetReportTab';
-import PaymentOrderModal from '@/components/engineering/PaymentOrderModal';
 import ProjectsTab from '@/components/engineering/ProjectsTab';
-import ProjectFormModal from '@/components/engineering/ProjectFormModal';
-import FetchErrorBanner from '@/components/FetchErrorBanner';
-import { useEngineeringData } from '@/app/engineering/_hooks/useEngineeringData';
-import { getActualPaid } from '@/lib/engineering/payment-utils';
-import { formatNum } from '@/lib/engineering/format-utils';
+import TermModal from '@/app/engineering/_components/TermModal';
+import { useEngineering } from '@/app/engineering/_hooks/useEngineering';
 
 const TABS = [
   { key: 'projects', label: '工程案' },
@@ -44,17 +37,10 @@ const TABS = [
   { key: 'budgetReport', label: '預算報表' },
 ];
 
-const VALID_TAB_KEYS = new Set(TABS.map((t) => t.key));
-
 function EngineeringPageInner() {
-  const searchParams = useSearchParams();
-  const router = useRouter();
-  const tabParam = searchParams.get('tab');
-  const [activeTab, setActiveTab] = useState(() => (VALID_TAB_KEYS.has(tabParam) ? tabParam : 'projects'));
-  const [filterProjectId, setFilterProjectId] = useState('');
-
-  // ── data via hook ────────────────────────────────────────────────────────
   const {
+    activeTab, switchEngineeringTab,
+    filterProjectId, setFilterProjectId,
     projects, contracts, suppliers, loading,
     projectsError, contractsError, paymentOrdersError, authError,
     warehouseDepartments, paymentOrders, progressClaims,
@@ -62,236 +48,19 @@ function EngineeringPageInner() {
     paymentMethodOptions, unassignedInvCount, setUnassignedInvCount,
     fetchProjects, fetchContracts, fetchPaymentOrders,
     refreshDashStats, fetchWarrantyRecords,
-  } = useEngineeringData({ activeTab, filterProjectId });
+    dashboardStats,
+    showProjectModal, setShowProjectModal,
+    editingProject, projectForm, setProjectForm, projectSaving,
+    openAddProject, openEditProject, saveProject, deleteProject,
+    showTermModal, setShowTermModal,
+    editingTerm, termForm, setTermForm, termSaving,
+    openMarkTermPaid, openUnmarkTermPaid, saveTerm,
+    showPaymentModal, editingPaymentOrder, initialPaymentForm,
+    openPaymentModal, closePaymentModal,
+    session, isAdminOrManager,
+    confirmDlg, closeConfirm,
+  } = useEngineering();
 
-  // ── project modal ────────────────────────────────────────────────────────
-  const [showProjectModal, setShowProjectModal] = useState(false);
-  const [editingProject, setEditingProject] = useState(null);
-  const [projectSaving, setProjectSaving] = useState(false);
-  const [projectForm, setProjectForm] = useState({
-    code: '', name: '', clientName: '', clientContractAmount: '',
-    startDate: '', endDate: '', budget: '', status: '進行中',
-    warehouseId: '', departmentId: '', location: '', buildingNo: '',
-    permitNo: '', note: '', warrantyStartDate: '', warrantyEndDate: '',
-    warrantyMonths: '', warrantyNote: '',
-  });
-
-  // ── term modal ───────────────────────────────────────────────────────────
-  const [showTermModal, setShowTermModal] = useState(false);
-  const [editingTerm, setEditingTerm] = useState(null);
-  const [termSaving, setTermSaving] = useState(false);
-  const [termForm, setTermForm] = useState({
-    termName: '', amount: '', dueDate: '', status: 'pending',
-    paidAt: '', paymentOrderId: '', note: '',
-  });
-
-  // ── payment modal control ────────────────────────────────────────────────
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [editingPaymentOrder, setEditingPaymentOrder] = useState(null);
-  const [initialPaymentForm, setInitialPaymentForm] = useState({});
-
-  const { data: session } = useSession();
-  const isAdminOrManager = session?.user?.role === 'admin' ||
-    (session?.user?.permissions || []).includes('*') ||
-    (session?.user?.roles || []).some(r => ['admin', 'manager'].includes(r));
-  const { showToast } = useToast();
-  const { dialog: confirmDlg, confirm: askConfirm, close: closeConfirm } = useConfirmDialog();
-
-  // ── tab URL sync ─────────────────────────────────────────────────────────
-  function switchEngineeringTab(key) {
-    setActiveTab(key);
-    router.push(`/engineering?tab=${encodeURIComponent(key)}`, { scroll: false });
-  }
-
-  // ── derived data ─────────────────────────────────────────────────────────
-  const dashboardStats = useMemo(() => {
-    const activeProjects = projects.filter((p) => p.status === '進行中').length;
-    const sumBudget = projects.reduce((s, p) => s + Number(p.budget || 0), 0);
-    const sumClient = projects.reduce((s, p) => s + Number(p.clientContractAmount || 0), 0);
-    const sumVendorContracts = contracts
-      .filter(c => (c.contractType || '主合約') === '主合約')
-      .reduce((s, c) => s + Number(c.totalAmount || 0), 0);
-    let paidExecuted = 0;
-    for (const o of paymentOrders) {
-      if (o.status === '已執行') paidExecuted += getActualPaid(o);
-    }
-    const sumIncome         = dashStatsError ? null : dashStats.totalIncome;
-    const sumInputInvoices  = dashStatsError ? null : dashStats.totalInputInvoices;
-    const sumOutputInvoices = dashStatsError ? null : dashStats.totalOutputInvoices;
-    const today = todayStr();
-    const weekLater = new Date();
-    weekLater.setDate(weekLater.getDate() + 7);
-    const weekEnd = localDateStr(weekLater);
-    const poByTermId = new Map();
-    for (const po of paymentOrders) {
-      if (po.status !== '已執行') continue;
-      const key = String(po.sourceRecordId);
-      const arr = poByTermId.get(key) || [];
-      arr.push(po);
-      poByTermId.set(key, arr);
-    }
-    let overdueTerms = 0;
-    let dueThisWeek = 0;
-    for (const c of contracts) {
-      for (const t of c.terms || []) {
-        const amt = Number(t.amount || 0);
-        if (amt <= 0) continue;
-        const paid = (poByTermId.get(String(t.id)) || [])
-          .reduce((s, po) => s + getActualPaid(po), 0);
-        const remaining = amt - paid;
-        if (remaining <= 0.005) continue;
-        const due = t.dueDate;
-        if (!due) continue;
-        if (due < today) overdueTerms++;
-        else if (due <= weekEnd) dueThisWeek++;
-      }
-    }
-    return {
-      activeProjects, sumBudget, sumClient, sumVendorContracts, paidExecuted,
-      sumIncome, sumInputInvoices, sumOutputInvoices,
-      totalMaterialCost: dashStatsError ? null : (dashStats.totalMaterialCost || 0),
-      overdueTerms, dueThisWeek, projectCount: projects.length,
-    };
-  }, [projects, contracts, paymentOrders, dashStats, dashStatsError]);
-
-  // ── project handlers ─────────────────────────────────────────────────────
-  function openAddProject() {
-    setEditingProject(null);
-    setProjectForm({
-      code: '', name: '', clientName: '', clientContractAmount: '',
-      startDate: '', endDate: '', budget: '', status: '進行中',
-      warehouseId: '', departmentId: '', location: '', buildingNo: '',
-      permitNo: '', note: '',
-    });
-    setShowProjectModal(true);
-  }
-
-  function openEditProject(p) {
-    setEditingProject(p);
-    setProjectForm({
-      code: p.code, name: p.name, clientName: p.clientName || '',
-      clientContractAmount: p.clientContractAmount != null ? String(p.clientContractAmount) : '',
-      startDate: p.startDate || '', endDate: p.endDate || '',
-      budget: p.budget != null ? String(p.budget) : '',
-      status: p.status || '進行中',
-      warehouseId: p.warehouseId != null ? String(p.warehouseId) : '',
-      departmentId: p.departmentId != null ? String(p.departmentId) : '',
-      location: p.location || '', buildingNo: p.buildingNo || '',
-      permitNo: p.permitNo || '', note: p.note || '',
-      warrantyStartDate: p.warrantyStartDate || '', warrantyEndDate: p.warrantyEndDate || '',
-      warrantyMonths: p.warrantyMonths != null ? String(p.warrantyMonths) : '',
-      warrantyNote: p.warrantyNote || '',
-    });
-    setShowProjectModal(true);
-  }
-
-  async function saveProject() {
-    if (!projectForm.code?.trim() || !projectForm.name?.trim()) { showToast('請填寫工程代碼與名稱', 'error'); return; }
-    setProjectSaving(true);
-    try {
-      const body = {
-        code: projectForm.code.trim(), name: projectForm.name.trim(),
-        clientName: projectForm.clientName?.trim() || null,
-        clientContractAmount: projectForm.clientContractAmount ? parseFloat(projectForm.clientContractAmount) : null,
-        startDate: projectForm.startDate || null, endDate: projectForm.endDate || null,
-        budget: projectForm.budget ? parseFloat(projectForm.budget) : null,
-        status: projectForm.status,
-        warehouseId: projectForm.warehouseId || null, departmentId: projectForm.departmentId || null,
-        location: projectForm.location?.trim() || null, buildingNo: projectForm.buildingNo?.trim() || null,
-        permitNo: projectForm.permitNo?.trim() || null, note: projectForm.note?.trim() || null,
-        warrantyStartDate: projectForm.warrantyStartDate || null,
-        warrantyEndDate: projectForm.warrantyEndDate || null,
-        warrantyMonths: projectForm.warrantyMonths ? parseInt(projectForm.warrantyMonths) : null,
-        warrantyNote: projectForm.warrantyNote?.trim() || null,
-      };
-      if (editingProject) {
-        const res = await fetch(`/api/engineering/projects/${editingProject.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-        if (!res.ok) { const e = await res.json().catch(() => ({})); showToast(e.error || '更新失敗', 'error'); return; }
-        showToast('已更新', 'success');
-      } else {
-        const res = await fetch('/api/engineering/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-        if (!res.ok) { const e = await res.json().catch(() => ({})); showToast(e.error || '新增失敗', 'error'); return; }
-        showToast('已新增', 'success');
-      }
-      setShowProjectModal(false);
-      fetchProjects();
-    } catch (e) { showToast(e.message || '儲存失敗', 'error'); }
-    finally { setProjectSaving(false); }
-  }
-
-  function deleteProject(p) {
-    askConfirm(`確定刪除工程案「${p.name}」？\n其合約與材料記錄也會一併刪除。`, async () => {
-      try {
-        const res = await fetch(`/api/engineering/projects/${p.id}`, { method: 'DELETE' });
-        if (!res.ok) { const e = await res.json().catch(() => ({})); showToast(e.error || '刪除失敗', 'error'); return; }
-        fetchProjects();
-        if (filterProjectId === String(p.id)) setFilterProjectId('');
-      } catch (e) { showToast('刪除失敗', 'error'); }
-    });
-  }
-
-  // ── payment modal control ────────────────────────────────────────────────
-  function openPaymentModal(formData) {
-    const editingId = formData?._editingId || null;
-    const { _editingId, ...cleanForm } = formData || {};
-    setEditingPaymentOrder(editingId ? { id: editingId } : null);
-    setInitialPaymentForm(cleanForm);
-    setShowPaymentModal(true);
-  }
-
-  function closePaymentModal() {
-    setShowPaymentModal(false);
-    setEditingPaymentOrder(null);
-  }
-
-  // ── term handlers ────────────────────────────────────────────────────────
-  function openMarkTermPaid(term) {
-    const hasExecutedPO = paymentOrders.some(
-      po => po.sourceRecordId === term.id && po.status === '已執行'
-    );
-    setEditingTerm({ ...term, hasExecutedPO });
-    setTermForm({
-      termName: term.termName || '', amount: String(term.amount), dueDate: term.dueDate || '',
-      content: term.content || '', status: 'paid', paidAt: todayStr(),
-      paymentOrderId: term.paymentOrderId ? String(term.paymentOrderId) : '',
-      note: term.note || '', manualNote: '',
-    });
-    setShowTermModal(true);
-  }
-
-  function openUnmarkTermPaid(term) {
-    setEditingTerm(term);
-    setTermForm({
-      termName: term.termName || '', amount: String(term.amount), dueDate: term.dueDate || '',
-      content: term.content || '', status: 'pending', paidAt: '', paymentOrderId: '', note: term.note || '',
-    });
-    setShowTermModal(true);
-  }
-
-  async function saveTerm() {
-    if (!editingTerm) return;
-    setTermSaving(true);
-    try {
-      const res = await fetch(`/api/engineering/contract-terms/${editingTerm.id}`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          status: termForm.status, paidAt: termForm.paidAt || null,
-          paymentOrderId: termForm.paymentOrderId ? parseInt(termForm.paymentOrderId) : null,
-          termName: termForm.termName || null, amount: termForm.amount ? parseFloat(termForm.amount) : undefined,
-          dueDate: termForm.dueDate || null, content: termForm.content || null, note: termForm.note || null,
-          manualNote: termForm.manualNote || null,
-        }),
-      });
-      if (!res.ok) { const d = await res.json(); showToast(d.error?.message || '更新失敗', 'error'); setTermSaving(false); return; }
-      setShowTermModal(false);
-      fetchContracts(filterProjectId || undefined);
-      fetchPaymentOrders();
-    } catch (e) { showToast('更新失敗', 'error'); }
-    finally { setTermSaving(false); }
-  }
-
-  // ── print / export ───────────────────────────────────────────────────────
-  // ── render ───────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-50">
       <Navigation borderColor="border-amber-600" />
@@ -327,35 +96,26 @@ function EngineeringPageInner() {
           ))}
         </div>
 
-        {authError && (
-          <FetchErrorBanner message="登入已逾期，請重新整理頁面或重新登入。" />
-        )}
+        {authError && <FetchErrorBanner message="登入已逾期，請重新整理頁面或重新登入。" />}
 
         {loading && activeTab === 'projects' && (
           <div className="flex justify-center py-12"><div className="w-8 h-8 border-4 border-amber-200 border-t-amber-600 rounded-full animate-spin" /></div>
         )}
 
-        {/* ===== 工程案 TAB ===== */}
         {activeTab === 'projects' && !loading && projectsError && (
           <FetchErrorBanner message={projectsError} onRetry={fetchProjects} />
         )}
-        {/* contractsError 現在傳入 ContractsTab 內部顯示 */}
         {activeTab === 'payments' && paymentOrdersError && (
           <FetchErrorBanner message={paymentOrdersError} onRetry={fetchPaymentOrders} />
         )}
+
         {activeTab === 'projects' && !loading && (
           <ProjectsTab
-            projects={projects}
-            contracts={contracts}
-            suppliers={suppliers}
+            projects={projects} contracts={contracts} suppliers={suppliers}
             warehouseDepartments={warehouseDepartments}
-            onAdd={openAddProject}
-            onEdit={openEditProject}
-            onDelete={deleteProject}
+            onAdd={openAddProject} onEdit={openEditProject} onDelete={deleteProject}
           />
         )}
-
-        {/* ===== 合約與期數 TAB ===== */}
         {activeTab === 'contracts' && (
           <ContractsTab
             projects={projects} suppliers={suppliers} contracts={contracts}
@@ -363,13 +123,10 @@ function EngineeringPageInner() {
             onFilterChange={setFilterProjectId} onMarkTermPaid={openMarkTermPaid}
             onUnmarkTermPaid={openUnmarkTermPaid}
             onRefresh={() => fetchContracts(filterProjectId || undefined)}
-            session={session}
-            contractsError={contractsError}
+            session={session} contractsError={contractsError}
             onRetryContracts={() => fetchContracts(filterProjectId || undefined)}
           />
         )}
-
-        {/* ===== 專案管理 TAB ===== */}
         {activeTab === 'projectMgmt' && (
           <ProjectMgmtTab
             projects={projects} contracts={contracts} paymentOrders={paymentOrders}
@@ -380,8 +137,6 @@ function EngineeringPageInner() {
             onOpenPaymentModal={openPaymentModal} onSwitchTab={switchEngineeringTab}
           />
         )}
-
-        {/* ===== 付款單 TAB ===== */}
         {activeTab === 'payments' && (
           <PaymentsTab
             paymentOrders={paymentOrders} projects={projects} suppliers={suppliers}
@@ -389,45 +144,29 @@ function EngineeringPageInner() {
             onOpenPaymentModal={openPaymentModal} onRefresh={fetchPaymentOrders}
           />
         )}
-
-        {/* ===== 材料使用 TAB ===== */}
         {activeTab === 'materials' && <MaterialsTab projects={projects} contracts={contracts} />}
-
-        {/* ===== 估驗計價 TAB ===== */}
         {activeTab === 'progressClaims' && <ProgressClaimsTab projects={projects} />}
-
-        {/* ===== 收款管理 TAB ===== */}
         {activeTab === 'income' && (
           <IncomeTab projects={projects} progressClaims={progressClaims}
             outputInvoices={outputInvoicesList} onDashStatsChanged={refreshDashStats} />
         )}
-
-        {/* ===== 廠商進項發票 TAB ===== */}
         {activeTab === 'inputInvoices' && (
           <InputInvoicesTab projects={projects} contracts={contracts} onDashStatsChanged={refreshDashStats} />
         )}
-
-        {/* ===== 業主銷項發票 TAB ===== */}
         {activeTab === 'outputInvoices' && (
           <OutputInvoicesTab projects={projects} progressClaims={progressClaims} onDashStatsChanged={refreshDashStats} />
         )}
-
-        {/* ===== 預算報表 TAB ===== */}
         {activeTab === 'budgetReport' && (
           <BudgetReportTab
             projects={projects} contracts={contracts} paymentOrders={paymentOrders}
             progressClaims={progressClaims} dashStats={dashStats}
           />
         )}
-
-        {/* ===== 分業進項 TAB ===== */}
         {activeTab === 'companyInvoices' && (
           <CompanyInvoicesTab projects={projects} onUnassignedCountChange={setUnassignedInvCount} />
         )}
-
       </div>
 
-      {/* ===== 工程案 Modal ===== */}
       <ProjectFormModal
         isOpen={showProjectModal}
         editingProject={editingProject}
@@ -439,88 +178,17 @@ function EngineeringPageInner() {
         onSave={saveProject}
       />
 
-      {/* ===== 期數標記 / 取消付款 Modal ===== */}
-      {showTermModal && editingTerm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowTermModal(false)}>
-          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 p-6" onClick={e => e.stopPropagation()}>
-            <h3 className="text-lg font-bold mb-4">{termForm.status === 'paid' ? '標記期數已付款' : '取消付款標記'}</h3>
+      <TermModal
+        showTermModal={showTermModal}
+        editingTerm={editingTerm}
+        termForm={termForm}
+        setTermForm={setTermForm}
+        termSaving={termSaving}
+        isAdminOrManager={isAdminOrManager}
+        onClose={() => setShowTermModal(false)}
+        onSave={saveTerm}
+      />
 
-            {/* 手動標記警示 */}
-            {termForm.status === 'paid' && (() => {
-              const hasExec = editingTerm?.hasExecutedPO;
-              if (hasExec) {
-                return (
-                  <div className="mb-4 p-3 bg-green-50 border border-green-300 rounded-lg">
-                    <p className="text-xs font-semibold text-green-800 mb-1">✓ 已有出納執行記錄</p>
-                    <p className="text-xs text-green-700">此期數已有對應付款單執行記錄，可直接標記已付。</p>
-                  </div>
-                );
-              }
-              if (!isAdminOrManager) {
-                return (
-                  <div className="mb-4 p-3 bg-red-50 border border-red-300 rounded-lg">
-                    <p className="text-xs font-semibold text-red-800 mb-1">⛔ 此期數尚無出納執行記錄</p>
-                    <p className="text-xs text-red-700">
-                      帳外標記需管理員權限。請先建立付款單並透過出納執行付款，
-                      完成後系統會自動核銷，或請管理員協助帳外標記。
-                    </p>
-                  </div>
-                );
-              }
-              return (
-                <div className="mb-4 p-3 bg-amber-50 border border-amber-300 rounded-lg">
-                  <p className="text-xs font-semibold text-amber-800 mb-1">⚠ 帳外付款（管理員）</p>
-                  <p className="text-xs text-amber-700">
-                    此期數尚無出納執行記錄，帳外付款說明為必填，將寫入稽核日誌，不可逆、可查詢。
-                    正常流程：建立付款單 → 出納執行 → 期數自動核銷。
-                  </p>
-                </div>
-              );
-            })()}
-
-            <div className="space-y-3">
-              <div><label htmlFor="f-59" className="block text-xs text-gray-500 mb-1">期別</label><input id="f-59" value={termForm.termName} onChange={e => setTermForm(f => ({ ...f, termName: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" disabled={termForm.status === 'pending'} /></div>
-              <div><label htmlFor="f-60" className="block text-xs text-gray-500 mb-1">金額</label><input id="f-60" type="number" value={termForm.amount} onChange={e => setTermForm(f => ({ ...f, amount: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" step="0.01" disabled={termForm.status === 'pending'} /></div>
-              <div><label htmlFor="f-61" className="block text-xs text-gray-500 mb-1">到期日</label><input id="f-61" type="date" value={termForm.dueDate} onChange={e => setTermForm(f => ({ ...f, dueDate: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
-              <div><label htmlFor="f-62" className="block text-xs text-gray-500 mb-1">內容</label><input id="f-62" value={termForm.content || ''} onChange={e => setTermForm(f => ({ ...f, content: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="付款內容" /></div>
-              {termForm.status === 'paid' && (<>
-                <div><label htmlFor="f-63" className="block text-xs text-gray-500 mb-1">付款日期</label><input id="f-63" type="date" value={termForm.paidAt} onChange={e => setTermForm(f => ({ ...f, paidAt: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
-                {isAdminOrManager && !editingTerm?.hasExecutedPO && (
-                  <div>
-                    <label htmlFor="f-manual-note" className="block text-xs text-gray-500 mb-1">
-                      帳外付款說明
-                      <span className="ml-1 text-red-600 font-medium">（必填）</span>
-                    </label>
-                    <input
-                      id="f-manual-note"
-                      value={termForm.manualNote || ''}
-                      onChange={e => setTermForm(f => ({ ...f, manualNote: e.target.value }))}
-                      className="w-full border border-amber-300 rounded-lg px-3 py-2 text-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
-                      placeholder="例：現金直付廠商、銀行匯款已完成但未建付款單…"
-                    />
-                  </div>
-                )}
-                <div><label htmlFor="id" className="block text-xs text-gray-500 mb-1">關聯付款單 ID（選填）</label><input id="id" type="number" value={termForm.paymentOrderId} onChange={e => setTermForm(f => ({ ...f, paymentOrderId: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
-              </>)}
-              {termForm.status === 'pending' && <p className="text-sm text-gray-600 bg-yellow-50 p-3 rounded-lg">取消此期的付款標記後，合約狀態也會同步更新為「進行中」</p>}
-              <div><label htmlFor="f-64" className="block text-xs text-gray-500 mb-1">備註</label><input id="f-64" value={termForm.note} onChange={e => setTermForm(f => ({ ...f, note: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
-            </div>
-            <div className="flex justify-end gap-2 mt-4">
-              <button onClick={() => setShowTermModal(false)} className="px-4 py-2 border rounded-lg text-sm" disabled={termSaving}>取消</button>
-              <button
-                onClick={saveTerm}
-                disabled={termSaving || (termForm.status === 'paid' && !editingTerm?.hasExecutedPO && !isAdminOrManager)}
-                title={termForm.status === 'paid' && !editingTerm?.hasExecutedPO && !isAdminOrManager ? '帳外標記需管理員權限' : undefined}
-                className={`px-4 py-2 rounded-lg text-sm text-white disabled:opacity-50 ${termForm.status === 'pending' ? 'bg-red-600 hover:bg-red-700' : 'bg-amber-600 hover:bg-amber-700'}`}
-              >
-                {termSaving ? '儲存中…' : (termForm.status === 'pending' ? '確認取消付款' : '儲存')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ===== 付款單 Modal ===== */}
       <PaymentOrderModal
         isOpen={showPaymentModal}
         editingOrder={editingPaymentOrder}
