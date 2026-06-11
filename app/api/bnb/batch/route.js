@@ -119,9 +119,14 @@ export async function PATCH(request) {
           for (const payType of PAY_TYPE_KEYS) {
             const entryData = bookingToPaymentEntry(refreshed, payType);
             if (entryData) {
-              await syncPaymentEntry(prisma, id, payType, entryData).catch(e => {
-                console.error('[syncPaymentEntry] bookingId=%d payType=%s:', id, payType, e.message);
-                failures.push({ id, error: `付款明細分表同步失敗（${payType}）：${e.message}`, type: 'entry_sync' });
+              await syncPaymentEntry(prisma, id, payType, entryData).catch(async e => {
+                const msg = e?.message || String(e);
+                console.error('[syncPaymentEntry] bookingId=%d payType=%s:', id, payType, msg);
+                failures.push({ id, error: `付款明細分表同步失敗（${payType}）：${msg}`, type: 'entry_sync' });
+                // 持久化，讓告警 banner 顯示（前綴 [ENTRY_SYNC:payType] 供重試端點識別）
+                await prisma.bnbSyncFailure.create({
+                  data: { bookingId: id, errorMsg: `[ENTRY_SYNC:${payType}] ${msg}` },
+                }).catch(() => {});
               });
             }
           }

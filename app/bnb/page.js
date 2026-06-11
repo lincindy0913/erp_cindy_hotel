@@ -76,7 +76,7 @@ function BnbPage() {
       const res = await fetch(`/api/bnb/sync-failures/${failure.id}`, { method: 'POST' });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.ok) {
-        showToast('重試成功，出納已同步', 'success');
+        showToast(data.message || '重試成功', 'success');
         setSyncFailures(prev => prev.filter(f => f.id !== failure.id));
       } else {
         showToast(data.error || '重試失敗', 'error');
