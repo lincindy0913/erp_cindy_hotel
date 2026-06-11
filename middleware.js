@@ -43,7 +43,24 @@ function validateCsrf(req) {
   }
 }
 
-// ── Rate limiting (in-memory sliding window) ──
+// ── Rate limiting (in-memory sliding window, Edge-compatible) ──────────────
+//
+// MULTI-INSTANCE NOTE: Next.js middleware runs in the Edge Runtime and cannot
+// use Node.js packages such as ioredis.  This means rate-limit state is NOT
+// shared across Railway instances — each instance counts independently.
+//
+// For single-instance ERP deployments (current setup) this is correct.
+// If Railway scales to multiple instances, two mitigations apply:
+//
+//   1. API-route-level limiters (lib/rate-limiter.js) ARE Redis-backed when
+//      REDIS_URL is set. Auth-critical endpoints also live in API routes and
+//      have their own limiter there.
+//
+//   2. For Edge-compatible shared rate limiting, replace this block with
+//      @upstash/ratelimit + @upstash/redis (HTTP-based, works in Edge):
+//      https://github.com/upstash/ratelimit-js
+//      Set UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN in Railway.
+//
 const rateLimitStore = new Map();
 const RATE_LIMITS = {
   '/api/auth':           { windowMs: 15 * 60_000, max: 10 },   // login: 10 per 15 min

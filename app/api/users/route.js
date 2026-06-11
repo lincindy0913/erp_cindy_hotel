@@ -56,7 +56,7 @@ export async function GET(request) {
 
 // POST create user (admin only)
 export async function POST(request) {
-  const limited = limitUserCreate(request);
+  const limited = await limitUserCreate(request);
   if (limited) return limited;
 
   try {
