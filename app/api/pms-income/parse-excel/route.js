@@ -24,7 +24,8 @@ const EXCEL_TO_ACCOUNTING = [
   { excelCol: '房租收入',     section: '本日貸方', entryType: '貸方', code: '4111', name: '住房收入' },  // 金旭
   { excelCol: '住宿收入',     section: '本日貸方', entryType: '貸方', code: '4111', name: '住房收入' },
   { excelCol: '住宿+延退',    section: '本日貸方', entryType: '貸方', code: '4111', name: '住房收入' },
-  { excelCol: '租金收入',     section: '本日貸方', entryType: '貸方', code: '4111', name: '住房收入' },  // 月租類
+  { excelCol: '租金收入',       section: '本日貸方', entryType: '貸方', code: '4111', name: '住房收入' },  // 月租類
+  { excelCol: '租金收入(管理)', section: '本日貸方', entryType: '貸方', code: '4111', name: '住房收入' },  // 金旭括號變體
   // 餐飲收入 (4112)
   { excelCol: '餐飲部',       section: '本日貸方', entryType: '貸方', code: '4112', name: '餐飲收入' },
   { excelCol: '餐飲收',       section: '本日貸方', entryType: '貸方', code: '4112', name: '餐飲收入' },
@@ -41,10 +42,12 @@ const EXCEL_TO_ACCOUNTING = [
   { excelCol: '加人費',       section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' },
   { excelCol: '電話費',       section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' },
   { excelCol: '傳真費',       section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' },
-  { excelCol: '精品櫃',       section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' },
-  { excelCol: '精品櫃收入',   section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' }, // 金旭
-  { excelCol: '旅遊行程',     section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' },
-  { excelCol: '行程收入',     section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' }, // 金旭
+  { excelCol: '精品櫃',           section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' },
+  { excelCol: '精品櫃收入',       section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' }, // 金旭
+  { excelCol: '精品櫃收入(客務)', section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' }, // 金旭括號變體
+  { excelCol: '旅遊行程',         section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' },
+  { excelCol: '行程收入',         section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' }, // 金旭
+  { excelCol: '行程收入(客務)',   section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' }, // 金旭括號變體
   { excelCol: '娛樂收入',     section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' },
   { excelCol: '娛樂費',       section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' },
   { excelCol: '飲料收入',     section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' }, // 金旭
@@ -112,6 +115,13 @@ const EXCEL_TO_ACCOUNTING = [
   // 沖訂金/預收訂金 (2131)
   { excelCol: '沖訂金',         section: '本日借方', entryType: '借方', code: '2131', name: '預收款' },
   { excelCol: '預收訂金(借方)', section: '本日借方', entryType: '借方', code: '2131', name: '預收款' },         // 金旭
+];
+
+// 銀行帳戶欄模式 — 命中時自動對應到 1112 轉帳收入（借方）
+const BANK_COL_PATTERNS = [
+  /土銀/, /台銀/, /合庫/, /彰銀/, /一銀/, /華銀/, /兆豐/, /國泰/, /玉山/, /中信/, /富邦/,
+  /帳號存款/, /銀行存款/, /銀行匯款/, /存款帳號/,
+  /麗格.*分/, /^\d{4}$/, // 末四碼帳號或含分行名
 ];
 
 const SKIP_COLS = new Set([
@@ -527,9 +537,12 @@ export async function POST(request) {
     for (const [colName, colIdx] of debitCols) {
       if (mappedDebitCols.has(colName)) continue;
       const val = debitDataRow ? toNum(debitDataRow[colIdx]) : null;
+      const isBankCol = BANK_COL_PATTERNS.some(pat => pat.test(colName));
       aggregated.set(`借方|unmapped_${colName}`, {
         pmsColumnName: colName, entryType: '借方',
-        accountingCode: '', accountingName: colName, amount: val,
+        accountingCode: isBankCol ? '1112' : '',
+        accountingName: isBankCol ? '銀行存款' : colName,
+        amount: val,
       });
     }
 
