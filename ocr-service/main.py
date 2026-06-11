@@ -1,18 +1,27 @@
 import os
 import re
 import base64
+import logging
 import traceback
 import httpx
 import fitz  # PyMuPDF
 from fastapi import FastAPI, UploadFile, File, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
+logger = logging.getLogger(__name__)
+
 app = FastAPI()
+
+# ALLOWED_ORIGINS: comma-separated list of allowed origins.
+# Default "*" for local dev — restrict to your Next.js host in production,
+# e.g. ALLOWED_ORIGINS=https://erp.example.com
+_origins_env = os.environ.get("ALLOWED_ORIGINS", "")
+ALLOWED_ORIGINS: list[str] = [o.strip() for o in _origins_env.split(",") if o.strip()] or ["*"]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_methods=["POST", "GET", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -23,9 +32,10 @@ GOOGLE_VISION_URL = "https://vision.googleapis.com/v1/images:annotate"
 @app.on_event("startup")
 async def startup_check():
     if not GOOGLE_VISION_API_KEY:
-        raise RuntimeError(
-            "FATAL: GOOGLE_VISION_API_KEY is not set. "
-            "Add it to your .env file and restart: docker compose --env-file .env up -d ocr"
+        logger.warning(
+            "GOOGLE_VISION_API_KEY is not set — OCR endpoints will return HTTP 500 "
+            "until a key is provided. Set it in .env and restart: "
+            "docker compose --env-file .env up -d ocr"
         )
 
 
