@@ -21,7 +21,7 @@ export function useRentalIncomes({ initialIncomeFilter, accounts = [], propertie
   const [cashierUtilityMap,setCashierUtilityMap]= useState({});
   const { sortKey: rentIncKey, sortDir: rentIncDir, toggleSort: rentIncToggle } = useColumnSort('contractSortOrder', 'asc');
   const [incomeFilter, setIncomeFilter] = useState(initialIncomeFilter || {
-    year: new Date().getFullYear(), month: '', status: '', propertySearch: '', category: '',
+    year: new Date().getFullYear(), month: '', status: '', propertySearch: '', category: '', unlinked: false,
   });
 
   const sortedIncomes = useMemo(() => {
@@ -30,6 +30,8 @@ export function useRentalIncomes({ initialIncomeFilter, accounts = [], propertie
     const filtered = incomes.filter(i => {
       if (kw && !(i.propertyName || '').includes(kw) && !(i.buildingName || '').includes(kw) && !(i.tenantName || '').includes(kw)) return false;
       if (cat && (i.contractCategory || '') !== cat) return false;
+      // #2 本月未入帳：已收款但無 cashTransactionId（尚未連結現金流）
+      if (incomeFilter.unlinked && !((i.status === 'completed' || i.status === 'partial') && !i.cashTransactionId)) return false;
       return true;
     });
     return sortRows(filtered, rentIncKey, rentIncDir, {

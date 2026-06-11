@@ -62,6 +62,24 @@ export default function OverviewTab({
                 </p>
               </div>
             )}
+            {/* #5 待審核合約 */}
+            {summary.pendingContractCount > 0 && (
+              <div className="bg-blue-50 border-l-4 border-blue-500 p-4 mb-3 rounded flex items-center justify-between">
+                <p className="text-blue-700 font-medium">
+                  有 {summary.pendingContractCount} 份合約待審核（pending），確認無誤後請至合約管理改為「生效」
+                </p>
+                <button onClick={() => switchTab('contracts')} className="text-xs text-blue-600 underline whitespace-nowrap ml-4">前往合約管理</button>
+              </div>
+            )}
+            {/* #1 未綁定資產 */}
+            {summary.unlinkedPropertyCount > 0 && (
+              <div className="bg-gray-50 border-l-4 border-gray-400 p-3 mb-3 rounded flex items-center justify-between text-sm">
+                <span className="text-gray-600">
+                  有 {summary.unlinkedPropertyCount} 個物業尚未綁定資產主檔，如需追蹤面積、取得日等財務屬性，請至資產管理建立並綁定。
+                </span>
+                <a href="/assets" className="text-xs text-teal-600 underline whitespace-nowrap ml-4">前往資產管理 →</a>
+              </div>
+            )}
 
             {/* KPI Cards Row 1 */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">

@@ -64,6 +64,16 @@ export async function GET() {
       where: { status: 'pending' }
     });
 
+    // #1 物業入口：未綁定資產的物業數
+    const unlinkedPropertyCount = await prisma.rentalProperty.count({
+      where: { asset: null }
+    });
+
+    // #5 合約流程：待審核合約數
+    const pendingContractCount = await prisma.rentalContract.count({
+      where: { status: 'pending' }
+    });
+
     // This month pending count
     const thisMonthPending = thisMonthIncomes.filter(i => i.status === 'pending').length;
     const collectionRate = thisMonthExpected > 0
@@ -106,6 +116,8 @@ export async function GET() {
       expiringContracts,
       pendingTaxes,
       pendingMaintenance,
+      unlinkedPropertyCount,
+      pendingContractCount,
       overdueDetails: overdueDetails.map(i => ({
         id: i.id,
         propertyName: i.property.name,

@@ -24,6 +24,7 @@ export default function RentalTabContent({ p }) {
   if (activeTab === 'cashier') return (
     <CashierTab
       incomes={p.incomes} incomesHasMore={p.incomesHasMore} cashierUtilityMap={p.cashierUtilityMap}
+      yearLocks={p.yearLocks}
       rentIncKey={p.rentIncKey} rentIncDir={p.rentIncDir} rentIncToggle={p.rentIncToggle}
       incomeFilter={p.incomeFilter} setIncomeFilter={p.setIncomeFilter} sortedIncomes={p.sortedIncomes}
       payingIncomeId={p.payingIncomeId} setPayingIncomeId={p.setPayingIncomeId}

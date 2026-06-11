@@ -24,7 +24,18 @@ function RentalsPage() {
       <div className="no-print"><Navigation borderColor="border-teal-500" /></div>
 
       <div className="max-w-7xl mx-auto px-4 py-6">
-        <h2 className="text-2xl font-bold text-gray-800 mb-4 no-print">租屋管理</h2>
+        {/* #6 說明文件：與其他模組 HelpButton 一致 */}
+        <div className="flex items-center justify-between mb-4 no-print">
+          <h2 className="text-2xl font-bold text-gray-800">租屋管理</h2>
+          <button
+            type="button"
+            onClick={() => p.switchTab('help')}
+            className="flex items-center gap-1 text-sm text-gray-500 hover:text-teal-600 transition-colors"
+            title="查看使用說明">
+            <span className="w-5 h-5 border border-current rounded-full inline-flex items-center justify-center text-xs font-bold leading-none">?</span>
+            說明
+          </button>
+        </div>
 
         <RentalErrorBanners
           propertiesError={p.propertiesError}     fetchProperties={p.fetchProperties}

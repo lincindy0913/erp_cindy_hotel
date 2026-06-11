@@ -14,6 +14,7 @@ const fmtPayMethod = (m) => isTransfer(m) ? '轉帳' : (m || '—');
 
 export default function CashierTab({
   incomes, incomesHasMore, cashierUtilityMap,
+  yearLocks,
   rentIncKey, rentIncDir, rentIncToggle,
   incomeFilter, setIncomeFilter, sortedIncomes,
   payingIncomeId, setPayingIncomeId,
@@ -40,10 +41,29 @@ export default function CashierTab({
 }) {
   return (
     <div>
+      {/* #7 效能：1200 筆上限提示，加快速篩選本月按鈕 */}
       {incomesHasMore && (
-        <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
-          目前顯示最近 1,200 筆，請使用年份或月份篩選縮小範圍
-        </p>
+        <div className="flex items-center justify-between text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+          <span>目前顯示最近 1,200 筆，請縮小篩選範圍</span>
+          <button
+            type="button"
+            onClick={() => {
+              const n = new Date();
+              const newF = { ...incomeFilter, year: n.getFullYear(), month: n.getMonth() + 1 };
+              setIncomeFilter(newF);
+              fetchIncomes(newF);
+            }}
+            className="ml-3 px-2 py-0.5 rounded bg-amber-200 hover:bg-amber-300 whitespace-nowrap">
+            篩選本月
+          </button>
+        </div>
+      )}
+      {/* #3 年度鎖帳 UI：當前篩選年份已鎖 → 提前告知 */}
+      {Array.isArray(yearLocks) && yearLocks.some(l => l.year === Number(incomeFilter.year)) && (
+        <div className="flex items-center gap-2 text-sm text-orange-800 bg-orange-50 border border-orange-300 rounded-lg px-4 py-2 mb-3">
+          <span>🔒</span>
+          <span>{incomeFilter.year} 年已鎖帳，此年度的收款記錄無法新增或修改。如需解鎖請至「稅款管理」分頁。</span>
+        </div>
       )}
       {/* 合約到期提醒橫幅 */}
       {(() => {
@@ -148,6 +168,18 @@ export default function CashierTab({
             <option value="">全部狀態</option>
             {INCOME_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
+          {/* #2 月結整合：未入帳篩選（已收款但無現金流記錄） */}
+          <button
+            type="button"
+            onClick={() => setIncomeFilter(f => ({ ...f, unlinked: !f.unlinked }))}
+            className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+              incomeFilter.unlinked
+                ? 'bg-red-600 text-white border-red-600'
+                : 'bg-white border-red-300 text-red-600 hover:bg-red-50'
+            }`}
+            title="篩選已收款但尚未連結現金流記錄的項目（月結前補登用）">
+            未入帳
+          </button>
           <button onClick={fetchIncomes} className="bg-teal-600 text-white px-3 py-1 rounded text-sm hover:bg-teal-700">查詢</button>
           <button onClick={printIncomes} className="px-3 py-1 text-sm rounded border border-gray-300 hover:bg-gray-50">🖨️ 列印</button>
           <button onClick={generateMonthlyIncome} className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700">
@@ -399,6 +431,14 @@ export default function CashierTab({
                           <div key={i}><span className="font-medium">{p.label}</span> ${fmt(p.amount)} <span className="text-gray-400">({p.date})</span></div>
                         ))}
                         {remaining > 0 && <div className="text-red-500 font-medium">尚欠 ${fmt(remaining)}</div>}
+                      </div>
+                    )}
+                    {/* #4 轉帳對帳：顯示已比對的轉帳參考號 */}
+                    {income.matchTransferRef && (
+                      <div className="mt-0.5">
+                        <span className="inline-block px-1.5 py-0.5 rounded text-[10px] bg-violet-100 text-violet-700" title={`比對帳戶：${income.matchBankAccountName || '—'}`}>
+                          ⇄ {income.matchTransferRef}
+                        </span>
                       </div>
                     )}
                   </td>
