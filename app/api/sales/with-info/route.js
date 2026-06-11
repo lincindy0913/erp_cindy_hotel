@@ -19,6 +19,7 @@ export async function GET(request) {
     const warehouse   = searchParams.get('warehouse');
     const invoiceType = searchParams.get('invoiceType');
     const invoiceTitle = searchParams.get('invoiceTitle');
+    const status      = searchParams.get('status');
 
     const where = {};
     if (dateFrom || dateTo) {
@@ -27,6 +28,7 @@ export async function GET(request) {
       if (dateTo)   where.invoiceDate.lte = dateTo;
     }
     if (invoiceTitle) where.invoiceTitle = invoiceTitle;
+    if (status) where.status = status;
     // 折讓 是前端 allowance 資料，不在 SalesMaster 裡
     if (invoiceType && invoiceType !== '折讓') where.invoiceType = invoiceType;
     if (warehouse) where.details = { some: { warehouse } };

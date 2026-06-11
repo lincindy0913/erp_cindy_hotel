@@ -125,6 +125,7 @@ export function useSalesInvoice({ searchParams, canSalesView, setActiveView }) {
       if (searchWarehouse)   params.set('warehouse', searchWarehouse);
       if (searchInvoiceType && searchInvoiceType !== '折讓') params.set('invoiceType', searchInvoiceType);
       if (searchInvoiceTitle) params.set('invoiceTitle', searchInvoiceTitle);
+      if (searchStatus) params.set('status', searchStatus);
 
       const response = await fetch(`/api/sales/with-info?${params}`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -734,6 +735,7 @@ export function useSalesInvoice({ searchParams, canSalesView, setActiveView }) {
         p.set('view', 'list');
         router.replace(`/sales?${p.toString()}`, { scroll: false });
       }
+      setTimeout(() => fetchInvoices(1), 0);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, canSalesView]);

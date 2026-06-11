@@ -219,10 +219,10 @@ export default function OrdersTab({
                 <strong>{deliveredPendingItems.uninvoiced.length} 筆</strong>已入庫進貨單尚未完整建立進項發票
               </span>
               <Link
-                href="/sales?tab=invoices"
+                href={deliveredPendingItems.uninvoiced[0]?.supplierId ? `/sales?supplierId=${deliveredPendingItems.uninvoiced[0].supplierId}` : '/sales'}
                 className="shrink-0 px-3 py-1.5 bg-orange-500 text-white text-xs rounded-lg hover:bg-orange-600 font-medium whitespace-nowrap"
               >
-                前往發票登錄 →
+                前往開立發票 →
               </Link>
             </div>
           )}
@@ -895,8 +895,16 @@ export default function OrdersTab({
                           {isLoggedIn && (() => {
                             const allInvoiced = purchase.items && purchase.items.length > 0 &&
                               purchase.items.every((_, idx) => isItemInvoiced(purchase.id, idx));
+                            const showInvoiceLink = purchase.status === '已入庫' && !allInvoiced && purchase.supplierId;
                             return (
                               <>
+                                {showInvoiceLink && (
+                                  <Link
+                                    href={`/sales?supplierId=${purchase.supplierId}`}
+                                    className="text-sm text-orange-600 hover:underline whitespace-nowrap"
+                                    title="開立進項發票"
+                                  >開立發票</Link>
+                                )}
                                 <button
                                   onClick={() => !allInvoiced && handleEdit(purchase)}
                                   className={`text-sm ${allInvoiced ? 'text-gray-400 cursor-not-allowed' : 'text-green-600 hover:underline cursor-pointer'}`}

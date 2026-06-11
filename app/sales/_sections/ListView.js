@@ -1,8 +1,9 @@
 'use client';
 
-import { Fragment } from 'react';
+import { Fragment, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { SortableTh } from '@/components/SortableTh';
+import { todayStr } from '@/lib/localDate';
 
 export default function ListView({
   // data
@@ -20,12 +21,14 @@ export default function ListView({
   searchInvoiceType,
   searchDateFrom,
   searchDateTo,
+  searchStatus,
   setSearchSupplier,
   setSearchInvoiceTitle,
   setSearchWarehouse,
   setSearchInvoiceType,
   setSearchDateFrom,
   setSearchDateTo,
+  setSearchStatus,
   // sort
   saleInvKey,
   saleInvDir,
@@ -108,17 +111,27 @@ export default function ListView({
             className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
           />
         </div>
+        <select
+          value={searchStatus}
+          onChange={e => { setSearchStatus(e.target.value); setTimeout(() => fetchInvoices(1), 0); }}
+          className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+        >
+          <option value="">全部狀態</option>
+          <option value="待核銷">待核銷</option>
+          <option value="已核銷">已核銷</option>
+        </select>
         <button
           onClick={() => fetchInvoices(1)}
           className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
         >
           搜尋
         </button>
-        {(searchSupplier || searchDateFrom || searchDateTo || searchInvoiceTitle || searchWarehouse || searchInvoiceType) && (
+        {(searchSupplier || searchDateFrom || searchDateTo || searchInvoiceTitle || searchWarehouse || searchInvoiceType || searchStatus) && (
           <button
             onClick={() => {
               setSearchSupplier(''); setSearchDateFrom(''); setSearchDateTo('');
               setSearchInvoiceTitle(''); setSearchWarehouse(''); setSearchInvoiceType('');
+              setSearchStatus('');
               setTimeout(() => fetchInvoices(1), 0);
             }}
             className="px-3 py-2 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
@@ -127,6 +140,26 @@ export default function ListView({
           </button>
         )}
       </div>
+      {/* 快速篩選 chips */}
+      <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-200">
+        <span className="text-xs text-gray-500">快速篩選：</span>
+        <button
+          onClick={() => {
+            const d = new Date(); d.setDate(d.getDate() - 60);
+            const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), dd = String(d.getDate()).padStart(2,'0');
+            setSearchStatus('待核銷');
+            setSearchDateTo(`${y}-${m}-${dd}`);
+            setSearchDateFrom('');
+            setTimeout(() => fetchInvoices(1), 0);
+          }}
+          className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors ${
+            searchStatus === '待核銷' ? 'bg-amber-100 border-amber-300 text-amber-700' : 'bg-white border-gray-300 text-gray-500 hover:bg-amber-50'
+          }`}
+        >
+          ⏰ 逾 60 天待核銷
+        </button>
+      </div>
+
       {/* 列印按鈕列 */}
       <div className="flex items-center gap-3 mt-3 pt-3 border-t border-gray-200">
         <button

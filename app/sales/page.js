@@ -8,6 +8,8 @@ import Navigation from '@/components/Navigation';
 import { useConfirm } from '@/context/ConfirmContext';
 import FetchErrorBanner from '@/components/FetchErrorBanner';
 import ExcelBatchImport from '@/components/ExcelBatchImport';
+import HelpButton from '@/components/HelpButton';
+import ModuleGuideCard from '@/components/ModuleGuideCard';
 import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 import OwnerExpensesPanel from '@/components/owner-expenses/OwnerExpensesPanel';
 import ReportView from './_sections/ReportView';
@@ -104,10 +106,22 @@ function InvoicePageInner() {
       )}
 
       <main className="max-w-7xl mx-auto px-4 py-8">
+        <ModuleGuideCard
+          title="銷項發票日常流程"
+          color="green"
+          steps={[
+            { label: '從進貨帶入', desc: '切換到「進貨管理」，點擊已入庫進貨單旁的「開立發票 →」，系統自動帶入廠商篩選', link: { href: '/purchasing', text: '前往進貨管理' } },
+            { label: '填寫發票', desc: '勾選本次要核銷的進貨品項，填入發票號碼、日期、抬頭，確認金額後送出' },
+            { label: '月底查核', desc: '點選「逾 60 天待核銷」快速篩選，確認所有逾期未核銷發票已處理' },
+            { label: '月結', desc: '確認所有發票已核銷後，前往月結完成鎖帳', link: { href: '/month-end', text: '前往月結' } },
+          ]}
+        />
+
         {/* 標題與操作 */}
         <div className="flex justify-between items-center mb-6">
-          <div>
+          <div className="flex items-center gap-2">
             <h2 className="text-2xl font-bold">發票登錄/核銷</h2>
+            <HelpButton anchor="五發票登錄核銷" />
           </div>
           {activeView === 'list' && canSalesView && (
             <div className="flex items-center gap-3">
@@ -356,12 +370,14 @@ function InvoicePageInner() {
             searchInvoiceType={invoice.searchInvoiceType}
             searchDateFrom={invoice.searchDateFrom}
             searchDateTo={invoice.searchDateTo}
+            searchStatus={invoice.searchStatus}
             setSearchSupplier={invoice.setSearchSupplier}
             setSearchInvoiceTitle={invoice.setSearchInvoiceTitle}
             setSearchWarehouse={invoice.setSearchWarehouse}
             setSearchInvoiceType={invoice.setSearchInvoiceType}
             setSearchDateFrom={invoice.setSearchDateFrom}
             setSearchDateTo={invoice.setSearchDateTo}
+            setSearchStatus={invoice.setSearchStatus}
             saleInvKey={invoice.saleInvKey}
             saleInvDir={invoice.saleInvDir}
             toggleSaleInv={invoice.toggleSaleInv}

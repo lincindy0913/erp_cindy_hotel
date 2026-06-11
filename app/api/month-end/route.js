@@ -286,7 +286,9 @@ export async function POST(request) {
       name: '逾期待核銷發票（超過60天）',
       count: pendingInvoices,
       passed: pendingInvoices === 0,
-      level: pendingInvoices > 0 ? 'warning' : 'pass'
+      level: pendingInvoices > 0 ? 'warning' : 'pass',
+      link: `/sales?status=待核銷&view=list`,
+      linkText: '前往發票列表',
     });
 
     // Check paymentOrder: 待出納（已送出但出納尚未執行）
