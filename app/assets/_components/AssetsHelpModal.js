@@ -13,7 +13,7 @@ export function AssetsHelpModal({ onClose }) {
             <h4 className="font-semibold text-gray-800 mb-2">1. 「物業」vs「資產」是什麼差別？</h4>
             <div className="bg-gray-50 rounded-lg p-3 text-xs text-gray-700 space-y-1">
               <p><span className="font-medium text-teal-700">物業（RentalProperty）</span>→ 出租管理角度：租客、合約、收款、稅款</p>
-              <p><span className="font-medium text-blue-700">資產（Asset）</span>→ 財務管理角度：取得成本、折舊、設備分類</p>
+              <p><span className="font-medium text-blue-700">資產（Asset）</span>→ 財務管理角度：取得日、面積、類型、稅務旗標（房屋稅／地價稅）</p>
               <p className="pt-1 text-gray-500">兩者可以綁定（1 對 1），綁定後：名稱、地址以資產端為主；房屋稅旗標影響稅款管理分類。</p>
             </div>
           </section>

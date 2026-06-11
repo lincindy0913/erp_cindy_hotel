@@ -66,7 +66,9 @@ export async function GET(request) {
         ? Math.round((yearIncome / yearExpected) * 10000) / 100
         : 0;
 
-      // ROI = actualIncome / expectedAnnualRent * 100
+      // 年度租金回收率 = 年度實收 / 合約月租×12 × 100
+      // 注意：這是「契約履約率」而非投資報酬率（ROI）。
+      // 真正的 ROI 需要資產取得成本，目前 Asset schema 尚未有此欄位。
       const roi = annualExpectedRent > 0
         ? Math.round((yearIncome / annualExpectedRent) * 10000) / 100
         : 0;

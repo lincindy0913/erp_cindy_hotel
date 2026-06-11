@@ -54,7 +54,7 @@ const TABS = [
   { key: 'supplier-items',  label: '廠商採購明細' },
   { key: 'occupancy-cost', label: '住宿成本效益' },
   { key: 'occupancy-stats', label: '營運入住統計' },
-  { key: 'rental-roi', label: '租賃 ROI' },
+  { key: 'rental-roi', label: '租賃收款分析' },
   { key: 'utility-occ', label: '水電與住宿' },
 ];
 

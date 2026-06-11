@@ -37,7 +37,7 @@ function RentalRoiDataView({ data }) {
         <KpiCard label={`${year} 實收合計`} value={NT(sum.totalIncome)} color="text-emerald-700" icon="💰" />
         <KpiCard label={`${year} 應收合計`} value={NT(sum.totalExpected)} color="text-blue-700" icon="📋" />
         <KpiCard label="整體回收率" value={pct(sum.overallCollectionRate)} color="text-indigo-700" icon="📊" />
-        <KpiCard label="平均 ROI（有月租者）" value={pct(sum.avgRoi)} color="text-cyan-700" icon="📐" />
+        <KpiCard label="平均年度租金回收率（有月租者）" value={pct(sum.avgRoi)} color="text-cyan-700" icon="📐" />
       </div>
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="px-5 py-3 border-b bg-gray-50">
@@ -52,7 +52,7 @@ function RentalRoiDataView({ data }) {
                 <th className="px-4 py-2 text-right text-xs text-gray-500">月租</th>
                 <th className="px-4 py-2 text-right text-xs text-gray-500">實收</th>
                 <th className="px-4 py-2 text-right text-xs text-gray-500">應收</th>
-                <th className="px-4 py-2 text-right text-xs text-gray-500">ROI</th>
+                <th className="px-4 py-2 text-right text-xs text-gray-500">年度回收率</th>
                 <th className="px-4 py-2 text-right text-xs text-gray-500">回收率</th>
                 <th className="px-4 py-2 text-center text-xs text-gray-500">狀態</th>
               </tr>
@@ -112,7 +112,9 @@ export default function RentalRoiTab({
         </Link>
       </div>
       <p className="text-xs text-gray-500 px-1">
-        依租賃物件、合約月租與當年度每月租金收入紀錄，計算實收、預收與回收率等；無租賃資料時列表為空。
+        依租賃物件、合約月租與當年度每月租金收入紀錄，計算實收、應收與回收率。
+        「年度回收率」＝ 年度實收 ÷ 合約月租×12，反映全年收款完成度；「回收率」＝ 實收 ÷ 已登記應收，反映已開單的收款效率。
+        若需以取得成本計算真正 ROI，請先在資產管理中維護取得成本後再行擴充。
       </p>
       {rentalRoiLoading ? <Loading text="載入租賃 ROI..." /> :
         rentalRoiData ? <RentalRoiDataView data={rentalRoiData} /> :
