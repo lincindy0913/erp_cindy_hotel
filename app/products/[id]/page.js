@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import Navigation from '@/components/Navigation';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 
 export default function ProductDetailPage() {
   const params = useParams();
@@ -12,21 +13,19 @@ export default function ProductDetailPage() {
   const [product, setProduct] = useState(null);
   const [purchases, setPurchases] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [notFound, setNotFound] = useState(false);
+  const [fetchError, setFetchError] = useState(null);
 
-  useEffect(() => {
-    fetchProductPurchases();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [productId]);
-
-  async function fetchProductPurchases() {
+  const fetchProductPurchases = useCallback(async () => {
+    setLoading(true);
+    setFetchError(null);
     try {
       const response = await fetch(`/api/products/${productId}/purchases`);
       if (!response.ok) {
         if (response.status === 404) {
-          setError('找不到此產品');
+          setNotFound(true);
         } else {
-          setError('查詢失敗');
+          setFetchError('查詢失敗：伺服器錯誤，請稍後再試');
         }
         setLoading(false);
         return;
@@ -36,11 +35,14 @@ export default function ProductDetailPage() {
       setPurchases(data.purchases || []);
       setLoading(false);
     } catch (err) {
-      console.error('載入產品採購記錄失敗:', err);
-      setError('載入失敗，請稍後再試');
+      setFetchError('載入失敗：' + (err.message || '請稍後再試'));
       setLoading(false);
     }
-  }
+  }, [productId]);
+
+  useEffect(() => {
+    fetchProductPurchases();
+  }, [fetchProductPurchases]);
 
   // 計算統計數據
   const totalQuantity = purchases.reduce((sum, p) => sum + p.quantity, 0);
@@ -60,13 +62,13 @@ export default function ProductDetailPage() {
     );
   }
 
-  if (error) {
+  if (notFound) {
     return (
       <div className="min-h-screen bg-gray-50">
         <Navigation borderColor="border-blue-500" />
         <main className="max-w-7xl mx-auto px-4 py-8">
           <div className="text-center py-20">
-            <p className="text-red-500 text-lg mb-4">{error}</p>
+            <p className="text-red-500 text-lg mb-4">找不到此產品</p>
             <Link href="/products" className="text-blue-600 hover:underline">
               返回產品列表
             </Link>
@@ -81,6 +83,7 @@ export default function ProductDetailPage() {
       <Navigation borderColor="border-blue-500" />
 
       <main className="max-w-7xl mx-auto px-4 py-8">
+        {fetchError && <FetchErrorBanner message={fetchError} onRetry={fetchProductPurchases} />}
         {/* 返回按鈕與標題 */}
         <div className="flex items-center gap-4 mb-6">
           <Link

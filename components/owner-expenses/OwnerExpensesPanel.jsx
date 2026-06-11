@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useToast } from '@/context/ToastContext';
 import ExportButtons from '@/components/ExportButtons';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 
 const NT = (v) => `NT$ ${Number(v || 0).toLocaleString()}`;
 
@@ -35,22 +36,26 @@ export default function OwnerExpensesPanel({ embedded = true, nestedInLayout = f
   const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [monthData, setMonthData] = useState(null);
   const [monthLoading, setMonthLoading] = useState(false);
+  const [monthFetchError, setMonthFetchError] = useState(null);
   const [editMap, setEditMap] = useState({});
   const [saving, setSaving] = useState(new Set());
 
   const [year, setYear] = useState(() => new Date().getFullYear().toString());
   const [yearData, setYearData] = useState(null);
   const [yearLoading, setYearLoading] = useState(false);
+  const [yearFetchError, setYearFetchError] = useState(null);
 
   const [companies, setCompanies] = useState([]);
   const [compLoading, setCompLoading] = useState(false);
+  const [compFetchError, setCompFetchError] = useState(null);
 
   const fetchMonth = useCallback(async () => {
     setMonthLoading(true);
+    setMonthFetchError(null);
     try {
       const res = await fetch(`/api/owner-expenses?month=${month}`, fetchOpts);
       if (!res.ok) {
-        showToast('載入月份資料失敗', 'error');
+        setMonthFetchError('載入月份資料失敗：伺服器錯誤，請稍後再試');
         return;
       }
       const data = await res.json();
@@ -64,44 +69,46 @@ export default function OwnerExpensesPanel({ embedded = true, nestedInLayout = f
         };
       }
       setEditMap(map);
-    } catch {
-      showToast('載入月份資料失敗', 'error');
+    } catch (e) {
+      setMonthFetchError('載入月份資料失敗：' + (e.message || '請稍後再試'));
     } finally {
       setMonthLoading(false);
     }
-  }, [month, showToast]);
+  }, [month]);
 
   const fetchYear = useCallback(async () => {
     setYearLoading(true);
+    setYearFetchError(null);
     try {
       const res = await fetch(`/api/owner-expenses?year=${year}`, fetchOpts);
       if (!res.ok) {
-        showToast('載入年度資料失敗', 'error');
+        setYearFetchError('載入年度資料失敗：伺服器錯誤，請稍後再試');
         return;
       }
       setYearData(await res.json());
-    } catch {
-      showToast('載入年度資料失敗', 'error');
+    } catch (e) {
+      setYearFetchError('載入年度資料失敗：' + (e.message || '請稍後再試'));
     } finally {
       setYearLoading(false);
     }
-  }, [year, showToast]);
+  }, [year]);
 
   const fetchCompanies = useCallback(async () => {
     setCompLoading(true);
+    setCompFetchError(null);
     try {
       const res = await fetch('/api/settings/invoice-titles', fetchOpts);
       if (!res.ok) {
-        showToast('載入發票抬頭失敗', 'error');
+        setCompFetchError('載入發票抬頭失敗：伺服器錯誤，請稍後再試');
         return;
       }
       setCompanies(await res.json());
-    } catch {
-      showToast('載入發票抬頭失敗', 'error');
+    } catch (e) {
+      setCompFetchError('載入發票抬頭失敗：' + (e.message || '請稍後再試'));
     } finally {
       setCompLoading(false);
     }
-  }, [showToast]);
+  }, []);
 
   useEffect(() => {
     if (activeTab === 'monthly') fetchMonth();
@@ -255,6 +262,7 @@ export default function OwnerExpensesPanel({ embedded = true, nestedInLayout = f
 
       {activeTab === 'monthly' && (
         <div>
+          {monthFetchError && <FetchErrorBanner message={monthFetchError} onRetry={fetchMonth} />}
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4 flex flex-wrap gap-3 items-end">
             <div>
               <label className="block text-xs text-gray-500 mb-1">月份</label>
@@ -462,6 +470,7 @@ export default function OwnerExpensesPanel({ embedded = true, nestedInLayout = f
 
       {activeTab === 'yearly' && (
         <div>
+          {yearFetchError && <FetchErrorBanner message={yearFetchError} onRetry={fetchYear} />}
           <div className="flex flex-wrap items-center gap-3 mb-4">
             <div>
               <label className="block text-xs text-gray-500 mb-1">年份</label>
@@ -564,6 +573,7 @@ export default function OwnerExpensesPanel({ embedded = true, nestedInLayout = f
 
       {activeTab === 'companies' && (
         <div className="max-w-2xl">
+          {compFetchError && <FetchErrorBanner message={compFetchError} onRetry={fetchCompanies} />}
           <div className="flex justify-between items-center mb-4">
             <p className="text-sm text-gray-500">
               月結登記的館別來自「設定 → 發票抬頭管理」，如需新增或修改請至設定頁面操作。

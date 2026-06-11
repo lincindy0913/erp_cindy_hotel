@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Navigation from '@/components/Navigation';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 import Link from 'next/link';
 import { useToast } from '@/context/ToastContext';
 
@@ -89,6 +90,7 @@ export default function NotificationsPage() {
   const [summary, setSummary] = useState({ total: 0, critical: 0, urgent: 0, warning: 0 });
   const [calculatedAt, setCalculatedAt] = useState('');
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(null);
 
   // Tab state
   const [activeMainTab, setActiveMainTab] = useState('notifications'); // 'notifications' | 'settings'
@@ -102,6 +104,7 @@ export default function NotificationsPage() {
   const [settingsSaving, setSettingsSaving] = useState(false);
 
   const fetchNotifications = useCallback(async () => {
+    setFetchError(null);
     try {
       const res = await fetch('/api/notifications/calculate', {
         method: 'POST',
@@ -113,9 +116,11 @@ export default function NotificationsPage() {
         setNotifications(data.notifications || []);
         setSummary(data.summary || { total: 0, critical: 0, urgent: 0, warning: 0 });
         setCalculatedAt(data.calculatedAt || '');
+      } else {
+        setFetchError('載入通知失敗：伺服器錯誤，請稍後再試');
       }
     } catch (err) {
-      console.error('Failed to fetch notifications:', err);
+      setFetchError('載入通知失敗：' + (err.message || '請檢查網路連線'));
     } finally {
       setLoading(false);
     }
@@ -253,6 +258,7 @@ export default function NotificationsPage() {
         {/* ============= TAB 1: 待處理通知 ============= */}
         {activeMainTab === 'notifications' && (
           <>
+            {fetchError && <FetchErrorBanner message={fetchError} onRetry={() => { setLoading(true); fetchNotifications(); }} />}
             {/* Summary cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
