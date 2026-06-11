@@ -34,11 +34,6 @@ export default function InventoryPage() {
           <FetchErrorBanner message={inv.inventoryError} onRetry={inv.fetchInventory} />
         </div>
       )}
-      {inv.toast && (
-        <div className={`fixed top-4 right-4 z-50 px-4 py-2 rounded-lg shadow-lg text-sm font-medium text-white ${inv.toast.type === 'error' ? 'bg-red-500' : 'bg-gray-700'}`}>
-          {inv.toast.msg}
-        </div>
-      )}
 
       <main className="max-w-7xl mx-auto px-4 py-8">
         <div className="flex justify-between items-center mb-6">
@@ -102,6 +97,20 @@ export default function InventoryPage() {
             </button>
           ))}
         </div>
+
+        {inv.activeTab === 'inbound' && inv.inboundError && (
+          <div className="mb-4"><FetchErrorBanner message={inv.inboundError} onRetry={inv.fetchPendingInbound} /></div>
+        )}
+        {inv.activeTab === 'requisition' && inv.requisitionError && (
+          <div className="mb-4"><FetchErrorBanner message={inv.requisitionError} onRetry={inv.fetchRequisitions} /></div>
+        )}
+        {inv.activeTab === 'transfer' && inv.transferError && (
+          <div className="mb-4"><FetchErrorBanner message={inv.transferError} onRetry={inv.fetchTransfers} /></div>
+        )}
+
+        {inv.activeTab === 'count' && inv.countError && (
+          <div className="mb-4"><FetchErrorBanner message={inv.countError} onRetry={inv.fetchStockCounts} /></div>
+        )}
 
         {inv.activeTab === 'query' && <QueryTab {...inv} />}
         {inv.activeTab === 'inbound' && <InboundTab {...inv} />}

@@ -16,6 +16,7 @@ function getStatusIcon(status) {
 
 export function QueryTab({
   inventory, inventoryLoading, sortedInventory, warehouse, filterLowStock, setFilterLowStock,
+  filterNegativeStock, setFilterNegativeStock,
   invQKey, invQDir, invQT, setAdjustModal, setAdjustForm,
 }) {
   return (
@@ -32,8 +33,21 @@ export function QueryTab({
           >
             {filterLowStock ? '✕ 取消篩選' : '⚠ 只看低庫存'}
           </button>
+          <button
+            onClick={() => setFilterNegativeStock(v => !v)}
+            className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors ${
+              filterNegativeStock
+                ? 'bg-red-100 border-red-300 text-red-700'
+                : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
+            }`}
+          >
+            {filterNegativeStock ? '✕ 取消篩選' : '🔴 只看負庫存'}
+          </button>
           {filterLowStock && (
             <span className="text-xs text-orange-600 font-medium">{sortedInventory.length} 項偏低／缺貨</span>
+          )}
+          {filterNegativeStock && !filterLowStock && (
+            <span className="text-xs text-red-600 font-medium">{sortedInventory.length} 項負庫存</span>
           )}
         </div>
         <ExportButtons

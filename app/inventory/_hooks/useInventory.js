@@ -2,11 +2,13 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useConfirm } from '@/context/ConfirmContext';
+import { useToast } from '@/context/ToastContext';
 import { sortRows, useColumnSort } from '@/components/SortableTh';
 import { todayStr } from '@/lib/localDate';
 
 export function useInventory() {
   const confirm = useConfirm();
+  const { showToast } = useToast();
 
   const [activeTab, setActiveTab] = useState('query');
   const [warehouseList, setWarehouseList] = useState([]);
@@ -19,10 +21,12 @@ export function useInventory() {
   const [inventoryError, setInventoryError] = useState(null);
   const [calcMode, setCalcMode] = useState(null);
   const [filterLowStock, setFilterLowStock] = useState(false);
+  const [filterNegativeStock, setFilterNegativeStock] = useState(false);
 
   // 領用單
   const [requisitions, setRequisitions] = useState([]);
   const [requisitionLoading, setRequisitionLoading] = useState(false);
+  const [requisitionError, setRequisitionError] = useState(null);
   const [reqForm, setReqForm] = useState({ warehouse: '', department: '', productId: '', productName: '', quantity: '', note: '' });
   const [products, setProducts] = useState([]);
   const [reqSubmitting, setReqSubmitting] = useState(false);
@@ -30,12 +34,14 @@ export function useInventory() {
   // 調撥單
   const [transfers, setTransfers] = useState([]);
   const [transferLoading, setTransferLoading] = useState(false);
+  const [transferError, setTransferError] = useState(null);
   const [trfForm, setTrfForm] = useState({ fromWarehouse: '', toWarehouse: '', productId: '', productName: '', quantity: '', note: '' });
   const [trfSubmitting, setTrfSubmitting] = useState(false);
 
   // 盤點
   const [stockCounts, setStockCounts] = useState([]);
   const [countLoading, setCountLoading] = useState(false);
+  const [countError, setCountError] = useState(null);
   const [countForm, setCountForm] = useState({ warehouse: '', countDate: todayStr(), items: [] });
   const [countSubmitting, setCountSubmitting] = useState(false);
 
@@ -44,7 +50,8 @@ export function useInventory() {
   const [adjustForm, setAdjustForm] = useState({ warehouse: '', targetQty: '', reason: '' });
   const [adjustSubmitting, setAdjustSubmitting] = useState(false);
 
-  const [toast, setToast] = useState(null);
+  // 待入庫錯誤
+  const [inboundError, setInboundError] = useState(null);
 
   // 待入庫
   const [pendingInbound, setPendingInbound] = useState([]);
@@ -66,9 +73,10 @@ export function useInventory() {
   const { sortKey: cntKey, sortDir: cntDir, toggleSort: cntT } = useColumnSort('countDate', 'desc');
 
   const sortedInventory = useMemo(() => {
-    const base = filterLowStock
+    let base = filterLowStock
       ? inventory.filter(row => row.status === '偏低' || row.status === '缺貨')
       : inventory;
+    if (filterNegativeStock) base = base.filter(row => Number(row.currentQty ?? 0) < 0);
     return sortRows(base, invQKey, invQDir, {
       productName: (row) => row.product?.name || '',
       warehouseLoc: (row) => warehouse || row.product?.warehouseLocation || '',
@@ -80,7 +88,7 @@ export function useInventory() {
       currentQty: (row) => Number(row.currentQty ?? 0),
       status: (row) => row.status || '',
     });
-  }, [inventory, warehouse, invQKey, invQDir, filterLowStock]);
+  }, [inventory, warehouse, invQKey, invQDir, filterLowStock, filterNegativeStock]);
 
   const sortedRequisitions = useMemo(
     () => sortRows(requisitions, reqKey, reqDir, {
@@ -133,11 +141,6 @@ export function useInventory() {
     }),
     [stockCounts, cntKey, cntDir]
   );
-
-  function showToast(msg, type = 'success') {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 3000);
-  }
 
   useEffect(() => {
     fetchWarehouses();
@@ -210,52 +213,63 @@ export function useInventory() {
 
   async function fetchRequisitions() {
     setRequisitionLoading(true);
+    setRequisitionError(null);
     try {
       const url = warehouse ? `/api/inventory/requisitions?warehouse=${encodeURIComponent(warehouse)}` : '/api/inventory/requisitions';
       const res = await fetch(url);
-      const data = res.ok ? await res.json() : [];
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
       setRequisitions(Array.isArray(data) ? data : []);
-    } catch { setRequisitions([]); }
+    } catch { setRequisitions([]); setRequisitionError('領用單載入失敗，請重試。'); }
     setRequisitionLoading(false);
   }
 
   async function fetchTransfers() {
     setTransferLoading(true);
+    setTransferError(null);
     try {
       const url = warehouse ? `/api/inventory/transfers?warehouse=${encodeURIComponent(warehouse)}` : '/api/inventory/transfers';
       const res = await fetch(url);
-      const data = res.ok ? await res.json() : [];
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
       setTransfers(Array.isArray(data) ? data : []);
-    } catch { setTransfers([]); }
+    } catch { setTransfers([]); setTransferError('調撥單載入失敗，請重試。'); }
     setTransferLoading(false);
   }
 
   async function fetchStockCounts() {
     setCountLoading(true);
+    setCountError(null);
     try {
       const url = warehouse ? `/api/inventory/stock-counts?warehouse=${encodeURIComponent(warehouse)}` : '/api/inventory/stock-counts';
       const res = await fetch(url);
-      const data = res.ok ? await res.json() : [];
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
       setStockCounts(Array.isArray(data) ? data : []);
-    } catch { setStockCounts([]); }
+    } catch { setStockCounts([]); setCountError('盤點記錄載入失敗，請重試。'); }
     setCountLoading(false);
   }
 
   async function fetchPendingInbound() {
     setInboundLoading(true);
+    setInboundError(null);
     try {
       const [purRes, wdRes, prodRes] = await Promise.all([
         fetch('/api/purchasing?all=true'),
         fetch('/api/warehouse-departments'),
         fetch('/api/products?all=true'),
       ]);
-      const purchases = purRes.ok ? await purRes.json() : [];
+      if (!purRes.ok) throw new Error(`採購 HTTP ${purRes.status}`);
+      const purchases = await purRes.json();
       const prodData = prodRes.ok ? await prodRes.json() : [];
       const prodArr = Array.isArray(prodData) ? prodData : (prodData?.products || prodData?.data || []);
       const prodMap = Object.fromEntries(prodArr.map(p => [p.id, p.name]));
       const rows = [];
       purchases.forEach(p => {
-        (p.items || []).forEach(item => {
+        const allItems = p.items || [];
+        const totalItemsInPo = allItems.length;
+        const doneItemsInPo = allItems.filter(i => i.status === '已入庫').length;
+        allItems.forEach(item => {
           if (item.status === '待入庫') {
             rows.push({
               ...item,
@@ -265,6 +279,8 @@ export function useInventory() {
               purchaseDate: p.purchaseDate,
               purchaseWarehouse: p.warehouse,
               supplierName: p.supplierName || '',
+              totalItemsInPo,
+              doneItemsInPo,
             });
           }
         });
@@ -276,7 +292,7 @@ export function useInventory() {
         const locs = (wd?.list || []).filter(w => w.type === 'storage').map(w => w.name);
         setStorageLocations(locs);
       }
-    } catch { setPendingInbound([]); }
+    } catch { setPendingInbound([]); setInboundError('待入庫資料載入失敗，請重試。'); }
     setInboundLoading(false);
   }
 
@@ -476,21 +492,22 @@ export function useInventory() {
   }
 
   return {
-    activeTab, setActiveTab, warehouse, setWarehouse, warehouseList, warehouses, toast, calcMode,
+    activeTab, setActiveTab, warehouse, setWarehouse, warehouseList, warehouses, calcMode,
     inventoryError, fetchInventory, fetchStockCounts,
     inventory, inventoryLoading, sortedInventory, filterLowStock, setFilterLowStock,
+    filterNegativeStock, setFilterNegativeStock,
     invQKey, invQDir, invQT,
     adjustModal, setAdjustModal, adjustForm, setAdjustForm, adjustSubmitting, submitAdjustment,
     pendingInbound, inboundLoading, inboundUpdating, inboundWarehouseEdits, setInboundWarehouseEdits,
     inboundWareFilter, setInboundWareFilter, inboundSearch, setInboundSearch,
     inboundDateFrom, setInboundDateFrom, inboundDateTo, setInboundDateTo,
     inboundSelected, setInboundSelected, batchConfirming, storageLocations,
-    confirmInbound, batchConfirmInbound, fetchPendingInbound,
-    requisitions, requisitionLoading, sortedRequisitions, products,
+    inboundError, confirmInbound, batchConfirmInbound, fetchPendingInbound,
+    requisitions, requisitionLoading, requisitionError, fetchRequisitions, sortedRequisitions, products,
     reqForm, setReqForm, reqSubmitting, reqKey, reqDir, reqT, submitRequisition,
-    transfers, transferLoading, sortedTransferRows,
+    transfers, transferLoading, transferError, fetchTransfers, sortedTransferRows,
     trfForm, setTrfForm, trfSubmitting, trfKey, trfDir, trfT, submitTransfer,
-    stockCounts, countLoading, sortedStockCounts,
+    stockCounts, countLoading, countError, sortedStockCounts,
     countForm, setCountForm, countSubmitting, cntKey, cntDir, cntT,
     addCountItem, updateCountItem, removeCountItem, submitStockCount,
   };

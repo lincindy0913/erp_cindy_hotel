@@ -161,7 +161,8 @@ export function InboundTab({
                         />
                       </td>
                       <td className="px-4 py-2.5 text-xs">
-                        <span className="font-mono text-blue-700">{row.purchaseNo}</span>
+                        <a href={`/purchasing?editPurchaseNo=${row.purchaseNo}`} target="_blank" rel="noreferrer"
+                          className="font-mono text-blue-700 hover:underline">{row.purchaseNo}</a>
                         {row.totalItemsInPo > 1 && (
                           <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${
                             row.doneItemsInPo > 0

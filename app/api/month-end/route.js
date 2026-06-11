@@ -492,6 +492,36 @@ export async function POST(request) {
       console.error('租屋收款入帳檢查錯誤:', e);
     }
 
+    // 庫存盤點未完成
+    try {
+      const activeBuildings = await prisma.warehouse.findMany({
+        where: { type: 'building', isActive: true },
+        select: { name: true },
+      });
+      if (activeBuildings.length > 0) {
+        const countedThisMonth = await prisma.stockCount.findMany({
+          where: { countDate: { gte: periodStart, lte: periodEnd }, type: 'count' },
+          select: { warehouse: true },
+          distinct: ['warehouse'],
+        });
+        const countedSet = new Set(countedThisMonth.map(s => s.warehouse));
+        const uncountedBlds = activeBuildings.filter(w => !countedSet.has(w.name));
+        if (uncountedBlds.length > 0) {
+          preChecks.push({
+            name: '庫存盤點未完成',
+            count: uncountedBlds.length,
+            passed: true,
+            level: 'warning',
+            detail: `以下館別本月尚未完成庫存盤點：${uncountedBlds.map(w => w.name).join('、')}`,
+            link: '/inventory?tab=count',
+            linkText: '前往庫存盤點',
+          });
+        }
+      }
+    } catch (e) {
+      console.error('庫存盤點檢查錯誤:', e);
+    }
+
     // 工程估驗已核定未開票
     try {
       const certifiedClaims = await prisma.engineeringProgressClaim.findMany({
