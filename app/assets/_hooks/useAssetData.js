@@ -1,11 +1,9 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
-import { useToast } from '@/context/ToastContext';
 import { todayStr } from '@/lib/localDate';
 
 export function useAssetData() {
-  const { showToast } = useToast();
 
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
@@ -14,6 +12,8 @@ export function useAssetData() {
   const [reportData, setReportData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
+  const [reportError, setReportError] = useState(null);
+  const [incomeError, setIncomeError] = useState(null);
   const [currentMonthIncomeMap, setCurrentMonthIncomeMap] = useState(new Map());
   const [accounts, setAccounts] = useState([]);
 
@@ -58,7 +58,7 @@ export function useAssetData() {
         if (!cancelled) {
           setLoading(false);
           if (Array.isArray(acctData)) setAccounts(acctData);
-          else if (acctData === null) showToast('收款帳戶載入失敗，部分功能受限', 'error');
+          else if (acctData === null) setReportError('收款帳戶載入失敗，部分功能受限');
           if (Array.isArray(incomeData)) {
             const today = todayStr();
             const map = new Map();
@@ -70,7 +70,7 @@ export function useAssetData() {
             });
             setCurrentMonthIncomeMap(map);
           } else if (incomeData === null) {
-            showToast('本月收款狀態載入失敗', 'error');
+            setIncomeError('本月收款狀態載入失敗');
           }
         }
       } catch {
@@ -91,6 +91,8 @@ export function useAssetData() {
     reportData,
     loading, setLoading,
     loadError,
+    reportError, setReportError,
+    incomeError, setIncomeError,
     currentMonthIncomeMap,
     accounts,
     dateStart, setDateStart,

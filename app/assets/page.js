@@ -21,7 +21,6 @@ import { DisposalModal } from '@/app/assets/_tabs/DisposalModal';
 
 import { AssetsHeader } from '@/app/assets/_components/AssetsHeader';
 import { AssetsSummaryCards } from '@/app/assets/_components/AssetsSummaryCards';
-import { AssetsHelpModal } from '@/app/assets/_components/AssetsHelpModal';
 import { ConfirmModal } from '@/app/assets/_components/ConfirmModal';
 
 function AssetsPageInner() {
@@ -39,7 +38,6 @@ function AssetsPageInner() {
   const highlightPropertyId = searchParams.get('propertyId');
   const linkProperty = searchParams.get('linkProperty');
 
-  const [showHelpModal, setShowHelpModal] = useState(false);
   const [confirmState, setConfirmState] = useState(null);
   const showConfirm = (message, onConfirm, confirmLabel = '確定刪除') =>
     setConfirmState({ message, onConfirm, confirmLabel });
@@ -50,6 +48,8 @@ function AssetsPageInner() {
     reportData,
     loading, setLoading,
     loadError,
+    reportError, setReportError,
+    incomeError, setIncomeError,
     currentMonthIncomeMap,
     accounts,
     dateStart, setDateStart,
@@ -138,6 +138,8 @@ function AssetsPageInner() {
     searchText, setSearchText,
     filterStatus, setFilterStatus,
     filterCategory, setFilterCategory,
+    filterUnlinked, setFilterUnlinked,
+    filterOverdue, setFilterOverdue,
     assetSortKey, assetSortDir, assetToggleSort,
     selectedPropIds, setSelectedPropIds,
     batchStatus, setBatchStatus,
@@ -145,7 +147,7 @@ function AssetsPageInner() {
     sortedRows,
     handleBatchStatusChange,
     exportCSV,
-  } = useAssetFilter({ mergedRows, year, activeRange, loadProperties });
+  } = useAssetFilter({ mergedRows, year, activeRange, loadProperties, currentMonthIncomeMap });
 
   useEffect(() => {
     if (!highlightPropertyId || properties.length === 0) return;
@@ -189,7 +191,6 @@ function AssetsPageInner() {
           canEdit={canEdit}
           openCreate={openCreate}
           exportCSV={exportCSV}
-          onShowHelp={() => setShowHelpModal(true)}
         />
 
         {!loading && (
@@ -222,6 +223,11 @@ function AssetsPageInner() {
           searchText={searchText} setSearchText={setSearchText}
           filterStatus={filterStatus} setFilterStatus={setFilterStatus}
           filterCategory={filterCategory} setFilterCategory={setFilterCategory}
+          filterUnlinked={filterUnlinked} setFilterUnlinked={setFilterUnlinked}
+          filterOverdue={filterOverdue} setFilterOverdue={setFilterOverdue}
+          reportError={reportError} onRetryReport={() => { setReportError(null); loadYearData(year, dateStart || undefined, dateEnd || undefined); }}
+          incomeError={incomeError} onRetryIncome={() => { setIncomeError(null); loadProperties(); }}
+          onRetryLoad={() => { loadProperties(); loadYearData(year); }}
         />
 
         <DetailPanelModal
@@ -268,7 +274,6 @@ function AssetsPageInner() {
         saveDisposal={saveDisposal}
       />
 
-      {showHelpModal && <AssetsHelpModal onClose={() => setShowHelpModal(false)} />}
     </div>
   );
 }

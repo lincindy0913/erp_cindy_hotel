@@ -6,13 +6,15 @@ import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort } from '@/components/SortableTh';
 import { PROPERTY_STATUS_LABEL, PROPERTY_STATUSES } from '@/lib/propertyStatus';
 
-export function useAssetFilter({ mergedRows, year, activeRange, loadProperties }) {
+export function useAssetFilter({ mergedRows, year, activeRange, loadProperties, currentMonthIncomeMap }) {
   const { showToast } = useToast();
   const confirm = useConfirm();
 
   const [searchText, setSearchText] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
+  const [filterUnlinked, setFilterUnlinked] = useState(false);
+  const [filterOverdue, setFilterOverdue] = useState(false);
 
   const { sortKey: assetSortKey, sortDir: assetSortDir, toggleSort: assetToggleSort } = useColumnSort('sortOrder', 'asc');
 
@@ -32,9 +34,11 @@ export function useAssetFilter({ mergedRows, year, activeRange, loadProperties }
       }
       if (filterStatus && p.status !== filterStatus) return false;
       if (filterCategory && p.category !== filterCategory) return false;
+      if (filterUnlinked && p.asset != null) return false;
+      if (filterOverdue && !currentMonthIncomeMap?.get(p.id)?.isOverdue) return false;
       return true;
     });
-  }, [mergedRows, searchText, filterStatus, filterCategory]);
+  }, [mergedRows, searchText, filterStatus, filterCategory, filterUnlinked, filterOverdue, currentMonthIncomeMap]);
 
   const sortedRows = useMemo(() => {
     const accessors = {
@@ -136,6 +140,8 @@ export function useAssetFilter({ mergedRows, year, activeRange, loadProperties }
     searchText, setSearchText,
     filterStatus, setFilterStatus,
     filterCategory, setFilterCategory,
+    filterUnlinked, setFilterUnlinked,
+    filterOverdue, setFilterOverdue,
     assetSortKey, assetSortDir, assetToggleSort,
     selectedPropIds, setSelectedPropIds,
     batchStatus, setBatchStatus,

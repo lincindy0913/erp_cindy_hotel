@@ -79,6 +79,15 @@ export function PropertyTableTab({
   setFilterStatus,
   filterCategory,
   setFilterCategory,
+  filterUnlinked,
+  setFilterUnlinked,
+  filterOverdue,
+  setFilterOverdue,
+  reportError,
+  onRetryReport,
+  incomeError,
+  onRetryIncome,
+  onRetryLoad,
 }) {
   return (
     <>
@@ -103,8 +112,20 @@ export function PropertyTableTab({
             <option value="公司">公司</option>
             <option value="湯三姐">湯三姐</option>
           </select>
-          {(searchText || filterStatus || filterCategory) && (
-            <button onClick={() => { setSearchText(''); setFilterStatus(''); setFilterCategory(''); }}
+          <button
+            onClick={() => setFilterUnlinked(v => !v)}
+            className={`text-xs px-2.5 py-1 rounded border transition-colors ${filterUnlinked ? 'bg-amber-100 border-amber-400 text-amber-700 font-medium' : 'border-gray-300 text-gray-500 hover:border-amber-400'}`}
+          >
+            未綁資產
+          </button>
+          <button
+            onClick={() => setFilterOverdue(v => !v)}
+            className={`text-xs px-2.5 py-1 rounded border transition-colors ${filterOverdue ? 'bg-red-100 border-red-400 text-red-700 font-medium' : 'border-gray-300 text-gray-500 hover:border-red-400'}`}
+          >
+            本月逾期未收
+          </button>
+          {(searchText || filterStatus || filterCategory || filterUnlinked || filterOverdue) && (
+            <button onClick={() => { setSearchText(''); setFilterStatus(''); setFilterCategory(''); setFilterUnlinked(false); setFilterOverdue(false); }}
               className="text-xs text-gray-500 hover:text-red-500 px-2 py-1 border rounded">
               ✕ 清除篩選
             </button>
@@ -148,8 +169,12 @@ export function PropertyTableTab({
         </div>
       )}
 
+      {/* Error banners */}
+      {reportError && <FetchErrorBanner message={reportError} onRetry={onRetryReport} />}
+      {incomeError && <FetchErrorBanner message={incomeError} onRetry={onRetryIncome} />}
+
       {/* Main Table */}
-      {loadError && <FetchErrorBanner message={loadError} onRetry={() => window.location.reload()} />}
+      {loadError && <FetchErrorBanner message={loadError} onRetry={onRetryLoad} />}
       {loading ? (
         <p className="text-gray-500 py-8">載入中…</p>
       ) : !loadError && (

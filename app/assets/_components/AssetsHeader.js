@@ -1,5 +1,7 @@
 'use client';
 
+import HelpButton from '@/components/HelpButton';
+
 export function AssetsHeader({
   currentYear, year, setYear,
   activeRange, setActiveRange,
@@ -10,7 +12,6 @@ export function AssetsHeader({
   canEdit,
   openCreate,
   exportCSV,
-  onShowHelp,
 }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
@@ -72,10 +73,7 @@ export function AssetsHeader({
               className="text-xs text-gray-500 hover:text-red-500 whitespace-nowrap">✕ 清除</button>
           )}
         </div>
-        <button type="button" onClick={onShowHelp}
-          className="px-3 py-1.5 bg-gray-100 border border-gray-300 text-gray-600 text-sm rounded-lg hover:bg-gray-200">
-          ? 說明
-        </button>
+        <HelpButton anchor="七資產管理" />
         <button type="button" onClick={exportCSV}
           className="px-3 py-1.5 bg-gray-100 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-200">
           ↓ 匯出 CSV
