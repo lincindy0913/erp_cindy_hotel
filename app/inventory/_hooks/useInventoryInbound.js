@@ -33,7 +33,10 @@ export function useInventoryInbound({ showToast }) {
 
       const rows = [];
       purchases.forEach(p => {
-        (p.items || []).forEach(item => {
+        const allItems = p.items || [];
+        const totalItemsInPo = allItems.length;
+        const doneItemsInPo  = allItems.filter(i => i.status === '已入庫').length;
+        allItems.forEach(item => {
           if (item.status === '待入庫') {
             rows.push({
               ...item,
@@ -43,6 +46,8 @@ export function useInventoryInbound({ showToast }) {
               purchaseDate: p.purchaseDate,
               purchaseWarehouse: p.warehouse,
               supplierName: p.supplierName || '',
+              totalItemsInPo,
+              doneItemsInPo,
             });
           }
         });

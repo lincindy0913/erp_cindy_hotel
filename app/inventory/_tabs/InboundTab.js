@@ -98,7 +98,10 @@ export function InboundTab({
             <h3 className="text-sm font-semibold text-blue-800">待入庫商品</h3>
             <p className="text-xs text-blue-600 mt-0.5">勾選多筆後可批次確認入庫；或逐筆按「確認入庫」</p>
           </div>
-          <button onClick={fetchPendingInbound} className="text-xs text-blue-600 hover:underline">重新整理</button>
+          <div className="flex items-center gap-3">
+            <a href="/purchase-allowances" className="text-xs text-gray-500 hover:text-red-600 transition-colors" title="進貨退回或折讓">退貨管理 →</a>
+            <button onClick={fetchPendingInbound} className="text-xs text-blue-600 hover:underline">重新整理</button>
+          </div>
         </div>
         {inboundLoading ? (
           <div className="text-center py-12 text-gray-400">載入中…</div>
@@ -157,7 +160,18 @@ export function InboundTab({
                           className="cursor-pointer"
                         />
                       </td>
-                      <td className="px-4 py-2.5 font-mono text-blue-700 text-xs">{row.purchaseNo}</td>
+                      <td className="px-4 py-2.5 text-xs">
+                        <span className="font-mono text-blue-700">{row.purchaseNo}</span>
+                        {row.totalItemsInPo > 1 && (
+                          <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${
+                            row.doneItemsInPo > 0
+                              ? 'bg-amber-100 text-amber-700'
+                              : 'bg-gray-100 text-gray-500'
+                          }`}>
+                            {row.doneItemsInPo}/{row.totalItemsInPo} 已入
+                          </span>
+                        )}
+                      </td>
                       <td className="px-4 py-2.5 text-gray-600 text-xs">{row.purchaseWarehouse || '-'}</td>
                       <td className="px-4 py-2.5 text-gray-500 text-xs">{row.purchaseDate}</td>
                       <td className="px-4 py-2.5 text-gray-700 text-xs">{row.supplierName || '-'}</td>

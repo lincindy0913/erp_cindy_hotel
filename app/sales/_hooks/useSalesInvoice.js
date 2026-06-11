@@ -738,6 +738,16 @@ export function useSalesInvoice({ searchParams, canSalesView, setActiveView }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, canSalesView]);
 
+  // 從網址 ?supplierId=X 一鍵預填廠商篩選並開啟發票新增表單
+  useEffect(() => {
+    const sid = searchParams?.get('supplierId');
+    if (!sid || !canSalesView) return;
+    setFilterData(f => ({ ...f, supplierId: sid }));
+    setShowAddForm(true);
+    setShowAddAllowanceForm(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // 從網址 ?edit=id 連動開啟編輯表單
   const salesEditParam = searchParams.get('edit');
   useEffect(() => {

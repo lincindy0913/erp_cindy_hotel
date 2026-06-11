@@ -35,6 +35,8 @@ export async function GET(request) {
     const todayStr = localDateStr(today);
     const in7Days = new Date(today); in7Days.setDate(in7Days.getDate() + 7);
     const in7DaysStr = localDateStr(in7Days);
+    const ago30Days = new Date(today); ago30Days.setDate(ago30Days.getDate() - 30);
+    const ago30DaysStr = localDateStr(ago30Days);
     const curYear  = today.getFullYear();
     const curMonth = today.getMonth() + 1;
     const monthStr = String(curMonth).padStart(2, '0');
@@ -47,11 +49,15 @@ export async function GET(request) {
 
     // ── 採購 ────────────────────────────────────────────────────────
     if (hasPerm(PERMISSIONS.PURCHASING_VIEW)) {
-      // 待入庫（獨立 task，避免 lowStock 失敗時一起吃掉）
+      // 待入庫（分逾期 >30天 / 一般）
       tasks.push((async () => {
         try {
-          const pendingWh = await prisma.purchaseMaster.count({ where: { status: '待入庫' } });
-          if (pendingWh > 0) items.push({ key: 'pending_warehouse', category: '採購', label: '待入庫進貨', count: pendingWh, href: '/inventory?tab=inbound', urgency: 'high' });
+          const [overdueWh, recentWh] = await Promise.all([
+            prisma.purchaseMaster.count({ where: { status: '待入庫', purchaseDate: { lt: ago30DaysStr } } }),
+            prisma.purchaseMaster.count({ where: { status: '待入庫', purchaseDate: { gte: ago30DaysStr } } }),
+          ]);
+          if (overdueWh > 0) items.push({ key: 'overdue_warehouse', category: '採購', label: '逾期待入庫（>30天）', count: overdueWh, href: '/inventory?tab=inbound', urgency: 'urgent' });
+          if (recentWh > 0) items.push({ key: 'pending_warehouse', category: '採購', label: '待入庫進貨', count: recentWh, href: '/inventory?tab=inbound', urgency: 'high' });
         } catch (e) { console.error('[action-queue] 採購待入庫:', e.message); }
       })());
       // 低庫存（Prisma 不支援欄位對欄位比較，直接用 raw）

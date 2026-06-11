@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import NotificationBanner from '@/components/NotificationBanner';
@@ -19,7 +20,8 @@ import PaymentOrdersTable from './_tabs/PaymentOrdersTable';
 import WarehouseReportModal from './_tabs/WarehouseReportModal';
 import PurchaseReportModal from './_tabs/PurchaseReportModal';
 
-export default function PaymentPage() {
+function PaymentPageInner() {
+  const searchParams = useSearchParams();
   const { data: session } = useSession();
   const { showToast } = useToast();
   const isLoggedIn = !!session;
@@ -109,6 +111,15 @@ export default function PaymentPage() {
       fetchOrders();
     },
   });
+
+  // ── URL 參數自動預填（來自進貨/採購頁面的一鍵跳轉）────────────────────
+  useEffect(() => {
+    const sid = searchParams?.get('supplierId');
+    if (!sid) return;
+    setFilterData(f => ({ ...f, supplierId: sid }));
+    setShowAddForm(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── 衍生計算 ──────────────────────────────────────────────────────────
   const rawDisplayOrders = getDisplayOrdersForTab(activeTab);
@@ -299,5 +310,13 @@ export default function PaymentPage() {
         orders={orders} suppliers={suppliers}
       />
     </div>
+  );
+}
+
+export default function PaymentPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen page-bg-finance" />}>
+      <PaymentPageInner />
+    </Suspense>
   );
 }
