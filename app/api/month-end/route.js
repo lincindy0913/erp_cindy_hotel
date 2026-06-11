@@ -484,7 +484,7 @@ export async function POST(request) {
           passed: true,
           level: 'warning',
           detail: `${unlinkedRental} 筆已確認租金尚未建立現金流記錄，月結損益將有落差`,
-          link: '/rentals?tab=income',
+          link: '/rentals?tab=cashier',
           linkText: '前往租屋收款',
         });
       }

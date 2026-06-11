@@ -7,6 +7,7 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { recalcBalance } from '@/lib/recalc-balance';
 import { nextCashTransactionNo } from '@/lib/sequence-generator';
 import { assertRentalYearOpen } from '@/lib/rental-year-lock';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -239,6 +240,13 @@ export async function POST(request, { params }) {
     });
 
     await recalcBalance(prisma, acctId);
+
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.RENTAL_INCOME_CONFIRM,
+      targetModule: 'rental_income',
+      targetId: String(incomeId),
+      detail: `${income.property.name} ${income.incomeYear}/${income.incomeMonth} 確認收款 ${parsedRentActual}，狀態：${result.newStatus}`,
+    });
 
     return NextResponse.json({
       success: true,

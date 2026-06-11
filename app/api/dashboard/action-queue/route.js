@@ -250,6 +250,46 @@ export async function GET(request) {
       })());
     }
 
+    // ── 租屋 ────────────────────────────────────────────────────────
+    if (hasPerm(PERMISSIONS.RENTAL_VIEW)) {
+      tasks.push((async () => {
+        try {
+          const [overdueRent, pendingContracts, activeContracts, existingIncomes] = await Promise.all([
+            prisma.rentalIncome.count({
+              where: { status: 'pending', dueDate: { lt: todayStr } },
+            }),
+            prisma.rentalContract.count({ where: { status: 'pending' } }),
+            prisma.rentalContract.count({
+              where: { status: 'active', startDate: { lte: periodEnd }, endDate: { gte: periodStart } },
+            }),
+            prisma.rentalIncome.count({ where: { incomeYear: curYear, incomeMonth: curMonth } }),
+          ]);
+          if (overdueRent > 0) {
+            items.push({ key: 'rental_overdue', category: '租屋', label: '逾期未收租金', count: overdueRent, href: '/rentals?tab=cashier', urgency: 'urgent' });
+          }
+          if (pendingContracts > 0) {
+            items.push({ key: 'rental_pending_contracts', category: '租屋', label: '待審核合約', count: pendingContracts, href: '/rentals?tab=contracts', urgency: 'high' });
+          }
+          const notGenerated = Math.max(0, activeContracts - existingIncomes);
+          if (notGenerated > 0) {
+            items.push({ key: 'rental_income_not_generated', category: '租屋', label: `${curMonth} 月租金尚未產生`, count: notGenerated, href: '/rentals?tab=cashier', urgency: 'normal' });
+          }
+        } catch (e) { console.error('[action-queue] 租屋:', e.message); }
+      })());
+    }
+
+    // ── 資產 ────────────────────────────────────────────────────────
+    if (hasPerm(PERMISSIONS.ASSET_VIEW)) {
+      tasks.push((async () => {
+        try {
+          const unlinked = await prisma.rentalProperty.count({ where: { asset: null } });
+          if (unlinked > 0) {
+            items.push({ key: 'asset_unlinked_property', category: '資產', label: '物業未綁定資產', count: unlinked, href: '/assets', urgency: 'normal' });
+          }
+        } catch (e) { console.error('[action-queue] 資產:', e.message); }
+      })());
+    }
+
     await Promise.all(tasks);
 
     // Sort: urgent(0) > high(1) > normal(2)
