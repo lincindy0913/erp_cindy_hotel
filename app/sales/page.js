@@ -7,6 +7,7 @@ import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import { useConfirm } from '@/context/ConfirmContext';
 import FetchErrorBanner from '@/components/FetchErrorBanner';
+import ExcelBatchImport from '@/components/ExcelBatchImport';
 import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 import OwnerExpensesPanel from '@/components/owner-expenses/OwnerExpensesPanel';
 import ReportView from './_sections/ReportView';
@@ -120,6 +121,32 @@ function InvoicePageInner() {
               </button>
               {isLoggedIn && (
                 <>
+                  <ExcelBatchImport
+                    title="批次匯入銷項發票"
+                    hint="上傳「發票開立報表.xls」，系統依發票號碼+日期去重，相同發票自動跳過。"
+                    columns={[
+                      { key: 'invoiceNo',    header: '發票號碼', example: 'AB-12345678', required: true,  width: 16 },
+                      { key: 'invoiceDate',  header: '發票日期', example: '2026-01-15',  required: false, width: 14, note: '留空用今日' },
+                      { key: 'invoiceTitle', header: '發票抬頭', example: '○○有限公司', required: false, width: 20 },
+                      { key: 'amount',       header: '銷售額',   example: '1000',        required: false, width: 12 },
+                      { key: 'tax',          header: '稅額',     example: '50',          required: false, width: 10 },
+                      { key: 'totalAmount',  header: '含稅合計', example: '1050',        required: false, width: 12, note: '留空=銷售額+稅額' },
+                      { key: 'taxType',      header: '稅別',     example: '應稅',        required: false, width: 10, note: '應稅/免稅/零稅率' },
+                      { key: 'warehouse',    header: '館別',     example: '格',          required: false, width: 10 },
+                      { key: 'note',         header: '備註',     example: '',            required: false, width: 16 },
+                    ]}
+                    onImport={async rows => {
+                      const res = await fetch('/api/sales/import-excel', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ rows }),
+                      });
+                      const json = await res.json();
+                      if (res.ok) { invoice.fetchInvoices(1); return json; }
+                      throw new Error(json.error || '匯入失敗');
+                    }}
+                    buttonClass="bg-green-600 text-white px-3 py-2 rounded-lg hover:bg-green-700 flex items-center gap-1.5 text-sm font-medium"
+                  />
                   <button
                     onClick={() => { invoice.setShowAddAllowanceForm(!invoice.showAddAllowanceForm); invoice.setShowAddForm(false); }}
                     className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 text-sm">
