@@ -473,7 +473,7 @@ export async function POST(request) {
         where: {
           incomeYear: year,
           incomeMonth: month,
-          status: 'confirmed',
+          status: { in: ['completed', 'partial'] },
           cashTransactionId: null,
         },
       });
