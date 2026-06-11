@@ -1,10 +1,9 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Navigation from '@/components/Navigation';
-import FetchErrorBanner from '@/components/FetchErrorBanner';
 import ModuleGuideCard from '@/components/ModuleGuideCard';
 import HelpButton from '@/components/HelpButton';
 import { useToast } from '@/context/ToastContext';
@@ -12,7 +11,9 @@ import PaymentModal from './_components/PaymentModal';
 import BookingFormModal from './_components/BookingFormModal';
 import BnbBatchLockModal from './_components/BnbBatchLockModal';
 import WhQuickBtns from './_components/WhQuickBtns';
-import { todayStr } from '@/lib/localDate';
+import SyncFailuresBanner from './_components/SyncFailuresBanner';
+import BnbTabBar from './_components/BnbTabBar';
+import LockHistoryModal from './_components/LockHistoryModal';
 import { openPrintWindow } from '@/lib/printWindow';
 import { useDepositMatch } from './_hooks/useDepositMatch';
 import { useBnbRecords } from './_hooks/useBnbRecords';
@@ -26,11 +27,8 @@ import { useBnbLock } from './_hooks/useBnbLock';
 import { useBnbDeclaration } from './_hooks/useBnbDeclaration';
 import { useBnbDeclList } from './_hooks/useBnbDeclList';
 import { useBnbDailyRevenue } from './_hooks/useBnbDailyRevenue';
-import {
-  DEFAULT_WAREHOUSE, TABS, ANALYTICS_SUB_TABS,
-  BOOKING_EXPORT_COLS, MONTHLY_EXPORT_COLS, PNL_EXPORT_COLS,
-  STATUS_COLORS, PAY_FIELDS,
-} from './_constants';
+import { useBnbPageStats } from './_hooks/useBnbPageStats';
+import { DEFAULT_WAREHOUSE } from './_constants';
 import RecordsTab       from './_tabs/RecordsTab';
 import CalendarTab      from './_tabs/CalendarTab';
 import OccupancyTab     from './_tabs/OccupancyTab';
@@ -215,6 +213,8 @@ function BnbPage() {
     fetchLockStatus, fetchLockAudits, toggleLock,
   } = useBnbLock({ getActiveLockContext });
 
+  const { recStats, roomStats } = useBnbPageStats(records);
+
   // ── 館別清單 ───────────────────────────────────────────────────
   useEffect(() => {
     if (!session) return;
@@ -294,41 +294,6 @@ function BnbPage() {
   const isLocked   = !!lockStatus?.locked;
   const monthLocked = isLocked;
 
-  const _today = todayStr();
-  const recStats = records.reduce((acc, r) => {
-    if (r.status === '已刪除') return acc;
-    acc.rooms++;
-    acc.revenue  += Number(r.roomCharge) + Number(r.otherCharge);
-    acc.deposit  += Number(r.payDeposit);
-    acc.transfer += Number(r.payTransfer);
-    acc.card     += Number(r.payCard);
-    acc.cash     += Number(r.payCash);
-    acc.voucher  += Number(r.payVoucher);
-    acc.cardFee  += Number(r.cardFee);
-    acc.unfilled      += (!r.paymentFilled && !r.isComplimentary) ? 1 : 0;
-    acc.complimentary += r.isComplimentary ? 1 : 0;
-    acc.locked        += r.paymentLocked ? 1 : 0;
-    if (r.status === '已退房' && !r.paymentFilled && !r.isComplimentary && r.checkOutDate && r.checkOutDate < _today) acc.overdueUnpaid++;
-    if (Number(r.payCard) > 0 && !r.cardSettlementDate) acc.cardDateMissing++;
-    const pt = Number(r.payDeposit) + Number(r.payTransfer) + Number(r.payCard) + Number(r.payCash) + Number(r.payVoucher);
-    const ct = Number(r.roomCharge) + Number(r.otherCharge);
-    if (r.paymentFilled && !r.isComplimentary && Math.abs(pt - ct) > 0.01) acc.mismatch++;
-    return acc;
-  }, { rooms: 0, revenue: 0, deposit: 0, transfer: 0, card: 0, cash: 0, voucher: 0, cardFee: 0, unfilled: 0, complimentary: 0, locked: 0, mismatch: 0, overdueUnpaid: 0, cardDateMissing: 0 });
-
-  const roomStats = (() => {
-    const map = {};
-    for (const r of records) {
-      if (r.status === '已刪除') continue;
-      const key = r.roomNo || '未指定';
-      if (!map[key]) map[key] = { roomNo: key, bookings: 0, revenue: 0, nights: 0 };
-      map[key].bookings++;
-      map[key].revenue += Number(r.roomCharge) + Number(r.otherCharge);
-      map[key].nights  += Math.max(0, Math.round((new Date(r.checkOutDate) - new Date(r.checkInDate)) / 86400000));
-    }
-    return Object.values(map).sort((a, b) => b.bookings - a.bookings);
-  })();
-
   return (
     <div className="min-h-screen bg-gray-50">
       <Navigation borderColor="border-indigo-500" />
@@ -355,87 +320,19 @@ function BnbPage() {
           ]}
         />
 
-        {syncFailures.length > 0 && (
-          <div className="mb-4 bg-red-50 border border-red-200 rounded-xl p-3 space-y-2">
-            {syncFailures.map(f => (
-              <div key={f.id} className="flex items-center justify-between text-sm">
-                <span className="text-red-700">⚠ 出納同步失敗：{f.description}</span>
-                <button onClick={() => retrySyncFailure(f)} disabled={syncRetrying === f.id}
-                  className="px-3 py-1 text-xs bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50">
-                  {syncRetrying === f.id ? '重試中…' : '重試'}
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
+        <SyncFailuresBanner syncFailures={syncFailures} syncRetrying={syncRetrying} retrySyncFailure={retrySyncFailure} />
 
         <WhQuickBtns warehouseList={warehouseList} filterWarehouse={filterWarehouse} setFilterWarehouse={setFilterWarehouse} />
 
-        {/* ── Tab bar ── */}
-        <div className="mb-6 flex flex-wrap items-center gap-1 bg-white rounded-xl border p-1.5 shadow-sm">
-          {TABS.map((t, i) => {
-            const prevGroup = i > 0 ? TABS[i - 1].group : null;
-            const showDivider = prevGroup && t.group !== prevGroup;
-            return (
-              <span key={t.key} className="flex items-center">
-                {showDivider && <span className="w-px h-6 bg-gray-200 mx-1 self-center" aria-hidden />}
-                <button onClick={() => {
-                  setActiveTab(t.key);
-                  const url = t.key === 'analytics' ? `?tab=analytics&sub=${analyticsSub}` : `?tab=${t.key}`;
-                  router.replace(url, { scroll: false });
-                }}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-                    activeTab === t.key ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                  title={t.group}>
-                  {t.label}
-                </button>
-              </span>
-            );
-          })}
-          <div className="ml-auto flex items-center gap-2">
-            {isLocked && (
-              <span className="flex items-center gap-1 text-xs text-red-600 bg-red-50 px-2.5 py-1.5 rounded-lg border border-red-200">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>
-                {getActiveLockContext().month} 已鎖帳
-                {lockStatus?.lockedBy && <span className="text-gray-400">（{lockStatus.lockedBy}）</span>}
-              </span>
-            )}
-            <button onClick={toggleLock} disabled={lockLoading}
-              className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
-                isLocked ? 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100' : 'border-green-300 bg-green-50 text-green-700 hover:bg-green-100'
-              } disabled:opacity-50`}>
-              {lockLoading ? `${getActiveLockContext().month} 處理中…` : isLocked ? '解鎖此月' : '鎖帳此月'}
-            </button>
-            <button onClick={() => { const { month, warehouse } = getActiveLockContext(); fetchLockAudits(month, warehouse); setShowLockHistory(true); }}
-              className="px-3 py-1.5 text-xs rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50">
-              紀錄
-            </button>
-            <button onClick={() => setShowBatchLock(true)}
-              className="px-3 py-1.5 text-xs rounded-lg border border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100">
-              批次鎖帳
-            </button>
-          </div>
-        </div>
-
-        {activeTab === 'analytics' && (
-          <div className="mb-6 bg-indigo-50/80 rounded-xl border border-indigo-100 p-1.5 space-y-1">
-            {['報表', '統計圖表'].map(grp => (
-              <div key={grp} className="flex flex-wrap items-center gap-1">
-                <span className="text-[10px] text-indigo-400 font-medium w-14 shrink-0 pl-1">{grp}</span>
-                {ANALYTICS_SUB_TABS.filter(st => st.group === grp).map(st => (
-                  <button key={st.key} type="button"
-                    onClick={() => { setAnalyticsSub(st.key); router.replace(`?tab=analytics&sub=${st.key}`, { scroll: false }); }}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-                      analyticsSub === st.key ? 'bg-indigo-700 text-white shadow-sm' : 'text-indigo-900/80 hover:bg-white/80'
-                    }`}>
-                    {st.label}
-                  </button>
-                ))}
-              </div>
-            ))}
-          </div>
-        )}
+        <BnbTabBar
+          activeTab={activeTab} setActiveTab={setActiveTab}
+          analyticsSub={analyticsSub} setAnalyticsSub={setAnalyticsSub}
+          router={router}
+          isLocked={isLocked} lockLoading={lockLoading} lockStatus={lockStatus}
+          getActiveLockContext={getActiveLockContext} toggleLock={toggleLock}
+          fetchLockAudits={fetchLockAudits} setShowLockHistory={setShowLockHistory}
+          setShowBatchLock={setShowBatchLock}
+        />
 
         {activeTab === 'records' && (
           <RecordsTab
@@ -765,32 +662,7 @@ function BnbPage() {
       )}
 
       {showLockHistory && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setShowLockHistory(false)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 p-5" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-base font-bold text-gray-800">鎖帳操作紀錄</h3>
-              <button onClick={() => setShowLockHistory(false)} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
-            </div>
-            {lockAudits.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-4">尚無紀錄</p>
-            ) : (
-              <div className="space-y-2 max-h-80 overflow-y-auto">
-                {lockAudits.map(a => (
-                  <div key={a.id} className={`rounded-lg px-3 py-2 text-xs border ${a.action === 'lock' ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
-                    <div className="flex items-center justify-between">
-                      <span className={`font-semibold ${a.action === 'lock' ? 'text-red-700' : 'text-green-700'}`}>
-                        {a.action === 'lock' ? '🔒 鎖帳' : '🔓 解鎖'}
-                      </span>
-                      <span className="text-gray-400">{new Date(a.performedAt).toLocaleString('zh-TW')}</span>
-                    </div>
-                    <div className="text-gray-600 mt-0.5">操作者：{a.performedBy}</div>
-                    {a.reason && <div className="text-gray-700 mt-0.5">原因：{a.reason}</div>}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+        <LockHistoryModal lockAudits={lockAudits} onClose={() => setShowLockHistory(false)} />
       )}
 
       {showBatchLock && (
