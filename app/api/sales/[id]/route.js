@@ -4,6 +4,7 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { assertPeriodOpen } from '@/lib/period-lock';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 /** GET: 單筆發票（供 /sales?edit=id 連動編輯） */
 export async function GET(request, { params }) {
@@ -236,6 +237,20 @@ export async function DELETE(request, { params }) {
     await assertPeriodOpen(prisma, existing.invoiceDate, firstDetailDel?.warehouse || null);
 
     await prisma.salesMaster.delete({ where: { id } });
+
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.INVOICE_VOID,
+      targetModule: 'sales',
+      targetRecordId: id,
+      targetRecordNo: existing.salesNo,
+      beforeState: {
+        invoiceNo: existing.invoiceNo,
+        invoiceDate: existing.invoiceDate,
+        totalAmount: Number(existing.totalAmount),
+        status: existing.status,
+      },
+    });
+
     return NextResponse.json({ message: '發票已刪除，相關進貨單品項已可重新核銷' });
   } catch (error) {
     console.error('刪除發票錯誤:', error.message || error);

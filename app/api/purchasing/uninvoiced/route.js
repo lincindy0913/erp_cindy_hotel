@@ -16,6 +16,8 @@ export async function GET(request) {
     const supplierId = searchParams.get('supplierId');
     const warehouse = searchParams.get('warehouse');
     const purchaseId = searchParams.get('purchaseId') ? parseInt(searchParams.get('purchaseId')) : null;
+    const page  = Math.max(parseInt(searchParams.get('page')  || '1'), 1);
+    const limit = Math.min(parseInt(searchParams.get('limit') || '200'), 500);
 
     // 建立進貨單篩選條件
     const purchaseWhere = {};
@@ -90,7 +92,12 @@ export async function GET(request) {
       }
     }
 
-    return NextResponse.json(uninvoicedItems);
+    const totalCount = uninvoicedItems.length;
+    const pagedData  = uninvoicedItems.slice((page - 1) * limit, page * limit);
+    return NextResponse.json({
+      data: pagedData,
+      pagination: { page, limit, totalCount, totalPages: Math.ceil(totalCount / limit) },
+    });
   } catch (error) {
     return handleApiError(error);
   }

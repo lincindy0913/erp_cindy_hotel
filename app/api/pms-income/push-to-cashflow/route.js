@@ -65,7 +65,12 @@ export async function POST(request) {
       configMap[key] = c;
     }
 
-    const creditCardFeeEntries = await prisma.pmsCreditCardFeeEntry.findMany({});
+    const recordDates = [...new Set(records.map(r => r.businessDate))];
+    const creditCardFeeEntries = recordDates.length > 0
+      ? await prisma.pmsCreditCardFeeEntry.findMany({
+          where: { settlementDate: { in: recordDates } }
+        })
+      : [];
     const feeMap = {};
     for (const f of creditCardFeeEntries) {
       feeMap[`${f.warehouse}|${f.settlementDate}`] = Number(f.feeAmount);

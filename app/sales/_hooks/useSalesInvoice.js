@@ -197,10 +197,9 @@ export function useSalesInvoice({ searchParams, canSalesView, setActiveView }) {
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
       const data = await response.json();
-      console.log('查詢結果:', data);
-      console.log('資料筆數:', Array.isArray(data) ? data.length : 0);
+      const items = Array.isArray(data) ? data : (data.data || []);
+      console.log('查詢結果筆數:', items.length, data.pagination ? `(共 ${data.pagination.totalCount} 筆)` : '');
 
-      const items = Array.isArray(data) ? data : [];
       setAvailableItems(items);
       setSelectedItems([]);
 
