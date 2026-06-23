@@ -350,23 +350,31 @@ export default function AnalyticsTab({
                           const st = r.monthStatus?.[m] || 'empty';
                           const actual = r.months[m] || 0;
                           const expected = r.monthsExpected?.[m] || 0;
+                          const isSplit = !!r.monthsSplit?.[m];
                           const isReceivedNoExpect = (st === 'partial' || st === 'completed') && expected === 0 && actual > 0;
-                          const cellBg = isReceivedNoExpect   ? 'bg-green-50 text-green-700'
-                            : st === 'completed'              ? 'bg-green-50 text-green-800'
-                            : st === 'partial'                ? 'bg-orange-50 text-orange-800'
-                            : st === 'overdue'                ? 'bg-red-50 text-red-700'
-                            : st === 'pending'                ? 'bg-yellow-50 text-yellow-800'
+                          const cellBg = isSplit                          ? 'bg-teal-50 text-teal-700'
+                            : isReceivedNoExpect                          ? 'bg-green-50 text-green-700'
+                            : st === 'completed'                          ? 'bg-green-50 text-green-800'
+                            : st === 'partial'                            ? 'bg-orange-50 text-orange-800'
+                            : st === 'overdue'                            ? 'bg-red-50 text-red-700'
+                            : st === 'pending'                            ? 'bg-yellow-50 text-yellow-800'
                             : '';
                           return (
                             <td key={m} className={`text-right px-2 py-2 border border-gray-200 align-top ${cellBg}`}>
-                              {isReceivedNoExpect && (
+                              {isSplit && (
+                                <div>
+                                  <div className="font-medium">{fmt(actual)}</div>
+                                  <div className="text-xs opacity-60">分攤</div>
+                                </div>
+                              )}
+                              {!isSplit && isReceivedNoExpect && (
                                 <div>
                                   <div className="font-medium">{fmt(actual)}</div>
                                   <div className="text-xs opacity-60">已收</div>
                                 </div>
                               )}
-                              {!isReceivedNoExpect && st === 'completed' && <div className="font-medium">{fmt(actual)}</div>}
-                              {!isReceivedNoExpect && st === 'partial' && (
+                              {!isSplit && !isReceivedNoExpect && st === 'completed' && <div className="font-medium">{fmt(actual)}</div>}
+                              {!isSplit && !isReceivedNoExpect && st === 'partial' && (
                                 <div>
                                   <div className="font-medium">{fmt(actual)}</div>
                                   <div className="text-xs opacity-60">應收 {fmt(expected)}</div>
@@ -411,6 +419,7 @@ export default function AnalyticsTab({
           {!reportLoading && incomeReportData.rows.length > 0 && (
             <div className="flex flex-wrap gap-3 mt-2 text-xs no-print">
               <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-green-200" />已收</span>
+              <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-teal-200" />分攤</span>
               <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-orange-200" />部分收</span>
               <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-yellow-200" />待收</span>
               <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-red-200" />逾期未收</span>

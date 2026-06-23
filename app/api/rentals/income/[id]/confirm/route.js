@@ -133,6 +133,7 @@ export async function POST(request, { params }) {
       });
 
       const firstTxId = existingPayments.length > 0 ? income.cashTransactionId : rentTx.id;
+      const splitUpdate = rent.isSplitAllocation != null ? { isSplitAllocation: !!rent.isSplitAllocation } : {};
       await tx.rentalIncome.update({
         where: { id: incomeId },
         data: {
@@ -145,7 +146,8 @@ export async function POST(request, { params }) {
           matchNote: rent.matchNote || null,
           status: newStatus,
           cashTransactionId: firstTxId ?? rentTx.id,
-          confirmedAt: new Date()
+          confirmedAt: new Date(),
+          ...splitUpdate,
         },
         select: { id: true },
       });

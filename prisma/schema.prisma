@@ -1768,6 +1768,7 @@ model RentalIncome {
   note                 String?   @db.Text
   confirmedBy          String?   @map("confirmed_by") @db.VarChar(255)
   confirmedAt          DateTime? @map("confirmed_at")
+  isSplitAllocation    Boolean   @default(false) @map("is_split_allocation")
   isLocked             Boolean   @default(false) @map("is_locked")
   lockedAt             DateTime? @map("locked_at")
   lockedBy             String?   @map("locked_by") @db.VarChar(255)

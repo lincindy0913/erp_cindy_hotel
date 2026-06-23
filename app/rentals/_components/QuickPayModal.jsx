@@ -86,6 +86,12 @@ export default function QuickPayModal({
                 {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m === 'transfer' ? '轉帳' : m}</option>)}
               </select>
             </div>
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input type="checkbox" checked={!!quickPayForm.isSplitAllocation}
+                onChange={e => setQuickPayForm(f => ({ ...f, isSplitAllocation: e.target.checked }))}
+                className="w-4 h-4 accent-teal-600" />
+              <span className="text-sm text-gray-600">分攤收款（此款項為多月分攤的其中一期）</span>
+            </label>
           </div>
           <div className="flex justify-end gap-2 mt-5">
             <button onClick={() => setQuickPayIncome(null)} className="px-4 py-2 text-sm bg-gray-200 rounded hover:bg-gray-300">取消</button>

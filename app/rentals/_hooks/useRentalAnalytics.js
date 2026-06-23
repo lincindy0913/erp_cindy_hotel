@@ -194,10 +194,11 @@ export function useRentalAnalytics({ accounts = [], properties = [] } = {}) {
     const remaining = Math.max(0, expected - received);
     const resolvedQPAccountId = defaultAccountId === 'null' || defaultAccountId === 'undefined' ? '' : defaultAccountId;
     setQuickPayForm({
-      actualAmount:  remaining > 0 ? String(remaining) : String(expected),
-      actualDate:    todayStr(),
-      accountId:     resolvedQPAccountId,
-      paymentMethod: resolvePaymentMethod(income.paymentMethod, resolvedQPAccountId),
+      actualAmount:      remaining > 0 ? String(remaining) : String(expected),
+      actualDate:        todayStr(),
+      accountId:         resolvedQPAccountId,
+      paymentMethod:     resolvePaymentMethod(income.paymentMethod, resolvedQPAccountId),
+      isSplitAllocation: false,
     });
     setQuickPayIncome(income);
   }

@@ -85,8 +85,10 @@ export async function GET(request) {
           propertyId: true,
           incomeMonth: true,
           actualAmount: true,
+          expectedAmount: true,
           status: true,
           dueDate: true,
+          isSplitAllocation: true,
           property: { select: { id: true, name: true, buildingName: true, unitNo: true, address: true } },
           tenant: { select: { fullName: true, companyName: true, tenantType: true } }
         },
@@ -122,6 +124,7 @@ export async function GET(request) {
         tenantName: null,
         months: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0, 11: 0, 12: 0 },
         monthsExpected: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0, 11: 0, 12: 0 },
+        monthsSplit: {},
         monthStatus: { ...emptyStatus },
         total: 0
       });
@@ -133,6 +136,7 @@ export async function GET(request) {
       const amount = paid ? Number(i.actualAmount ?? 0) : 0;
       row.months[i.incomeMonth] = (row.months[i.incomeMonth] || 0) + amount;
       row.monthsExpected[i.incomeMonth] = (row.monthsExpected[i.incomeMonth] || 0) + Number(i.expectedAmount ?? 0);
+      if (i.isSplitAllocation) row.monthsSplit[i.incomeMonth] = true;
       row.total += amount;
       // Compute cell status: overdue > partial > completed > pending > empty
       const cellStatus = i.status === 'completed' ? 'completed'
