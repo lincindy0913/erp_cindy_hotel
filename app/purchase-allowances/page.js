@@ -2,6 +2,7 @@
 
 import Navigation from '@/components/Navigation';
 import FetchErrorBanner from '@/components/FetchErrorBanner';
+import ModuleGuideCard from '@/components/ModuleGuideCard';
 import { usePurchaseAllowances } from './_hooks/usePurchaseAllowances';
 import AllowanceForm from './_components/AllowanceForm';
 import ConfirmAllowanceModal from './_components/ConfirmAllowanceModal';
@@ -26,6 +27,18 @@ export default function PurchaseAllowancesPage() {
       <Navigation borderColor="border-orange-500" />
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: 24 }}>
         {h.fetchError && <FetchErrorBanner message={h.fetchError} onRetry={h.fetchAll} />}
+
+        <ModuleGuideCard
+          title="進貨折讓／退貨流程指引"
+          color="amber"
+          storageKey="guide-purchase-allowances"
+          steps={[
+            { label: '選擇廠商與商品', desc: '選擇廠商，挑選要退貨或折讓的進貨明細' },
+            { label: '建立退貨／折讓單', desc: '填寫退貨數量或折讓金額，儲存為草稿' },
+            { label: '確認核銷', desc: '草稿確認後系統自動調整應付金額與庫存' },
+            { label: '現金流歸帳', desc: '若廠商退款，可連結現金流入帳記錄' },
+          ]}
+        />
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <h2 style={{ fontSize: '1.5rem', fontWeight: 700 }}>進貨退貨管理</h2>

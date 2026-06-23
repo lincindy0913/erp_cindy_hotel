@@ -2,6 +2,7 @@
 
 import Navigation from '@/components/Navigation';
 import FetchErrorBanner from '@/components/FetchErrorBanner';
+import ModuleGuideCard from '@/components/ModuleGuideCard';
 import ExcelBatchImport from '@/components/ExcelBatchImport';
 import { SortableThInline } from '@/components/SortableTh';
 import { todayStr } from '@/lib/localDate';
@@ -29,6 +30,18 @@ export default function EmployeeAdvancesPage() {
     <>
       <Navigation borderColor="border-green-500" />
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: 24 }}>
+
+        <ModuleGuideCard
+          title="員工代墊款流程指引"
+          color="green"
+          storageKey="guide-employee-advances"
+          steps={[
+            { label: '登記代墊款', desc: '手動新增或批次匯入員工代墊費用記錄' },
+            { label: '查看待結算', desc: '查看各員工待結算金額，追蹤未報帳項目' },
+            { label: '執行結算', desc: '核對無誤後標記結算，可連結付款單出帳' },
+            { label: '彙總報表', desc: '查看各員工代墊總金額與歷史結算紀錄' },
+          ]}
+        />
 
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>

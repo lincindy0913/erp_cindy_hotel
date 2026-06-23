@@ -56,8 +56,8 @@ export async function GET(request) {
             prisma.purchaseMaster.count({ where: { status: '待入庫', purchaseDate: { lt: ago30DaysStr } } }),
             prisma.purchaseMaster.count({ where: { status: '待入庫', purchaseDate: { gte: ago30DaysStr } } }),
           ]);
-          if (overdueWh > 0) items.push({ key: 'overdue_warehouse', category: '採購', label: '逾期待入庫（>30天）', count: overdueWh, href: '/inventory?tab=inbound', urgency: 'urgent' });
-          if (recentWh > 0) items.push({ key: 'pending_warehouse', category: '採購', label: '待入庫進貨', count: recentWh, href: '/inventory?tab=inbound', urgency: 'high' });
+          if (overdueWh > 0) items.push({ key: 'overdue_warehouse', category: '採購', label: '逾期待入庫（>30天）', count: overdueWh, href: '/purchasing?status=待入庫', urgency: 'urgent' });
+          if (recentWh > 0) items.push({ key: 'pending_warehouse', category: '採購', label: '待入庫進貨', count: recentWh, href: '/purchasing?status=待入庫', urgency: 'high' });
         } catch (e) { console.error('[action-queue] 採購待入庫:', e.message); }
       })());
       // 低庫存（Prisma 不支援欄位對欄位比較，直接用 raw）
@@ -109,10 +109,10 @@ export async function GET(request) {
           }).length;
 
           if (unpaidCount > 0) {
-            items.push({ key: 'received_no_payment', category: '採購', label: '已入庫待建付款單', count: unpaidCount, href: '/finance', urgency: 'high' });
+            items.push({ key: 'received_no_payment', category: '採購', label: '已入庫待建付款單', count: unpaidCount, href: '/finance?tab=draft', urgency: 'high' });
           }
           if (uninvoicedCount > 0) {
-            items.push({ key: 'received_no_invoice', category: '採購', label: '已入庫未核銷發票', count: uninvoicedCount, href: '/purchasing', urgency: 'normal' });
+            items.push({ key: 'received_no_invoice', category: '採購', label: '已入庫未核銷發票', count: uninvoicedCount, href: '/purchasing?status=已入庫', urgency: 'normal' });
           }
         } catch (e) { console.error('[action-queue] 採購已入庫待辦:', e.message); }
       })());
@@ -157,7 +157,7 @@ export async function GET(request) {
             const overdue = earliest && earliest < todayStr;
             items.push({
               key: 'pending_cashier', category: '出納',
-              label: '待執行付款單', count: dueChecks, href: '/cashier',
+              label: '待執行付款單', count: dueChecks, href: '/cashier?tab=pending',
               urgency: overdue ? 'urgent' : 'high',
               detail: earliest ? `最早到期：${earliest}` : null,
             });

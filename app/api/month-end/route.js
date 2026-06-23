@@ -1,13 +1,13 @@
 import { NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { applyWarehouseFilter, getAllowedWarehouse } from '@/lib/warehouse-access';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
-import { localDateStr } from '@/lib/localDate';
-import { calcBalanceDelta } from '@/lib/calc-balance-delta';
 import { generateMonthEndReports } from '@/lib/generate-month-end-reports';
+import { runMonthEndPreChecks } from '@/lib/month-end/preChecks';
 
 export const dynamic = 'force-dynamic';
 
@@ -72,106 +72,87 @@ export async function GET(request) {
 
     // Derive warehouse restriction once for all subsequent queries
     const allowedWarehouse = getAllowedWarehouse(auth.session);
-    const whFilter = allowedWarehouse ? { warehouse: allowedWarehouse } : {};
+    const whClause = allowedWarehouse ? Prisma.sql`AND warehouse = ${allowedWarehouse}` : Prisma.empty;
 
-    // Get monthly purchase summaries
-    const purchases = await prisma.purchaseMaster.findMany({
-      where: {
-        purchaseDate: { gte: yearStart, lte: yearEnd },
-        ...whFilter,
-      },
-      select: {
-        purchaseDate: true,
-        warehouse: true,
-        totalAmount: true,
-        status: true
-      }
-    });
+    // DB-level GROUP BY month：避免載入整年資料再用 JS 拆月
+    const [purchaseGroups, salesGroups, expenseGroups, commonExpenseGroups] = await Promise.all([
+      prisma.$queryRaw`
+        SELECT LEFT(purchase_date, 7) AS month,
+               COUNT(*)::int          AS count,
+               COALESCE(SUM(total_amount), 0)::numeric AS total
+        FROM purchase_masters
+        WHERE purchase_date >= ${yearStart} AND purchase_date <= ${yearEnd}
+        ${whClause}
+        GROUP BY LEFT(purchase_date, 7)
+      `,
+      prisma.$queryRaw`
+        SELECT LEFT(invoice_date, 7) AS month,
+               COUNT(*)::int          AS count,
+               COALESCE(SUM(total_amount), 0)::numeric AS total
+        FROM sales_masters
+        WHERE invoice_date >= ${yearStart} AND invoice_date <= ${yearEnd}
+        GROUP BY LEFT(invoice_date, 7)
+      `,
+      prisma.$queryRaw`
+        SELECT LEFT(invoice_date, 7) AS month,
+               COALESCE(SUM(amount), 0)::numeric AS total
+        FROM expenses
+        WHERE invoice_date >= ${yearStart} AND invoice_date <= ${yearEnd}
+        ${whClause}
+        GROUP BY LEFT(invoice_date, 7)
+      `,
+      prisma.$queryRaw`
+        SELECT expense_month AS month,
+               COALESCE(SUM(total_debit), 0)::numeric AS total
+        FROM common_expense_records
+        WHERE expense_month >= ${`${year}-01`} AND expense_month <= ${`${year}-12`}
+          AND status = ${'已確認'}
+        ${whClause}
+        GROUP BY expense_month
+      `,
+    ]);
 
-    // Get monthly sales summaries (SalesMaster has no warehouse field — not filterable)
-    const sales = await prisma.salesMaster.findMany({
-      where: {
-        invoiceDate: { gte: yearStart, lte: yearEnd }
-      },
-      select: {
-        invoiceDate: true,
-        totalAmount: true,
-        status: true
-      }
-    });
+    const purchaseByMonth  = new Map(purchaseGroups.map(r => [r.month, r]));
+    const salesByMonth     = new Map(salesGroups.map(r => [r.month, r]));
+    const expenseByMonth   = new Map(expenseGroups.map(r => [r.month, r]));
+    const commonExpByMonth = new Map(commonExpenseGroups.map(r => [r.month, r]));
 
-    // Get monthly expense summaries (legacy Expense table)
-    const expenses = await prisma.expense.findMany({
-      where: {
-        invoiceDate: { gte: yearStart, lte: yearEnd },
-        ...whFilter,
-      },
-      select: {
-        invoiceDate: true,
-        warehouse: true,
-        amount: true,
-        status: true
-      }
-    });
-
-    // Get CommonExpenseRecord summaries (confirmed only)
-    const commonExpenses = await prisma.commonExpenseRecord.findMany({
-      where: {
-        expenseMonth: { gte: `${year}-01`, lte: `${year}-12` },
-        status: '已確認',
-        ...whFilter,
-      },
-      select: {
-        expenseMonth: true,
-        totalDebit: true,
-        warehouse: true
-      }
-    });
-
-    // Build monthly summary for all 12 months
+    // 直接從 Map lookup，不再逐月 filter
     const months = [];
     for (let m = 1; m <= 12; m++) {
       const monthStr = String(m).padStart(2, '0');
-      const monthStart = `${year}-${monthStr}-01`;
-      const lastDay = new Date(year, m, 0).getDate();
-      const monthEnd = `${year}-${monthStr}-${String(lastDay).padStart(2, '0')}`;
+      const key = `${year}-${monthStr}`;
 
-      const monthPurchases = purchases.filter(p => {
-        return p.purchaseDate >= monthStart && p.purchaseDate <= monthEnd;
-      });
-      const monthSales = sales.filter(s => {
-        return s.invoiceDate >= monthStart && s.invoiceDate <= monthEnd;
-      });
-      const monthExpenses = expenses.filter(e => {
-        return e.invoiceDate >= monthStart && e.invoiceDate <= monthEnd;
-      });
-      const monthCommonExpenses = commonExpenses.filter(e => {
-        return e.expenseMonth === `${year}-${monthStr}`;
-      });
+      const purchData  = purchaseByMonth.get(key);
+      const salesData  = salesByMonth.get(key);
+      const expData    = expenseByMonth.get(key);
+      const commonData = commonExpByMonth.get(key);
 
-      const purchaseTotal = monthPurchases.reduce((sum, p) => sum + Number(p.totalAmount), 0);
-      const salesTotal = monthSales.reduce((sum, s) => sum + Number(s.totalAmount), 0);
-      const legacyExpenseTotal = monthExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
-      const commonExpenseTotal = monthCommonExpenses.reduce((sum, e) => sum + Number(e.totalDebit), 0);
-      const expenseTotal = legacyExpenseTotal + commonExpenseTotal;
+      const purchaseTotal      = Number(purchData?.total  ?? 0);
+      const purchaseCount      = Number(purchData?.count  ?? 0);
+      const salesTotal         = Number(salesData?.total  ?? 0);
+      const salesCount         = Number(salesData?.count  ?? 0);
+      const legacyExpenseTotal = Number(expData?.total    ?? 0);
+      const commonExpenseTotal = Number(commonData?.total ?? 0);
+      const expenseTotal       = legacyExpenseTotal + commonExpenseTotal;
 
-      const key = `${m}-all`;
-      const statusInfo = statusMap[key] || null;
+      const statusKey  = `${m}-all`;
+      const statusInfo = statusMap[statusKey] || null;
 
       months.push({
         month: m,
-        status: statusInfo ? statusInfo.status : '未結帳',
-        statusId: statusInfo ? statusInfo.id : null,
-        closedAt: statusInfo ? statusInfo.closedAt : null,
-        closedBy: statusInfo ? statusInfo.closedBy : null,
-        lockedAt: statusInfo ? statusInfo.lockedAt : null,
+        status:      statusInfo ? statusInfo.status      : '未結帳',
+        statusId:    statusInfo ? statusInfo.id          : null,
+        closedAt:    statusInfo ? statusInfo.closedAt    : null,
+        closedBy:    statusInfo ? statusInfo.closedBy    : null,
+        lockedAt:    statusInfo ? statusInfo.lockedAt    : null,
         reportCount: statusInfo ? statusInfo.reportCount : 0,
-        reports: statusInfo ? statusInfo.reports : [],
-        purchaseCount: monthPurchases.length,
+        reports:     statusInfo ? statusInfo.reports     : [],
+        purchaseCount: Number(purchaseCount),
         purchaseTotal: Math.round(purchaseTotal),
-        salesCount: monthSales.length,
-        salesTotal: Math.round(salesTotal),
-        expenseTotal: Math.round(expenseTotal)
+        salesCount:    Number(salesCount),
+        salesTotal:    Math.round(salesTotal),
+        expenseTotal:  Math.round(expenseTotal),
       });
     }
 
@@ -245,315 +226,10 @@ export async function POST(request) {
       }
     }
 
-    // ==========================================
     // 1. Run pre-checks
-    // ==========================================
-    const preChecks = [];
+    const preChecks = await runMonthEndPreChecks(prisma, { year, month, monthStr, periodStart, periodEnd, warehouse, now });
 
-    // Check purchases with status='待入庫' older than 30 days
-    const thirtyDaysAgo = new Date(now);
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const thirtyDaysAgoStr = localDateStr(thirtyDaysAgo);
-
-    const pendingPurchaseWhere = {
-      status: '待入庫',
-      purchaseDate: { lte: thirtyDaysAgoStr }
-    };
-    if (warehouse) pendingPurchaseWhere.warehouse = warehouse;
-
-    const pendingPurchases = await prisma.purchaseMaster.count({
-      where: pendingPurchaseWhere
-    });
-    preChecks.push({
-      name: '逾期待入庫進貨單（超過30天）',
-      count: pendingPurchases,
-      passed: pendingPurchases === 0,
-      level: pendingPurchases > 0 ? 'warning' : 'pass'
-    });
-
-    // Check invoices with status='待核銷' older than 60 days
-    const sixtyDaysAgo = new Date(now);
-    sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
-    const sixtyDaysAgoStr = localDateStr(sixtyDaysAgo);
-
-    const pendingInvoices = await prisma.salesMaster.count({
-      where: {
-        status: '待核銷',
-        invoiceDate: { lte: sixtyDaysAgoStr }
-      }
-    });
-    preChecks.push({
-      name: '逾期待核銷發票（超過60天）',
-      count: pendingInvoices,
-      passed: pendingInvoices === 0,
-      level: pendingInvoices > 0 ? 'warning' : 'pass',
-      link: `/sales?status=待核銷&view=list`,
-      linkText: '前往發票列表',
-    });
-
-    // Check paymentOrder: 待出納（已送出但出納尚未執行）
-    const pendingCashierOrders = await prisma.paymentOrder.count({
-      where: { status: '待出納' }
-    });
-    preChecks.push({
-      name: '待出納付款單',
-      count: pendingCashierOrders,
-      passed: pendingCashierOrders === 0,
-      level: pendingCashierOrders > 0 ? 'warning' : 'pass',
-      link: '/cashier',
-      linkText: '前往出納',
-      detail: pendingCashierOrders > 0
-        ? `${pendingCashierOrders} 張付款單已建立送出，但出納尚未點擊「執行」確認。注意：此項只查已建立付款單的出納狀態，不代表所有應付帳款均已建單。`
-        : undefined,
-    });
-
-    // Check paymentOrder: 草稿（尚未送出出納）
-    const draftOrders = await prisma.paymentOrder.count({
-      where: { status: '草稿' }
-    });
-    preChecks.push({
-      name: '未送出付款單（草稿）',
-      count: draftOrders,
-      passed: draftOrders === 0,
-      level: draftOrders > 0 ? 'warning' : 'pass',
-      link: '/finance',
-      linkText: '前往付款',
-    });
-
-    // Check cash account balances match transactions
-    let cashBalanceMismatch = 0;
-    try {
-      const cashAccounts = await prisma.cashAccount.findMany({
-        where: warehouse ? { warehouse } : {},
-        select: { id: true, name: true, openingBalance: true, currentBalance: true }
-      });
-
-      for (const account of cashAccounts) {
-        const txs = await prisma.cashTransaction.findMany({
-          where: { accountId: account.id, status: '已確認' },
-          select: { type: true, amount: true, fee: true, hasFee: true },
-        });
-
-        const expectedBalance = Number(account.openingBalance) + calcBalanceDelta(txs);
-        const currentBalance = Number(account.currentBalance);
-
-        if (Math.abs(expectedBalance - currentBalance) > 0.01) {
-          cashBalanceMismatch++;
-        }
-      }
-    } catch (e) {
-      // If cash account check fails, just note it
-      console.error('現金帳戶檢查錯誤:', e);
-    }
-    preChecks.push({
-      name: '現金帳戶餘額不一致',
-      count: cashBalanceMismatch,
-      passed: cashBalanceMismatch === 0,
-      level: cashBalanceMismatch > 0 ? 'warning' : 'pass'
-    });
-
-    // Check cross-warehouse close: when doing a global close (no warehouse), warn if any building-type
-    // warehouse is missing a per-warehouse close for this period
-    if (!warehouse) {
-      try {
-        const activeBuildings = await prisma.warehouse.findMany({
-          where: { type: 'building', isActive: true },
-          select: { name: true },
-        });
-        if (activeBuildings.length > 0) {
-          const closedWarehouseStatuses = await prisma.monthEndStatus.findMany({
-            where: {
-              year,
-              month,
-              warehouse: { in: activeBuildings.map(w => w.name) },
-              status: { in: ['已結帳', '已鎖定'] },
-            },
-            select: { warehouse: true },
-          });
-          const closedWarehouseSet = new Set(closedWarehouseStatuses.map(s => s.warehouse));
-          const unclosedBuildings = activeBuildings.filter(w => !closedWarehouseSet.has(w.name));
-          if (unclosedBuildings.length > 0) {
-            preChecks.push({
-              name: '館別未完成個別月結',
-              count: unclosedBuildings.length,
-              passed: true,
-              level: 'warning',
-              detail: `以下館別尚未完成個別月結：${unclosedBuildings.map(w => w.name).join('、')}`,
-            });
-          }
-        }
-      } catch (e) {
-        console.error('跨館別月結驗證錯誤:', e);
-      }
-    }
-
-    // spec26: Check cash count completion for the last day of the month
-    try {
-      const lastDayOfMonth = new Date(year, month, 0); // last day of given month
-      const lastDayStr = localDateStr(lastDayOfMonth);
-
-      const cashAccountsAll = await prisma.cashAccount.findMany({
-        where: {
-          type: '現金',
-          isActive: true,
-          ...(warehouse ? { warehouse } : {}),
-        },
-        select: { id: true, name: true },
-      });
-
-      if (cashAccountsAll.length > 0) {
-        const completedCounts = await prisma.cashCount.findMany({
-          where: {
-            countDate: lastDayStr,
-            status: { in: ['confirmed', 'approved'] },
-            accountId: { in: cashAccountsAll.map(a => a.id) },
-          },
-          select: { accountId: true },
-        });
-        const completedAccountIds = new Set(completedCounts.map(c => c.accountId));
-        const missingAccounts = cashAccountsAll.filter(a => !completedAccountIds.has(a.id));
-
-        // Also check for pending abnormal counts (warning only)
-        const pendingAbnormal = await prisma.cashCount.count({
-          where: {
-            countDate: { gte: `${year}-${String(month).padStart(2, '0')}-01`, lte: lastDayStr },
-            status: 'pending',
-            isAbnormal: true,
-          },
-        });
-
-        preChecks.push({
-          name: '現金盤點未完成',
-          count: missingAccounts.length,
-          passed: missingAccounts.length === 0,
-          level: missingAccounts.length > 0 ? 'warning' : 'pass',
-          detail: missingAccounts.length > 0
-            ? `以下帳戶尚未完成 ${lastDayStr} 盤點：${missingAccounts.map(a => a.name).join('、')}`
-            : undefined,
-        });
-
-        if (pendingAbnormal > 0) {
-          preChecks.push({
-            name: '現金盤點待審核',
-            count: pendingAbnormal,
-            passed: true, // non-blocking warning
-            level: 'warning',
-            detail: `${pendingAbnormal} 筆現金盤點待主管審核，建議先完成審核`,
-          });
-        }
-      }
-    } catch (e) {
-      console.error('現金盤點檢查錯誤:', e);
-    }
-
-    // ── 收入端對稱檢查（非阻擋，level='warning'）──────────────────────
-
-    // PMS 月結算未完成
-    try {
-      const unsettledPms = await prisma.pmsMonthlySettlement.findMany({
-        where: { settlementMonth: `${year}-${monthStr}`, status: { not: '已結算' } },
-        select: { warehouse: true, status: true },
-      });
-      if (unsettledPms.length > 0) {
-        preChecks.push({
-          name: 'PMS 月結算未完成',
-          count: unsettledPms.length,
-          passed: true,
-          level: 'warning',
-          detail: `以下館別 PMS 月結算未完成：${unsettledPms.map(s => `${s.warehouse}（${s.status}）`).join('、')}`,
-          link: '/pms-income',
-          linkText: '前往 PMS 收入',
-        });
-      }
-    } catch (e) {
-      console.error('PMS 月結算檢查錯誤:', e);
-    }
-
-    // 租屋已確認收款未入帳
-    try {
-      const unlinkedRental = await prisma.rentalIncome.count({
-        where: {
-          incomeYear: year,
-          incomeMonth: month,
-          status: { in: ['completed', 'partial'] },
-          cashTransactionId: null,
-        },
-      });
-      if (unlinkedRental > 0) {
-        preChecks.push({
-          name: '租屋已確認收款未入帳',
-          count: unlinkedRental,
-          passed: true,
-          level: 'warning',
-          detail: `${unlinkedRental} 筆已確認租金尚未建立現金流記錄，月結損益將有落差`,
-          link: '/rentals?tab=cashier',
-          linkText: '前往租屋收款',
-        });
-      }
-    } catch (e) {
-      console.error('租屋收款入帳檢查錯誤:', e);
-    }
-
-    // 庫存盤點未完成
-    try {
-      const activeBuildings = await prisma.warehouse.findMany({
-        where: { type: 'building', isActive: true },
-        select: { name: true },
-      });
-      if (activeBuildings.length > 0) {
-        const countedThisMonth = await prisma.stockCount.findMany({
-          where: { countDate: { gte: periodStart, lte: periodEnd }, type: 'count' },
-          select: { warehouse: true },
-          distinct: ['warehouse'],
-        });
-        const countedSet = new Set(countedThisMonth.map(s => s.warehouse));
-        const uncountedBlds = activeBuildings.filter(w => !countedSet.has(w.name));
-        if (uncountedBlds.length > 0) {
-          preChecks.push({
-            name: '庫存盤點未完成',
-            count: uncountedBlds.length,
-            passed: true,
-            level: 'warning',
-            detail: `以下館別本月尚未完成庫存盤點：${uncountedBlds.map(w => w.name).join('、')}`,
-            link: '/inventory?tab=count',
-            linkText: '前往庫存盤點',
-          });
-        }
-      }
-    } catch (e) {
-      console.error('庫存盤點檢查錯誤:', e);
-    }
-
-    // 工程估驗已核定未開票
-    try {
-      const certifiedClaims = await prisma.engineeringProgressClaim.findMany({
-        where: {
-          status: 'certified',
-          certifiedDate: { gte: periodStart, lte: periodEnd },
-        },
-        include: {
-          outputInvoices: { where: { status: { not: '已作廢' } }, select: { id: true } },
-        },
-      });
-      const uninvoiced = certifiedClaims.filter(c => c.outputInvoices.length === 0);
-      if (uninvoiced.length > 0) {
-        preChecks.push({
-          name: '工程估驗已核定未開票',
-          count: uninvoiced.length,
-          passed: true,
-          level: 'warning',
-          detail: `${uninvoiced.length} 筆已核定估驗尚未開立銷項發票`,
-          link: '/engineering?tab=progressClaims',
-          linkText: '前往估驗計價',
-        });
-      }
-    } catch (e) {
-      console.error('工程估驗發票檢查錯誤:', e);
-    }
-
-    // ==========================================
-    // 1c. Block on missing cash count (unless force: true)
-    // ==========================================
+    // Block on missing cash count (unless force: true)
     const cashCountCheck = preChecks.find(c => c.name === '現金盤點未完成');
     if (cashCountCheck && !cashCountCheck.passed && body.force !== true) {
       return NextResponse.json(

@@ -42,12 +42,14 @@ export function usePaymentForm({
   const [showAddForm, setShowAddForm] = useState(false);
   const [loadingInvoices, setLoadingInvoices] = useState(false);
   const [formSaving, setFormSaving] = useState(false);
+  const [paymentAmountError, setPaymentAmountError] = useState(null);
 
   const [filterData, setFilterData] = useState({
     yearMonth: '',
     supplierId: '',
     warehouse: '',
-    paymentTerms: ''
+    paymentTerms: '',
+    purchaseId: ''
   });
 
   const [formData, setFormData] = useState({
@@ -180,6 +182,7 @@ export function usePaymentForm({
 
   async function handleSubmit(e) {
     e.preventDefault();
+    setPaymentAmountError(null);
 
     if (selectedInvoiceIds.size === 0) {
       showToast('請至少勾選一張發票進行付款', 'error');
@@ -192,7 +195,7 @@ export function usePaymentForm({
     const expectedPayment = invoiceTotal - discountVal;
 
     if (Math.abs(expectedPayment - paymentAmountVal) > 0.01) {
-      showToast(`付款金額驗證失敗！\n\n發票總金額：NT$ ${invoiceTotal.toFixed(2)}\n會計折讓：NT$ ${discountVal.toFixed(2)}\n應付金額：NT$ ${expectedPayment.toFixed(2)}\n輸入付款金額：NT$ ${paymentAmountVal.toFixed(2)}\n\n「發票總金額 - 會計折讓」必須等於「付款金額」`, 'error');
+      setPaymentAmountError(`應付金額 NT$ ${expectedPayment.toFixed(2)}（發票 ${invoiceTotal.toFixed(2)} − 折讓 ${discountVal.toFixed(2)}），請修正後重試`);
       return;
     }
 
@@ -288,6 +291,7 @@ export function usePaymentForm({
     showAddForm, setShowAddForm,
     loadingInvoices, setLoadingInvoices,
     formSaving, setFormSaving,
+    paymentAmountError, setPaymentAmountError,
     filterData, setFilterData,
     formData, setFormData,
     calculateTotal,

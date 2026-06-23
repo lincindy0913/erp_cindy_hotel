@@ -350,15 +350,23 @@ export default function AnalyticsTab({
                           const st = r.monthStatus?.[m] || 'empty';
                           const actual = r.months[m] || 0;
                           const expected = r.monthsExpected?.[m] || 0;
-                          const cellBg = st === 'completed' ? 'bg-green-50 text-green-800'
-                            : st === 'partial' ? 'bg-orange-50 text-orange-800'
-                            : st === 'overdue' ? 'bg-red-50 text-red-700'
-                            : st === 'pending' ? 'bg-yellow-50 text-yellow-800'
+                          const isPrepaid = (st === 'partial' || st === 'completed') && expected === 0 && actual > 0;
+                          const cellBg = isPrepaid            ? 'bg-teal-50 text-teal-700'
+                            : st === 'completed'              ? 'bg-green-50 text-green-800'
+                            : st === 'partial'                ? 'bg-orange-50 text-orange-800'
+                            : st === 'overdue'                ? 'bg-red-50 text-red-700'
+                            : st === 'pending'                ? 'bg-yellow-50 text-yellow-800'
                             : '';
                           return (
                             <td key={m} className={`text-right px-2 py-2 border border-gray-200 align-top ${cellBg}`}>
-                              {st === 'completed' && <div className="font-medium">{fmt(actual)}</div>}
-                              {st === 'partial' && (
+                              {isPrepaid && (
+                                <div>
+                                  <div className="font-medium">{fmt(actual)}</div>
+                                  <div className="text-xs opacity-60">預付</div>
+                                </div>
+                              )}
+                              {!isPrepaid && st === 'completed' && <div className="font-medium">{fmt(actual)}</div>}
+                              {!isPrepaid && st === 'partial' && (
                                 <div>
                                   <div className="font-medium">{fmt(actual)}</div>
                                   <div className="text-xs opacity-60">應收 {fmt(expected)}</div>

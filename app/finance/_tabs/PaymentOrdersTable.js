@@ -108,7 +108,7 @@ export default function PaymentOrdersTable({
                     style={order.orderNo === highlightOrderNo
                       ? { background: '#fef3c7', boxShadow: 'inset 0 0 0 2px #f59e0b' }
                       : undefined}
-                    className={`${order.orderNo === highlightOrderNo ? '' : index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-indigo-50 transition-colors`}
+                    className={`${order.orderNo === highlightOrderNo ? '' : order.status === '已拒絕' ? 'bg-red-50' : index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-indigo-50 transition-colors`}
                   >
                     {(activeTab === 'draft' || activeTab === 'rejected') && (
                       <td className="px-3 py-3">
@@ -170,6 +170,14 @@ export default function PaymentOrdersTable({
                             </button>
                           </>
                         )}
+                        {order.status === '待出納' && (
+                          <Link
+                            href={`/cashier?tab=pending&highlight=${order.orderNo}`}
+                            className="text-amber-600 hover:underline text-xs font-medium"
+                          >
+                            出納查看
+                          </Link>
+                        )}
                         {order.status === '待出納' && isLoggedIn && (
                           <button
                             onClick={() => handleVoid(order.id)}
@@ -179,30 +187,34 @@ export default function PaymentOrdersTable({
                           </button>
                         )}
                         {order.status === '已拒絕' && isLoggedIn && (
-                          <span className="text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded">已拒絕，請修改後重新送出</span>
-                        )}
-                        {order.status === '已拒絕' && isLoggedIn && (
-                          <>
-                            <button
-                              onClick={() => handleResubmit(order.id)}
-                              disabled={submittingOrderId === order.id}
-                              className="bg-yellow-500 text-white px-2 py-0.5 rounded text-xs hover:bg-yellow-600 disabled:opacity-50"
-                            >
-                              {submittingOrderId === order.id ? '提交中…' : '重新提交'}
-                            </button>
-                            <button
-                              onClick={() => handleVoid(order.id)}
-                              className="text-gray-500 hover:underline text-xs"
-                            >
-                              作廢
-                            </button>
-                            <button
-                              onClick={() => handleDelete(order.id)}
-                              className="text-red-600 hover:underline text-xs"
-                            >
-                              刪除
-                            </button>
-                          </>
+                          <div className="flex flex-col gap-1 items-start w-full">
+                            <span className="text-xs text-red-700 bg-red-100 border border-red-300 px-2 py-0.5 rounded w-full text-left font-medium" title={order.rejectedReason || ''}>
+                              ⚠ {order.rejectedReason
+                                ? `退回：${order.rejectedReason.length > 28 ? order.rejectedReason.slice(0, 28) + '…' : order.rejectedReason}`
+                                : '出納已退回，請查看詳情後重送'}
+                            </span>
+                            <div className="flex gap-1">
+                              <button
+                                onClick={() => handleResubmit(order.id)}
+                                disabled={submittingOrderId === order.id}
+                                className="bg-yellow-500 text-white px-2 py-0.5 rounded text-xs hover:bg-yellow-600 disabled:opacity-50"
+                              >
+                                {submittingOrderId === order.id ? '提交中…' : '重新提交'}
+                              </button>
+                              <button
+                                onClick={() => handleVoid(order.id)}
+                                className="text-gray-500 hover:underline text-xs"
+                              >
+                                作廢
+                              </button>
+                              <button
+                                onClick={() => handleDelete(order.id)}
+                                className="text-red-600 hover:underline text-xs"
+                              >
+                                刪除
+                              </button>
+                            </div>
+                          </div>
                         )}
                         {order.status === '已執行' && order.executions?.[0] && (
                           <span className="text-xs text-gray-500">{order.executions[0].executionNo}</span>

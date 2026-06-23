@@ -28,6 +28,8 @@ export default function AddPaymentFormSection({
   showMethodManager, setShowMethodManager,
   newMethodName, setNewMethodName,
   cashAccounts,
+  paymentAmountError,
+  setPaymentAmountError,
 }) {
   return (
     <div className="bg-white rounded-lg shadow-sm p-6 mb-6 border-2 border-indigo-200">
@@ -431,12 +433,15 @@ export default function AddPaymentFormSection({
                     required
                     readOnly
                     value={formData.paymentAmount}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
+                    className={`w-full px-3 py-2 border rounded-lg bg-gray-50 ${paymentAmountError ? 'border-red-400 ring-1 ring-red-400' : 'border-gray-300'}`}
                   />
-                  {selectedInvoiceIds.size > 0 && (
+                  {selectedInvoiceIds.size > 0 && !paymentAmountError && (
                     <p className="text-xs text-gray-500 mt-1">
                       已依勾選發票總額 NT$ {calculateTotal()} - 折讓 NT$ {parseFloat(formData.discount || 0).toFixed(2)} 自動帶入
                     </p>
+                  )}
+                  {paymentAmountError && (
+                    <p className="text-xs text-red-600 mt-1 font-medium">{paymentAmountError}</p>
                   )}
                 </div>
                 <div>
@@ -528,14 +533,20 @@ export default function AddPaymentFormSection({
                   min="0"
                   required
                   value={formData.paymentAmount}
-                  onChange={(e) => setFormData({ ...formData, paymentAmount: e.target.value })}
+                  onChange={(e) => {
+                    setFormData({ ...formData, paymentAmount: e.target.value });
+                    if (setPaymentAmountError) setPaymentAmountError(null);
+                  }}
                   placeholder="0.00"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 ${paymentAmountError ? 'border-red-400 focus:ring-red-400' : 'border-gray-300 focus:ring-indigo-500'}`}
                 />
-                {selectedInvoiceIds.size > 0 && (
+                {selectedInvoiceIds.size > 0 && !paymentAmountError && (
                   <p className="text-xs text-gray-500 mt-1">
                     發票總金額 NT$ {calculateTotal()} - 折讓 NT$ {parseFloat(formData.discount || 0).toFixed(2)} = NT$ {(parseFloat(calculateTotal()) - parseFloat(formData.discount || 0)).toFixed(2)}
                   </p>
+                )}
+                {paymentAmountError && (
+                  <p className="text-xs text-red-600 mt-1 font-medium">{paymentAmountError}</p>
                 )}
               </div>
               {/* 員工代墊款欄位 - 付款方式為員工代付或信用卡時顯示 */}

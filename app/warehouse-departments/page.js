@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Navigation from '@/components/Navigation';
 import { useConfirm } from '@/context/ConfirmContext';
 import FetchErrorBanner from '@/components/FetchErrorBanner';
+import ModuleGuideCard from '@/components/ModuleGuideCard';
 
 export default function WarehouseDepartmentsPage() {
   const confirm = useConfirm();
@@ -196,7 +197,19 @@ export default function WarehouseDepartmentsPage() {
           </div>
         )}
 
-        <h1 className="text-2xl font-bold text-gray-800 mb-6">館別 / 部門 / 倉庫 管理</h1>
+        <h1 className="text-2xl font-bold text-gray-800 mb-4">館別 / 部門 / 倉庫 管理</h1>
+
+        <ModuleGuideCard
+          title="館別管理流程指引"
+          color="slate"
+          storageKey="guide-warehouse-departments"
+          steps={[
+            { label: '新增館別', desc: '先建立大樓/館別（如：A 棟、B 棟），作為最上層單位' },
+            { label: '新增部門', desc: '在館別下新增部門，用於費用分攤與人員歸屬' },
+            { label: '新增倉庫', desc: '在館別下新增倉庫，用於庫存分倉管理' },
+            { label: '套用至各模組', desc: '設定完成後，進貨、庫存、費用等模組即可使用館別篩選' },
+          ]}
+        />
 
         {error && <FetchErrorBanner message={error} onRetry={fetchData} />}
 

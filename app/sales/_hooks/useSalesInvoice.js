@@ -69,6 +69,7 @@ export function useSalesInvoice({ searchParams, canSalesView, setActiveView }) {
     yearMonth: '',
     supplierId: '',
     warehouse: '',
+    purchaseId: '',
   });
 
   // 表單資料
@@ -187,6 +188,7 @@ export function useSalesInvoice({ searchParams, canSalesView, setActiveView }) {
       if (filterData.yearMonth)  params.append('yearMonth', filterData.yearMonth);
       if (filterData.supplierId) params.append('supplierId', filterData.supplierId);
       if (filterData.warehouse)  params.append('warehouse', filterData.warehouse);
+      if (filterData.purchaseId) params.append('purchaseId', filterData.purchaseId);
 
       const url = `/api/purchasing/uninvoiced?${params.toString()}`;
       console.log('查詢URL:', url);
@@ -373,7 +375,7 @@ export function useSalesInvoice({ searchParams, canSalesView, setActiveView }) {
         setEditingInvoice(null);
         setSelectedItems([]);
         setAvailableItems([]);
-        setFilterData({ yearMonth: '', supplierId: '', warehouse: '' });
+        setFilterData({ yearMonth: '', supplierId: '', warehouse: '', purchaseId: '' });
         setFormData({
           invoiceNo: '', invoiceDate: todayStr(), invoiceTitle: '',
           invoiceType: '進貨單', taxType: '應稅', invoiceAmount: '', supplierDiscount: '0',
@@ -740,11 +742,13 @@ export function useSalesInvoice({ searchParams, canSalesView, setActiveView }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, canSalesView]);
 
-  // 從網址 ?supplierId=X 一鍵預填廠商篩選並開啟發票新增表單
+  // 從網址 ?supplierId=X&purchaseId=Y 一鍵預填廠商篩選並開啟發票新增表單
   useEffect(() => {
     const sid = searchParams?.get('supplierId');
-    if (!sid || !canSalesView) return;
-    setFilterData(f => ({ ...f, supplierId: sid }));
+    const pid = searchParams?.get('purchaseId');
+    if (!canSalesView) return;
+    if (!sid && !pid) return;
+    setFilterData(f => ({ ...f, supplierId: sid || f.supplierId, purchaseId: pid || '' }));
     setShowAddForm(true);
     setShowAddAllowanceForm(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps

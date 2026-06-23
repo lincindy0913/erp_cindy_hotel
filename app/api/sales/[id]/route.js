@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { assertPeriodOpen } from '@/lib/period-lock';
 
 /** GET: 單筆發票（供 /sales?edit=id 連動編輯） */
 export async function GET(request, { params }) {
@@ -16,14 +17,11 @@ export async function GET(request, { params }) {
     });
     if (!invoice) return createErrorResponse('NOT_FOUND', '發票不存在', 404);
 
-    const paymentOrders = await prisma.paymentOrder.findMany({
-      select: { invoiceIds: true, status: true }
-    });
     const idNum = Number(id);
-    const related = paymentOrders.filter(o => {
-      if (!Array.isArray(o.invoiceIds)) return false;
-      return o.invoiceIds.some(invId => Number(invId) === idNum || invId === id);
-    });
+    const related = await prisma.$queryRaw`
+      SELECT status FROM payment_orders
+      WHERE invoice_ids @> ${JSON.stringify([idNum])}::jsonb
+    `;
     let paymentStatus = '未付款';
     if (invoice.status === '已退貨' || invoice.status === '部分退貨') {
       paymentStatus = invoice.status;
@@ -102,17 +100,12 @@ export async function PUT(request, { params }) {
     }
 
     // 若此發票已有付款流程（草稿 / 待出納 / 已執行），禁止修改
-    const paymentOrders = await prisma.paymentOrder.findMany({
-      where: {
-        status: { in: ['草稿', '待出納', '已執行'] }
-      },
-      select: { invoiceIds: true, status: true }
-    });
     const idNum = Number(id);
-    const related = paymentOrders.filter(o => {
-      if (!Array.isArray(o.invoiceIds)) return false;
-      return o.invoiceIds.some(invId => Number(invId) === idNum || invId === id);
-    });
+    const related = await prisma.$queryRaw`
+      SELECT status FROM payment_orders
+      WHERE invoice_ids @> ${JSON.stringify([idNum])}::jsonb
+        AND status IN ('草稿', '待出納', '已執行')
+    `;
     if (related.length > 0) {
       const hasExecuted = related.some(o => o.status === '已執行');
       const hasPending = related.some(o => o.status === '待出納');
@@ -127,10 +120,18 @@ export async function PUT(request, { params }) {
       }
     }
 
-    // 刪除舊明細，重新建立
-    await prisma.salesDetail.deleteMany({ where: { salesId: id } });
+    // 取出第一筆明細的館別（用於期間鎖檢查）
+    const firstDetail = await prisma.salesDetail.findFirst({
+      where: { salesId: id },
+      select: { warehouse: true },
+    });
+    const invoiceWarehouse = firstDetail?.warehouse || null;
 
-    const updated = await prisma.salesMaster.update({
+    // 刪除舊明細、更新主單，包在 transaction 內以便期間鎖原子檢查
+    const updated = await prisma.$transaction(async (tx) => {
+      await assertPeriodOpen(tx, existing.invoiceDate, invoiceWarehouse);
+      await tx.salesDetail.deleteMany({ where: { salesId: id } });
+      return tx.salesMaster.update({
       where: { id },
       data: {
         invoiceNo: data.invoiceNo || existing.invoiceNo,
@@ -161,6 +162,7 @@ export async function PUT(request, { params }) {
         } : undefined
       },
       include: { details: true }
+      });
     });
 
     const result = {
@@ -210,15 +212,14 @@ export async function DELETE(request, { params }) {
     }
 
     // 已付款的發票不可刪除
-    const paymentOrders = await prisma.paymentOrder.findMany({
-      where: { status: '已執行' },
-      select: { invoiceIds: true }
-    });
     const idNum = Number(id);
-    const isPaid = paymentOrders.some(o => {
-      if (!Array.isArray(o.invoiceIds)) return false;
-      return o.invoiceIds.some(invId => Number(invId) === idNum || invId === id);
-    });
+    const paidRows = await prisma.$queryRaw`
+      SELECT 1 FROM payment_orders
+      WHERE invoice_ids @> ${JSON.stringify([idNum])}::jsonb
+        AND status = '已執行'
+      LIMIT 1
+    `;
+    const isPaid = paidRows.length > 0;
     if (isPaid) {
       return createErrorResponse(
         'VALIDATION_FAILED',
@@ -226,6 +227,13 @@ export async function DELETE(request, { params }) {
         400
       );
     }
+
+    // 期間鎖檢查
+    const firstDetailDel = await prisma.salesDetail.findFirst({
+      where: { salesId: id },
+      select: { warehouse: true },
+    });
+    await assertPeriodOpen(prisma, existing.invoiceDate, firstDetailDel?.warehouse || null);
 
     await prisma.salesMaster.delete({ where: { id } });
     return NextResponse.json({ message: '發票已刪除，相關進貨單品項已可重新核銷' });

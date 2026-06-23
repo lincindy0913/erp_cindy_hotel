@@ -15,12 +15,14 @@ export async function GET(request) {
     const yearMonth = searchParams.get('yearMonth');
     const supplierId = searchParams.get('supplierId');
     const warehouse = searchParams.get('warehouse');
+    const purchaseId = searchParams.get('purchaseId') ? parseInt(searchParams.get('purchaseId')) : null;
 
     // 建立進貨單篩選條件
     const purchaseWhere = {};
-    if (supplierId) purchaseWhere.supplierId = parseInt(supplierId);
-    if (warehouse)  purchaseWhere.warehouse = warehouse;
-    if (yearMonth)  purchaseWhere.purchaseDate = { startsWith: yearMonth };
+    if (supplierId)  purchaseWhere.supplierId = parseInt(supplierId);
+    if (warehouse)   purchaseWhere.warehouse = warehouse;
+    if (yearMonth)   purchaseWhere.purchaseDate = { startsWith: yearMonth };
+    if (purchaseId)  purchaseWhere.id = purchaseId;
 
     // 先取符合條件的進貨單
     const purchases = await prisma.purchaseMaster.findMany({

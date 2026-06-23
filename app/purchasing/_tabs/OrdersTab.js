@@ -780,9 +780,18 @@ export default function OrdersTab({
             onChange={(e) => setFilterData({ ...filterData, endDate: e.target.value })}
             className="px-3 py-2 border rounded" placeholder="結束日期"
           />
+          <select
+            value={filterData.status}
+            onChange={(e) => setFilterData({ ...filterData, status: e.target.value })}
+            className="px-3 py-2 border rounded"
+          >
+            <option value="">全部狀態</option>
+            <option value="待入庫">待入庫</option>
+            <option value="已入庫">已入庫</option>
+          </select>
           <button onClick={handleFilterChange} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">查詢</button>
           <button onClick={handleResetFilter}
-            disabled={!filterData.supplierId && !filterData.startDate && !filterData.endDate && !filterData.warehouse}
+            disabled={!filterData.supplierId && !filterData.startDate && !filterData.endDate && !filterData.warehouse && !filterData.status}
             className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">
             清除篩選
           </button>
@@ -896,14 +905,22 @@ export default function OrdersTab({
                             const allInvoiced = purchase.items && purchase.items.length > 0 &&
                               purchase.items.every((_, idx) => isItemInvoiced(purchase.id, idx));
                             const showInvoiceLink = purchase.status === '已入庫' && !allInvoiced && purchase.supplierId;
+                            const showPaymentLink = purchase.status === '已入庫' && allInvoiced && purchase.supplierId;
                             return (
                               <>
                                 {showInvoiceLink && (
                                   <Link
-                                    href={`/sales?supplierId=${purchase.supplierId}`}
+                                    href={`/sales?supplierId=${purchase.supplierId}&purchaseId=${purchase.id}`}
                                     className="text-sm text-orange-600 hover:underline whitespace-nowrap"
                                     title="開立進項發票"
                                   >開立發票</Link>
+                                )}
+                                {showPaymentLink && (
+                                  <Link
+                                    href={`/finance?supplierId=${purchase.supplierId}&purchaseId=${purchase.id}`}
+                                    className="text-sm text-indigo-600 hover:underline whitespace-nowrap"
+                                    title="建立付款單"
+                                  >建付款單</Link>
                                 )}
                                 <button
                                   onClick={() => !allInvoiced && handleEdit(purchase)}

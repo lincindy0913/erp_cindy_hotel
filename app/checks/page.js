@@ -3,6 +3,7 @@
 import Navigation from '@/components/Navigation';
 import NotificationBanner from '@/components/NotificationBanner';
 import FetchErrorBanner from '@/components/FetchErrorBanner';
+import ModuleGuideCard from '@/components/ModuleGuideCard';
 import ExportButtons from '@/components/ExportButtons';
 import { EXPORT_CONFIGS } from '@/lib/export-columns';
 
@@ -86,6 +87,19 @@ export default function ChecksPage() {
             />
           </div>
         </div>
+
+        <ModuleGuideCard
+          title="支票管理流程指引"
+          color="violet"
+          storageKey="guide-checks"
+          steps={[
+            { label: '新增支票', desc: '登記應付或應收支票，填寫廠商、金額、到期日' },
+            { label: '設定到期日程', desc: '在「到期日程」分頁查看即將到期或逾期支票' },
+            { label: '兌現核銷', desc: '支票兌現後更新狀態，系統自動計入現金流' },
+            { label: '列印簽收表', desc: '可按付款單或進貨單館別列印支票領取簽名表' },
+            { label: '統計報表', desc: '查看各期間支票進出統計與餘額彙總' },
+          ]}
+        />
 
         {/* Tabs */}
         <div className="flex gap-1 mb-6 bg-gray-100 rounded-xl p-1">

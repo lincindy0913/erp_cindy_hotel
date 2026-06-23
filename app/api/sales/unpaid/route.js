@@ -16,6 +16,9 @@ export async function GET(request) {
     const supplierId = searchParams.get('supplierId');
     const warehouse = searchParams.get('warehouse');
     const paymentTerms = searchParams.get('paymentTerms');
+    const purchaseId = searchParams.get('purchaseId') ? parseInt(searchParams.get('purchaseId')) : null;
+    const page  = Math.max(parseInt(searchParams.get('page')  || '1'), 1);
+    const limit = Math.min(parseInt(searchParams.get('limit') || '200'), 500);
 
     // 只呈現「未付款」：排除已在任一付款單（草稿/待出納/已執行）的發票
     const paymentOrders = await prisma.paymentOrder.findMany({
@@ -30,29 +33,48 @@ export async function GET(request) {
       }
     });
 
-    // 取得所有發票及明細
+    // 在 DB 層推入日期和 purchaseId 篩選，避免全量載入
+    const salesWhere = {};
+    if (yearMonth) {
+      salesWhere.invoiceDate = { gte: `${yearMonth}-01`, lte: `${yearMonth}-31` };
+    }
+    if (purchaseId) {
+      salesWhere.details = { some: { purchaseId } };
+    }
+
     const sales = await prisma.salesMaster.findMany({
+      where: salesWhere,
       include: { details: true },
       orderBy: { id: 'asc' }
     });
 
+    // 收集所有需要的 purchaseMaster ID，單次批次查詢取代 N+1
+    const allPurchaseIds = new Set();
+    for (const invoice of sales) {
+      if (invoice.details.length > 0 && invoice.details[0].purchaseId) {
+        allPurchaseIds.add(invoice.details[0].purchaseId);
+      }
+    }
+    const purchaseMasters = allPurchaseIds.size > 0
+      ? await prisma.purchaseMaster.findMany({
+          where: { id: { in: [...allPurchaseIds] } },
+          include: { supplier: { select: { name: true } } },
+        })
+      : [];
+    const purchaseMap = new Map(purchaseMasters.map(p => [p.id, p]));
+
     const unpaidInvoices = [];
 
     for (const invoice of sales) {
-      // 排除：已在付款單（草稿/待出納/已執行）的發票，只保留真正未付款的
       if (inPaymentOrPaidIds.has(invoice.id)) continue;
 
-      // 從明細取得廠商和館別資訊
       let invoiceSupplierId = null;
       let invoiceSupplierName = '未知廠商';
       let invoiceWarehouse = '';
       let invoicePaymentTerms = '';
 
       if (invoice.details.length > 0 && invoice.details[0].purchaseId) {
-        const purchase = await prisma.purchaseMaster.findUnique({
-          where: { id: invoice.details[0].purchaseId },
-          include: { supplier: { select: { name: true } } }
-        });
+        const purchase = purchaseMap.get(invoice.details[0].purchaseId);
         if (purchase) {
           invoiceSupplierId = purchase.supplierId;
           invoiceSupplierName = purchase.supplier?.name || '未知廠商';
@@ -61,11 +83,7 @@ export async function GET(request) {
         }
       }
 
-      // 篩選條件
-      if (yearMonth) {
-        const invoiceYearMonth = invoice.invoiceDate ? invoice.invoiceDate.substring(0, 7) : '';
-        if (invoiceYearMonth !== yearMonth) continue;
-      }
+      // supplierId / warehouse / paymentTerms 無法在 DB 層篩選（欄位在 purchaseMaster 非 salesMaster）
       if (supplierId && (!invoiceSupplierId || invoiceSupplierId !== parseInt(supplierId))) continue;
       if (warehouse && invoiceWarehouse !== warehouse) continue;
       if (paymentTerms && invoicePaymentTerms !== paymentTerms) continue;
@@ -105,7 +123,13 @@ export async function GET(request) {
       });
     }
 
-    return NextResponse.json(unpaidInvoices);
+    const totalCount = unpaidInvoices.length;
+    const pagedData  = unpaidInvoices.slice((page - 1) * limit, page * limit);
+
+    return NextResponse.json({
+      data: pagedData,
+      pagination: { page, limit, totalCount, totalPages: Math.ceil(totalCount / limit) },
+    });
   } catch (error) {
     console.error('查詢未付款發票錯誤:', error.message || error);
     return handleApiError(error);

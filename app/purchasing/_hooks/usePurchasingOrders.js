@@ -26,6 +26,7 @@ export function usePurchasingOrders({ searchParams, products, suppliers }) {
     startDate: searchParams.get('startDate') || '',
     endDate:   searchParams.get('endDate')   || '',
     warehouse: searchParams.get('warehouse') || '',
+    status:    searchParams.get('status')    || '',
   });
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50);
@@ -214,6 +215,7 @@ export function usePurchasingOrders({ searchParams, products, suppliers }) {
       if (filters.startDate) params.set('dateFrom', filters.startDate);
       if (filters.endDate) params.set('dateTo', filters.endDate);
       if (filters.warehouse) params.set('warehouse', filters.warehouse);
+      if (filters.status) params.set('status', filters.status);
       const response = await fetch(`/api/purchasing?${params}`);
       if (!response.ok) {
         showToast('載入進貨單失敗，請稍後再試', 'error');
@@ -276,7 +278,7 @@ export function usePurchasingOrders({ searchParams, products, suppliers }) {
   }
 
   function handleResetFilter() {
-    const emptyFilter = { supplierId: '', startDate: '', endDate: '', warehouse: '' };
+    const emptyFilter = { supplierId: '', startDate: '', endDate: '', warehouse: '', status: '' };
     setFilterData(emptyFilter);
     fetchPurchases(1, itemsPerPage, emptyFilter);
   }

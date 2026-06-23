@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Navigation from '@/components/Navigation';
 import NotificationBanner from '@/components/NotificationBanner';
 import ModuleGuideCard from '@/components/ModuleGuideCard';
@@ -21,9 +22,14 @@ const TABS = [
   { key: 'report', label: '出納報表' },
 ];
 
-export default function CashierPage() {
+function CashierPageInner() {
+  const searchParams = useSearchParams();
   const confirm = useConfirm();
-  const [activeTab, setActiveTab] = useState('pending');
+
+  const urlTab = searchParams.get('tab');
+  const validTabs = ['pending', 'executed', 'rejected', 'report'];
+  const [activeTab, setActiveTab] = useState(validTabs.includes(urlTab) ? urlTab : 'pending');
+  const [highlightOrderNo, setHighlightOrderNo] = useState(searchParams.get('highlight') || null);
 
   // ── Orders / accounts / filters ──────────────────────────────
   const {
@@ -90,6 +96,21 @@ export default function CashierPage() {
     fetchAll();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 深連結 highlight：資料載入後自動展開並捲動到指定付款單
+  useEffect(() => {
+    if (!highlightOrderNo || loading) return;
+    const allOrders = [...pendingOrders, ...executedOrders, ...rejectedOrders];
+    const target = allOrders.find(o => o.orderNo === highlightOrderNo);
+    if (!target) return;
+    setExpandedOrderId(target.id);
+    setTimeout(() => {
+      const el = document.getElementById(`cashier-row-${highlightOrderNo}`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 100);
+    setHighlightOrderNo(null); // 只 highlight 一次
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [highlightOrderNo, loading]);
 
   // Derived tab labels with counts
   const tabsWithCounts = TABS.map(t => ({
@@ -300,6 +321,7 @@ export default function CashierPage() {
             handleSelectAll={handleSelectAll}
             searchFilter={searchFilter}
             setExpandedOrderId={setExpandedOrderId}
+            highlightOrderNo={highlightOrderNo}
           />
         )}
 
@@ -440,5 +462,13 @@ export default function CashierPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function CashierPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen page-bg-cashier" />}>
+      <CashierPageInner />
+    </Suspense>
   );
 }

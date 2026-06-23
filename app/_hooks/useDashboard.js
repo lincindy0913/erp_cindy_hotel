@@ -21,6 +21,7 @@ export function useDashboard() {
     riskAlerts: { overdueChecks: 0, expiringLoans: 0 },
   });
   const [loading, setLoading] = useState(true);
+  const [dashboardError, setDashboardError] = useState(null);
   const [executiveData, setExecutiveData] = useState(null);
   const [latestReport, setLatestReport] = useState(null);
 
@@ -36,13 +37,16 @@ export function useDashboard() {
   const [aqLoading, setAqLoading] = useState(false);
   const [aqError, setAqError] = useState(null);
 
-  useEffect(() => {
+  const fetchSummary = useCallback(() => {
+    setSummaryLoading(true);
     fetch('/api/dashboard/summary')
       .then(r => r.ok ? r.json() : null)
       .then(data => { if (data) setSummary(data); })
       .catch(() => {})
       .finally(() => setSummaryLoading(false));
   }, []);
+
+  useEffect(() => { fetchSummary(); }, [fetchSummary]);
 
   const fetchNotifications = useCallback(async (forceRefresh = false) => {
     setNtfLoading(true);
@@ -94,14 +98,15 @@ export function useDashboard() {
   }
 
   async function fetchDashboardData(refresh = false) {
+    setDashboardError(null);
     try {
       const url = refresh ? '/api/dashboard?refresh=true' : '/api/dashboard';
       const response = await fetch(url);
-      if (!response.ok) { setLoading(false); return; }
+      if (!response.ok) { setDashboardError('儀表板資料載入失敗，請稍後再試'); setLoading(false); return; }
       const data = await response.json();
       setDashboardData(prev => ({ ...prev, ...data }));
-    } catch (error) {
-      console.error('取得儀表板資料失敗:', error);
+    } catch {
+      setDashboardError('儀表板資料載入失敗，請稍後再試');
     } finally {
       setLoading(false);
     }
@@ -155,6 +160,11 @@ export function useDashboard() {
     ]);
   }
 
+  function retryDashboard() {
+    setLoading(true);
+    fetchDashboardData();
+  }
+
   const kpis = dashboardData.kpis || {};
   const totalCashBalance = kpis.totalCashBalance ?? 0;
   const pendingPayments = kpis.pendingPayments ?? 0;
@@ -203,7 +213,9 @@ export function useDashboard() {
     isLoggedIn,
     summary,
     summaryLoading,
+    fetchSummary,
     dashboardData,
+    dashboardError,
     loading,
     executiveData,
     latestReport,
@@ -221,6 +233,7 @@ export function useDashboard() {
     fetchNotifications,
     fetchActionQueue,
     handleRefreshAll,
+    retryDashboard,
     kpis,
     totalCashBalance,
     pendingPayments,

@@ -2,6 +2,7 @@
 
 import Navigation from '@/components/Navigation';
 import FetchErrorBanner from '@/components/FetchErrorBanner';
+import ModuleGuideCard from '@/components/ModuleGuideCard';
 import SupplierForm from '@/components/suppliers/SupplierForm';
 import { useSuppliers } from './_hooks/useSuppliers';
 import SupplierExpiryBanner from './_components/SupplierExpiryBanner';
@@ -40,6 +41,18 @@ export default function SuppliersPage() {
             onRetry={() => h.fetchSuppliers(1, h.itemsPerPage, h.filterKeyword)}
           />
         )}
+
+        <ModuleGuideCard
+          title="廠商管理流程指引"
+          color="blue"
+          storageKey="guide-suppliers"
+          steps={[
+            { label: '新增廠商', desc: '填寫廠商名稱、統一編號、付款條件等基本資料' },
+            { label: '上傳合約', desc: '可上傳廠商合約附件，並設定到期提醒日期' },
+            { label: '關聯進貨', desc: '廠商設定完成後，進貨單即可選擇此廠商' },
+            { label: '追蹤到期合約', desc: '系統自動提醒即將到期的廠商合約' },
+          ]}
+        />
 
         <SupplierSearchBar
           filterKeyword={h.filterKeyword}

@@ -3,6 +3,7 @@
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import FetchErrorBanner from '@/components/FetchErrorBanner';
+import ModuleGuideCard from '@/components/ModuleGuideCard';
 import { usePaymentVoucher } from './_hooks/usePaymentVoucher';
 import MonthlyVoucherPanel from './_components/MonthlyVoucherPanel';
 import PaymentOrdersPanel from './_components/PaymentOrdersPanel';
@@ -65,6 +66,18 @@ export default function PaymentVoucherListPage() {
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold">傳票列印</h2>
         </div>
+
+        <ModuleGuideCard
+          title="付款傳票流程指引"
+          color="slate"
+          storageKey="guide-payment-voucher"
+          steps={[
+            { label: '選擇廠商與月份', desc: '在月度廠商傳票分頁選擇廠商與結算月份' },
+            { label: '查看付款單明細', desc: '在付款單追蹤分頁確認各發票對應的付款單' },
+            { label: '列印傳票', desc: '單筆點選列印，或批次勾選後一次列印多份傳票' },
+            { label: '月度批次列印', desc: '選取廠商後可一次產出整月所有廠商傳票' },
+          ]}
+        />
 
         {fetchError && <FetchErrorBanner message={fetchError} onRetry={fetchAll} />}
 

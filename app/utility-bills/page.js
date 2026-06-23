@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import NotificationBanner from '@/components/NotificationBanner';
 import FetchErrorBanner from '@/components/FetchErrorBanner';
+import ModuleGuideCard from '@/components/ModuleGuideCard';
 
 // Hooks
 import { useUtilityWarehouse } from './_hooks/useUtilityWarehouse';
@@ -204,6 +205,21 @@ export default function UtilityBillsPage() {
             </div>
           </div>
         </div>
+      </div>
+
+      <div className="max-w-5xl mx-auto px-4 pt-4">
+        <ModuleGuideCard
+          title="水電費管理流程指引"
+          color="blue"
+          storageKey="guide-utility-bills"
+          steps={[
+            { label: '上傳帳單', desc: '在「電費解析」或「水費解析」分頁上傳 PDF 帳單' },
+            { label: '自動辨識', desc: 'OCR 解析帳單內容，確認各館別金額後儲存' },
+            { label: '建立付款單', desc: '在「付款進度」分頁為已登記帳單建立付款單' },
+            { label: '追蹤付款', desc: '追蹤各館別水電費付款進度與未付金額' },
+            { label: '年度分析', desc: '查看各館別各年度水電費趨勢與月均值' },
+          ]}
+        />
       </div>
 
       <main className="max-w-5xl mx-auto px-4 py-6">

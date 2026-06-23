@@ -6,7 +6,7 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { localDateStr } from '@/lib/localDate';
 import { nextSequence } from '@/lib/sequence-generator';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
-import { getSystemQty } from '@/lib/inventory-helpers';
+import { calcAllQtysForWarehouse } from '@/lib/inventory-helpers';
 import { assertPeriodOpen } from '@/lib/period-lock';
 
 export const dynamic = 'force-dynamic';
@@ -86,23 +86,22 @@ export async function POST(request) {
 
     const created = await prisma.$transaction(async (tx) => {
       await assertPeriodOpen(tx, date, warehouse);
-      // 後端即時計算每個品項的 systemQty，前端值完全忽略
-      const itemData = await Promise.all(
-        validItems.map(async (i) => {
-          const productId = Number(i.productId);
-          const sys = await getSystemQty(tx, productId, warehouse);
-          const act = (i.actualQty !== undefined && i.actualQty !== null && i.actualQty !== '' && !Number.isNaN(Number(i.actualQty)))
-            ? Number(i.actualQty)
-            : sys;
-          return {
-            productId,
-            systemQty: sys,
-            actualQty: act,
-            diff: act - sys,
-            note: i.note || null,
-          };
-        })
-      );
+      // 批次取得此倉庫所有品項的系統數量（5 queries），取代 N×5 的 N+1 迴圈
+      const qtyMap = await calcAllQtysForWarehouse(tx, warehouse);
+      const itemData = validItems.map((i) => {
+        const productId = Number(i.productId);
+        const sys = qtyMap.get(productId) ?? 0;
+        const act = (i.actualQty !== undefined && i.actualQty !== null && i.actualQty !== '' && !Number.isNaN(Number(i.actualQty)))
+          ? Number(i.actualQty)
+          : sys;
+        return {
+          productId,
+          systemQty: sys,
+          actualQty: act,
+          diff: act - sys,
+          note: i.note || null,
+        };
+      });
 
       const countNo = await nextSequence(tx, 'stockCount', 'countNo', `CNT-${date.replace(/-/g, '')}-`);
 

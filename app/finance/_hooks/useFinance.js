@@ -75,13 +75,14 @@ export function useFinance({ draftOrders = [] } = {}) {
       if (filterData.supplierId) params.append('supplierId', filterData.supplierId);
       if (filterData.warehouse) params.append('warehouse', filterData.warehouse);
       if (filterData.paymentTerms) params.append('paymentTerms', filterData.paymentTerms);
+      if (filterData.purchaseId) params.append('purchaseId', filterData.purchaseId);
 
       const url = `/api/sales/unpaid?${params.toString()}`;
       const response = await fetch(url);
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
       const data = await response.json();
-      const invoices = Array.isArray(data) ? data : [];
+      const invoices = Array.isArray(data) ? data : (data?.data ?? []);
       setUnpaidInvoices(invoices);
       setSelectedInvoiceIds(new Set());
 

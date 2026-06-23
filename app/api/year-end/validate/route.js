@@ -51,14 +51,20 @@ export async function POST(request) {
       orderBy: { sortOrder: 'asc' },
     });
 
+    // 單次批次查詢取代 12×(N館+1) 的 N+1 迴圈
+    const allMonthStatuses = await prisma.monthEndStatus.findMany({
+      where: { year },
+    });
+    const statusByKey = new Map(
+      allMonthStatuses.map(s => [`${s.month}-${s.warehouse ?? ''}`, s])
+    );
+
     const monthStatuses = [];
     for (let m = 1; m <= 12; m++) {
       const monthData = { month: m, warehouses: [] };
 
       for (const wh of warehouses) {
-        const status = await prisma.monthEndStatus.findFirst({
-          where: { year, month: m, warehouse: wh.name },
-        });
+        const status = statusByKey.get(`${m}-${wh.name}`) ?? null;
         monthData.warehouses.push({
           warehouseId:   wh.id,
           warehouseName: wh.name,
@@ -68,10 +74,8 @@ export async function POST(request) {
         });
       }
 
-      // 全館（warehouse = null）
-      const generalStatus = await prisma.monthEndStatus.findFirst({
-        where: { year, month: m, warehouse: null },
-      });
+      // 全館（warehouse = null → key 結尾為 '-'）
+      const generalStatus = statusByKey.get(`${m}-`) ?? null;
       monthData.warehouses.push({
         warehouseId:   null,
         warehouseName: '全館',

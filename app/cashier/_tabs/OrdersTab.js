@@ -30,6 +30,8 @@ export default function OrdersTab({
   handleSelectAll,
   // search filter
   searchFilter,
+  // deep-link highlight
+  highlightOrderNo,
 }) {
   const { data: session } = useSession();
   const isPendingTab = activeTab === 'pending';
@@ -109,9 +111,13 @@ export default function OrdersTab({
               const isSelected = selectedOrderIds.has(order.id);
               const colSpan = isPendingTab ? 12 : 11;
 
+              const isHighlighted = highlightOrderNo && order.orderNo === highlightOrderNo;
               return (
                 <Fragment key={order.id}>
-                  <tr className={`border-b hover:bg-amber-50 transition-colors cursor-pointer ${isExpanded ? 'bg-amber-50' : ''} ${isSelected ? 'bg-amber-50/70' : ''}`}
+                  <tr
+                    id={`cashier-row-${order.orderNo}`}
+                    style={isHighlighted ? { background: '#fef3c7', boxShadow: 'inset 0 0 0 2px #f59e0b' } : undefined}
+                    className={`border-b hover:bg-amber-50 transition-colors cursor-pointer ${!isHighlighted && isExpanded ? 'bg-amber-50' : ''} ${!isHighlighted && isSelected ? 'bg-amber-50/70' : ''}`}
                     onClick={() => toggleExpand(order)}>
                     {isPendingTab && (
                       <td className="px-3 py-3 text-center" onClick={e => e.stopPropagation()}>

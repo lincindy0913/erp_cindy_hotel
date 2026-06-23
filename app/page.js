@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import Navigation from '@/components/Navigation';
 import OnboardingTour from '@/components/OnboardingTour';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 import { useDashboard } from './_hooks/useDashboard';
 import DashboardPublicView from './_components/DashboardPublicView';
 import DashboardActionQueue from './_components/DashboardActionQueue';
@@ -32,12 +33,12 @@ function KpiCard({ label, value, sub, icon, colorClass = 'text-gray-900', border
 export default function Dashboard() {
   const {
     status, isLoggedIn,
-    summary, summaryLoading,
-    dashboardData, loading,
+    summary, summaryLoading, fetchSummary,
+    dashboardData, dashboardError, loading,
     executiveData, latestReport,
     ntfLoading, ntfError, ntfWarningExpanded, setNtfWarningExpanded,
     plData, plLoading, aqData, aqLoading, aqError,
-    fetchNotifications, fetchActionQueue, handleRefreshAll,
+    fetchNotifications, fetchActionQueue, handleRefreshAll, retryDashboard,
     kpis, totalCashBalance, pendingPayments,
     dateStr, visibleNotifications, cashierPendingCount, checksPendingCount,
   } = useDashboard();
@@ -94,11 +95,14 @@ export default function Dashboard() {
         )}
 
         {status === 'unauthenticated' && (
-          <DashboardPublicView summary={summary} summaryLoading={summaryLoading} />
+          <DashboardPublicView summary={summary} summaryLoading={summaryLoading} onRetry={fetchSummary} />
         )}
 
         {isLoggedIn && (
           <>
+            {dashboardError && (
+              <FetchErrorBanner message={dashboardError} onRetry={retryDashboard} />
+            )}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
               <KpiCard label="本月進貨金額" value={loading ? '—' : NT(kpis.thisMonthPurchase)} sub={`費用 ${NT(kpis.thisMonthExpense)}`} icon="📦" borderClass="border-l-4 border-l-blue-400" />
               <KpiCard label="本月銷貨金額" value={loading ? '—' : NT(kpis.thisMonthSales)} sub={`毛利率 ${kpis.grossProfitMargin || 0}%`} icon="🧾" borderClass="border-l-4 border-l-indigo-400" />

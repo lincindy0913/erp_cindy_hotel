@@ -98,6 +98,7 @@ function PaymentPageInner() {
     formData, setFormData,
     calculateTotal, handleInvoiceToggle, handleSelectAll,
     resetFilterAndForm, handleSubmit, getSupplierName,
+    paymentAmountError,
   } = usePaymentForm({
     suppliers,
     unpaidInvoices,
@@ -115,9 +116,19 @@ function PaymentPageInner() {
   // ── URL 參數自動預填（來自進貨/採購頁面的一鍵跳轉）────────────────────
   useEffect(() => {
     const sid = searchParams?.get('supplierId');
+    const pid = searchParams?.get('purchaseId');
+    const tab = searchParams?.get('tab');
+
+    if (tab) {
+      setActiveTab(tab);
+    }
+
     if (!sid) return;
-    setFilterData(f => ({ ...f, supplierId: sid }));
+    const newFilter = { yearMonth: '', supplierId: sid, warehouse: '', paymentTerms: '', purchaseId: pid || '' };
+    setFilterData(newFilter);
     setShowAddForm(true);
+    // 自動查詢該廠商（及指定進貨單）的未付款發票
+    fetchUnpaidInvoices({ filterData: newFilter, setLoadingInvoices, setUnpaidInvoices, setSelectedInvoiceIds });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -235,6 +246,8 @@ function PaymentPageInner() {
             showMethodManager={showMethodManager} setShowMethodManager={setShowMethodManager}
             newMethodName={newMethodName} setNewMethodName={setNewMethodName}
             cashAccounts={cashAccounts}
+            paymentAmountError={paymentAmountError}
+            setPaymentAmountError={setPaymentAmountError}
           />
         )}
 
@@ -258,10 +271,12 @@ function PaymentPageInner() {
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 activeTab === tab.key
                   ? 'bg-indigo-600 text-white'
+                  : tab.key === 'rejected' && tab.count > 0
+                  ? 'bg-red-50 text-red-700 border border-red-300 hover:bg-red-100'
                   : 'bg-white text-gray-600 hover:bg-indigo-50 border border-gray-200'
               }`}
             >
-              {tab.label} ({tab.count})
+              {tab.key === 'rejected' && tab.count > 0 && activeTab !== 'rejected' ? `⚠ ${tab.label} (${tab.count})` : `${tab.label} (${tab.count})`}
             </button>
           ))}
         </div>

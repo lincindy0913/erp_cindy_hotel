@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Navigation from '@/components/Navigation';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 import { useConfirm } from '@/context/ConfirmContext';
 
 const PRIORITY_COLORS = {
@@ -23,6 +24,7 @@ export default function ProfileNotificationsPage() {
   const [user, setUser] = useState(null);
   const [sysReady, setSysReady] = useState({ email: false, line: false });
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(null);
   const [toast, setToast] = useState(null);
   const [editingEmail, setEditingEmail] = useState(false);
   const [emailInput, setEmailInput] = useState('');
@@ -39,6 +41,7 @@ export default function ProfileNotificationsPage() {
 
   async function fetchData() {
     setLoading(true);
+    setFetchError(null);
     try {
       const res = await fetch('/api/notification-channels');
       if (res.ok) {
@@ -50,9 +53,11 @@ export default function ProfileNotificationsPage() {
           line: data.systemStatus?.lineEnabled || false,
         });
         setEmailInput(data.user?.notificationEmail || data.user?.email || '');
+      } else {
+        setFetchError('通知設定載入失敗，請稍後再試');
       }
-    } catch (err) {
-      console.error('取得通知設定失敗:', err);
+    } catch {
+      setFetchError('通知設定載入失敗，請稍後再試');
     }
     setLoading(false);
   }
@@ -173,6 +178,8 @@ export default function ProfileNotificationsPage() {
 
         {loading ? (
           <div className="text-center py-16 text-gray-400">載入中...</div>
+        ) : fetchError ? (
+          <FetchErrorBanner message={fetchError} onRetry={fetchData} />
         ) : (
           <div className="space-y-6">
             {/* Email Channel */}

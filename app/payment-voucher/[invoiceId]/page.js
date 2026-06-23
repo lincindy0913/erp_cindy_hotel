@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 
 export default function PaymentVoucherPage() {
   const params = useParams();
@@ -57,16 +58,20 @@ export default function PaymentVoucherPage() {
 
   if (error || !voucherData) {
     return (
-      <div className="min-h-screen page-bg-finance flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-red-600 mb-4">{error || '找不到傳票資料'}</p>
-          <div className="flex gap-4 justify-center">
-            <Link href="/sales" className="link-sales">
-              返回發票列表
-            </Link>
-            <Link href="/finance" className="link-finance">
-              返回付款頁面
-            </Link>
+      <div className="min-h-screen page-bg-finance">
+        <nav className="bg-white shadow-lg border-b-4 border-indigo-500">
+          <div className="max-w-7xl mx-auto px-4 py-4">
+            <h1 className="text-2xl font-bold text-gray-800">📦 進銷存系統</h1>
+          </div>
+        </nav>
+        <div className="max-w-4xl mx-auto px-4 py-8">
+          <FetchErrorBanner
+            message={error || '找不到傳票資料'}
+            onRetry={invoiceId ? fetchVoucherData : undefined}
+          />
+          <div className="mt-4 flex gap-4">
+            <Link href="/sales" className="link-sales">返回發票列表</Link>
+            <Link href="/finance" className="link-finance">返回付款頁面</Link>
           </div>
         </div>
       </div>

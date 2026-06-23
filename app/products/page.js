@@ -5,6 +5,7 @@ import Navigation from '@/components/Navigation';
 import ExportButtons from '@/components/ExportButtons';
 import { EXPORT_CONFIGS } from '@/lib/export-columns';
 import FetchErrorBanner from '@/components/FetchErrorBanner';
+import ModuleGuideCard from '@/components/ModuleGuideCard';
 import { useProducts } from './_hooks/useProducts';
 import ProductForm from './_components/ProductForm';
 import ProductTable from './_components/ProductTable';
@@ -73,6 +74,18 @@ export default function ProductsPage() {
       <Navigation borderColor="border-purple-500" />
 
       <main className="max-w-7xl mx-auto px-4 py-8">
+        <ModuleGuideCard
+          title="品項管理流程指引"
+          color="amber"
+          storageKey="guide-products"
+          steps={[
+            { label: '新增品項', desc: '填寫品項代碼、名稱、單位，設定所屬廠商' },
+            { label: '設定庫存科目', desc: '關聯庫存會計科目，供月結盤點使用' },
+            { label: '設定倉庫', desc: '指定品項所屬倉庫，用於多倉管理' },
+            { label: '批次匯入', desc: '可下載範本後批次匯入大量品項資料' },
+          ]}
+        />
+
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold">產品主檔管理</h2>
           {isLoggedIn && (

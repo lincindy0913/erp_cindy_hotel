@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, Suspense } from 'react';
+import { useState, useEffect, useMemo, useCallback, Suspense } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import Navigation from '@/components/Navigation';
@@ -39,7 +39,7 @@ function ProjectDetailInner() {
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('contracts');
 
-  useEffect(() => {
+  const loadData = useCallback(() => {
     if (!id) return;
     setLoading(true);
     setError(null);
@@ -67,6 +67,8 @@ function ProjectDetailInner() {
       setUnassignedInvCount(n17?.count || 0);
     }).catch(e => setError(e.message || '載入失敗')).finally(() => setLoading(false));
   }, [id]);
+
+  useEffect(() => { loadData(); }, [loadData]);
 
   const contracts = useMemo(() => project?.contracts || [], [project]);
   const materials = useMemo(() => project?.materials || [], [project]);
@@ -215,7 +217,7 @@ function ProjectDetailInner() {
         <div className="max-w-4xl mx-auto px-4 py-8">
           <FetchErrorBanner
             message={error || '找不到此工程案，可能已被刪除。'}
-            onRetry={error ? () => window.location.reload() : undefined}
+            onRetry={error ? loadData : undefined}
           />
           <div className="mt-4 text-center">
             <Link href="/engineering" className="text-amber-600 hover:underline text-sm">← 返回工程案列表</Link>

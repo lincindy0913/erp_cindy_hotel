@@ -375,10 +375,10 @@ export async function GET(request) {
           : '無草稿付款單，全數已送出或處理',
         count, done: count === 0,
         status: count > 0 ? 'warning' : 'ok',
-        href: '/cashier', linkText: '前往付款管理',
+        href: '/finance?tab=draft', linkText: '前往草稿付款單',
       });
     } catch {
-      items.push({ key: 'draft_payment_orders', step: 13, label: '草稿付款單未送出', status: 'manual', href: '/cashier', linkText: '前往付款管理' });
+      items.push({ key: 'draft_payment_orders', step: 13, label: '草稿付款單未送出', status: 'manual', href: '/finance?tab=draft', linkText: '前往草稿付款單' });
     }
 
     // ── 14. 帳戶餘額與交易不一致 ──────────────────────────────────
@@ -389,15 +389,23 @@ export async function GET(request) {
       });
       let mismatchCount = 0;
       const mismatchNames = [];
-      for (const account of cashAccounts) {
-        const txs = await prisma.cashTransaction.findMany({
-          where: { accountId: account.id, status: '已確認' },
-          select: { type: true, amount: true, fee: true, hasFee: true },
+      if (cashAccounts.length > 0) {
+        const allTxs = await prisma.cashTransaction.findMany({
+          where: { accountId: { in: cashAccounts.map(a => a.id) }, status: '已確認' },
+          select: { accountId: true, type: true, amount: true, fee: true, hasFee: true },
         });
-        const expected = Number(account.openingBalance) + calcBalanceDelta(txs);
-        if (Math.abs(expected - Number(account.currentBalance)) > 0.01) {
-          mismatchCount++;
-          mismatchNames.push(account.name);
+        const txsByAccount = new Map();
+        for (const tx of allTxs) {
+          if (!txsByAccount.has(tx.accountId)) txsByAccount.set(tx.accountId, []);
+          txsByAccount.get(tx.accountId).push(tx);
+        }
+        for (const account of cashAccounts) {
+          const txs = txsByAccount.get(account.id) ?? [];
+          const expected = Number(account.openingBalance) + calcBalanceDelta(txs);
+          if (Math.abs(expected - Number(account.currentBalance)) > 0.01) {
+            mismatchCount++;
+            mismatchNames.push(account.name);
+          }
         }
       }
       items.push({

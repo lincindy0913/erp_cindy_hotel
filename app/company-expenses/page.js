@@ -4,6 +4,7 @@ import { Suspense } from 'react';
 import Navigation from '@/components/Navigation';
 import ConfirmModal from '@/components/ConfirmModal';
 import FetchErrorBanner from '@/components/FetchErrorBanner';
+import ModuleGuideCard from '@/components/ModuleGuideCard';
 import { useCompanyExpenses, TABS, PERIODS, MATERIAL_TYPES } from './_hooks/useCompanyExpenses';
 import ExpensesTable from './_components/ExpensesTable';
 import InvoicesTable from './_components/InvoicesTable';
@@ -46,6 +47,18 @@ function CompanyExpensesPageInner() {
       <Navigation />
       <div className="max-w-screen-xl mx-auto px-4 py-6">
         {fetchError && <FetchErrorBanner message={fetchError} onRetry={load} />}
+
+        <ModuleGuideCard
+          title="公司費用流程指引"
+          color="amber"
+          storageKey="guide-company-expenses"
+          steps={[
+            { label: '登記費用單', desc: '點選「新增」登記水電、材料、工程等費用' },
+            { label: '關聯工程案', desc: '可將費用單關聯至特定工程案，便於成本追蹤' },
+            { label: '批次匯入', desc: '下載 CSV 範本填寫後批次匯入發票資料' },
+            { label: '費用/發票切換', desc: '上方分頁可切換費用單清單與對應進項發票' },
+          ]}
+        />
 
         {/* Header */}
         <div className="flex items-center justify-between mb-4">

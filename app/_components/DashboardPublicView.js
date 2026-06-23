@@ -32,7 +32,7 @@ function MiniBar({ label, value, max, color = 'bg-blue-500' }) {
   );
 }
 
-export default function DashboardPublicView({ summary, summaryLoading }) {
+export default function DashboardPublicView({ summary, summaryLoading, onRetry }) {
   if (summaryLoading) {
     return (
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
@@ -50,7 +50,7 @@ export default function DashboardPublicView({ summary, summaryLoading }) {
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center space-y-3">
         <p className="text-gray-500 text-sm">資料載入失敗，請重新整理頁面。</p>
         <button
-          onClick={() => window.location.reload()}
+          onClick={onRetry || (() => window.location.reload())}
           className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
         >
           重新整理
