@@ -40,7 +40,19 @@ async def startup_check():
 
 
 # ─────────────────────────────────────────────────────────────
-# PDF page → base64 PNG via PyMuPDF
+# PDF page → text (direct extraction, no API needed)
+# Works for digital PDFs (台電 / 自來水 bills are typically digital)
+# ─────────────────────────────────────────────────────────────
+def pdf_page_to_text_direct(pdf_bytes: bytes, page_num: int) -> str:
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    page = doc[page_num]
+    text = page.get_text("text")
+    doc.close()
+    return text.strip()
+
+
+# ─────────────────────────────────────────────────────────────
+# PDF page → base64 PNG via PyMuPDF (for scanned PDFs only)
 # ─────────────────────────────────────────────────────────────
 def pdf_page_to_base64(pdf_bytes: bytes, page_num: int, dpi: int = 200, auto_rotate: bool = True) -> str:
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
@@ -58,7 +70,7 @@ def pdf_page_to_base64(pdf_bytes: bytes, page_num: int, dpi: int = 200, auto_rot
 
 
 # ─────────────────────────────────────────────────────────────
-# Call Google Vision API → return full text
+# Call Google Vision API → return full text (fallback for scanned PDFs)
 # ─────────────────────────────────────────────────────────────
 async def google_vision_ocr(img_b64: str) -> str:
     if not GOOGLE_VISION_API_KEY:
@@ -82,6 +94,23 @@ async def google_vision_ocr(img_b64: str) -> str:
     if not responses:
         return ""
     return responses[0].get("fullTextAnnotation", {}).get("text", "")
+
+
+# ─────────────────────────────────────────────────────────────
+# Smart text extractor: direct first, Vision API only if needed
+# ─────────────────────────────────────────────────────────────
+_MIN_TEXT_LEN = 80  # threshold: fewer chars → likely scanned → need OCR
+
+async def extract_page_text(pdf_bytes: bytes, page_num: int) -> tuple[str, str]:
+    """Returns (text, method) where method is 'direct' or 'vision'."""
+    direct_text = pdf_page_to_text_direct(pdf_bytes, page_num)
+    if len(direct_text) >= _MIN_TEXT_LEN:
+        return direct_text, "direct"
+
+    # Scanned PDF: fall back to Google Vision
+    img_b64 = pdf_page_to_base64(pdf_bytes, page_num)
+    vision_text = await google_vision_ocr(img_b64)
+    return vision_text, "vision"
 
 
 # ─────────────────────────────────────────────────────────────
@@ -531,11 +560,12 @@ async def ocr_pdf(
 
     records = []
     billing_period = None
+    methods_used: list[str] = []
 
     try:
         for page_idx in range(num_pages):
-            img_b64 = pdf_page_to_base64(pdf_bytes, page_idx)
-            text = await google_vision_ocr(img_b64)
+            text, method = await extract_page_text(pdf_bytes, page_idx)
+            methods_used.append(method)
 
             # Detect billing period from first page
             if page_idx == 0 and not billing_period:
@@ -576,4 +606,5 @@ async def ocr_pdf(
         "num_pages": num_pages,
         "count": len(clean_records),
         "validation": validation,
+        "extraction_methods": methods_used,
     }
