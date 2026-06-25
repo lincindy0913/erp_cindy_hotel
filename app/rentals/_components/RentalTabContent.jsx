@@ -139,6 +139,7 @@ export default function RentalTabContent({ p }) {
       reportEndDate={p.reportEndDate} setReportEndDate={p.setReportEndDate}
       reportCategoryFilter={p.reportCategoryFilter} setReportCategoryFilter={p.setReportCategoryFilter}
       incomeReportData={p.incomeReportData} operatingReportData={p.operatingReportData}
+      byTenantReportData={p.byTenantReportData}
       reportLoading={p.reportLoading} overdueReportData={p.overdueReportData}
       overdueReportLoading={p.overdueReportLoading}
       overdueSelectedIds={p.overdueSelectedIds} setOverdueSelectedIds={p.setOverdueSelectedIds}
@@ -152,6 +153,7 @@ export default function RentalTabContent({ p }) {
       vacancyData={p.vacancyData} vacancyLoading={p.vacancyLoading}
       depositFilter={p.depositFilter} setDepositFilter={p.setDepositFilter}
       fetchIncomeReport={p.fetchIncomeReport} fetchOperatingReport={p.fetchOperatingReport}
+      fetchByTenantReport={p.fetchByTenantReport}
       fetchOverdueReport={p.fetchOverdueReport} fetchVacancyReport={p.fetchVacancyReport}
       openQuickPay={p.openQuickPay} confirmQuickPay={p.confirmQuickPay}
       batchConfirmOverdueIncomes={p.batchConfirmOverdueIncomes}

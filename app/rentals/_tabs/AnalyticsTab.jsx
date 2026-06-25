@@ -55,6 +55,54 @@ async function exportIncomeExcel({ rows, year }) {
   });
 }
 
+function fmtPeriod(startMonth, endMonth) {
+  if (!startMonth) return '—';
+  return startMonth === endMonth ? `${startMonth}月` : `${startMonth}–${endMonth}月`;
+}
+
+async function exportByTenantExcel({ rows, year }) {
+  if (!rows?.length) return;
+  const months = [1,2,3,4,5,6,7,8,9,10,11,12];
+  const columns = [
+    { header: '序號',  key: 'idx',    width: 6 },
+    { header: '房號',  key: 'label',  width: 22 },
+    { header: '租客',  key: 'tenant', width: 16 },
+    { header: '期間',  key: 'period', width: 10 },
+    ...months.map(m => ({ header: `${m}月`, key: `m${m}`, width: 12, format: 'amount' })),
+    { header: '合計',  key: 'total', width: 14, format: 'amount' },
+  ];
+  const data = rows.map((r, i) => {
+    const row = {
+      idx:    i + 1,
+      label:  r.propertyLabel,
+      tenant: r.isCurrent ? r.tenantName : `${r.tenantName}（已退租）`,
+      period: fmtPeriod(r.startMonth, r.endMonth),
+      total:  r.total || 0,
+    };
+    months.forEach(m => {
+      const st  = r.monthStatus?.[m] || 'empty';
+      const act = r.months?.[m] || 0;
+      const exp = r.monthsExpected?.[m] || 0;
+      if (st === 'completed' || st === 'partial') row[`m${m}`] = act;
+      else if (st === 'pending')  row[`m${m}`] = `待收 ${exp.toLocaleString('zh-TW')}`;
+      else if (st === 'overdue')  row[`m${m}`] = `逾期 ${exp.toLocaleString('zh-TW')}`;
+      else row[`m${m}`] = act > 0 ? act : '';
+    });
+    return row;
+  });
+  const sumRow = { idx: '', label: '合計', tenant: '', period: '', _isSummary: true, total: rows.reduce((s, r) => s + (r.total || 0), 0) };
+  months.forEach(m => { sumRow[`m${m}`] = rows.reduce((s, r) => s + (r.months?.[m] || 0), 0) || ''; });
+  data.push(sumRow);
+
+  await exportToXlsx({
+    filename:  `租屋收入_依租客_${year}年`,
+    sheetName: '依租客分析',
+    title:     `租屋收入分析（依租客）— ${year} 年`,
+    columns,
+    data,
+  });
+}
+
 async function exportOperatingExcel({ rows, year }) {
   if (!rows?.length) return;
   const columns = [
@@ -210,9 +258,10 @@ async function exportDepositExcel({ contracts, depositFilter }) {
 }
 
 const PAYMENT_METHODS = ['現金', 'transfer', '支票', '匯款'];
-const VALID_ANALYTICS_SUB = ['income', 'operating', 'overdue', 'deposit', 'vacancy'];
+const VALID_ANALYTICS_SUB = ['income', 'byTenant', 'operating', 'overdue', 'deposit', 'vacancy'];
 const ANALYTICS_SUB_LABELS = [
   { key: 'income',    label: '收入分析' },
+  { key: 'byTenant',  label: '依租客分析' },
   { key: 'operating', label: '營運分析' },
   { key: 'overdue',   label: '逾期催繳' },
   { key: 'vacancy',   label: '空置率' },
@@ -225,7 +274,7 @@ export default function AnalyticsTab({
   reportStartDate, setReportStartDate,
   reportEndDate, setReportEndDate,
   reportCategoryFilter, setReportCategoryFilter,
-  incomeReportData, operatingReportData, reportLoading,
+  incomeReportData, operatingReportData, byTenantReportData, reportLoading,
   overdueReportData, overdueReportLoading,
   overdueSelectedIds, setOverdueSelectedIds,
   showOverdueBatch, setShowOverdueBatch,
@@ -235,7 +284,7 @@ export default function AnalyticsTab({
   quickPayForm, setQuickPayForm, quickPaySaving,
   vacancyYear, setVacancyYear, vacancyData, vacancyLoading,
   depositFilter, setDepositFilter,
-  fetchIncomeReport, fetchOperatingReport, fetchOverdueReport, fetchVacancyReport,
+  fetchIncomeReport, fetchOperatingReport, fetchByTenantReport, fetchOverdueReport, fetchVacancyReport,
   openQuickPay, confirmQuickPay, batchConfirmOverdueIncomes,
   contracts, handleDepositAction,
   accounts, reportCategoryOptions,
@@ -417,6 +466,148 @@ export default function AnalyticsTab({
             </div>
           )}
           {!reportLoading && incomeReportData.rows.length > 0 && (
+            <div className="flex flex-wrap gap-3 mt-2 text-xs no-print">
+              <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-green-200" />已收</span>
+              <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-teal-200" />分攤</span>
+              <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-orange-200" />部分收</span>
+              <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-yellow-200" />待收</span>
+              <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-red-200" />逾期未收</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {analyticsSub === 'byTenant' && (
+        <div className="rental-report-print-area">
+          <div className="no-print flex items-center gap-3 mb-4 flex-wrap">
+            <label htmlFor="f-bt-y" className="text-sm">年份：</label>
+            <select id="f-bt-y" value={reportYear} onChange={e => setReportYear(Number(e.target.value))} className="border rounded px-2 py-1.5 text-sm">
+              {[new Date().getFullYear(), new Date().getFullYear() - 1, new Date().getFullYear() - 2].map(y => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+            <span className="text-gray-400 text-xs">或</span>
+            <label htmlFor="f-bt-s" className="text-sm">日期區間：</label>
+            <input id="f-bt-s" type="date" value={reportStartDate} onChange={e => setReportStartDate(e.target.value)} className="border rounded px-2 py-1.5 text-sm" />
+            <span className="text-sm">～</span>
+            <input type="date" value={reportEndDate} onChange={e => setReportEndDate(e.target.value)} className="border rounded px-2 py-1.5 text-sm" />
+            <label htmlFor="f-bt-c" className="text-sm">類別：</label>
+            <select id="f-bt-c" value={reportCategoryFilter} onChange={e => setReportCategoryFilter(e.target.value)} className="border rounded px-2 py-1.5 text-sm min-w-[140px]">
+              <option value="">全部</option>
+              {reportCategoryOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+            <button onClick={fetchByTenantReport} disabled={reportLoading} className="bg-teal-600 text-white px-3 py-1.5 rounded text-sm hover:bg-teal-700 disabled:opacity-50">查詢</button>
+            <button onClick={() => window.print()} className="bg-gray-700 text-white px-3 py-1.5 rounded text-sm hover:bg-gray-800 no-print">列印</button>
+            <button
+              onClick={() => exportByTenantExcel({ rows: byTenantReportData.rows, year: byTenantReportData.year || reportYear })}
+              disabled={reportLoading || !byTenantReportData.rows?.length}
+              className="bg-emerald-600 text-white px-3 py-1.5 rounded text-sm hover:bg-emerald-700 disabled:opacity-40 no-print flex items-center gap-1"
+            >
+              ↓ Excel
+            </button>
+          </div>
+          <h2 className="text-lg font-bold text-gray-800 mb-1 print:block">租屋收入分析（依租客）— {byTenantReportData.year || reportYear} 年</h2>
+          <p className="text-xs text-gray-500 mb-3 no-print">同一物業若年度內換過租客，會分列顯示各租客的承租期間與各月實收。租客以收款紀錄產生當下為準。</p>
+          {reportLoading ? (
+            <p className="text-gray-500">載入中...</p>
+          ) : (
+            <div className="bg-white rounded-lg shadow tbl-wrap overflow-y-auto">
+              <table className="w-full text-sm border-collapse">
+                <thead className="bg-teal-50 sticky top-0 z-10">
+                  <tr>
+                    <th className="text-center px-2 py-2 border border-gray-200 w-8 text-gray-500">序號</th>
+                    <th className="text-left px-3 py-2 border border-gray-200">房號</th>
+                    <th className="text-left px-3 py-2 border border-gray-200">租客</th>
+                    <th className="text-center px-2 py-2 border border-gray-200 whitespace-nowrap">期間</th>
+                    {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => (
+                      <th key={m} className="text-right px-2 py-2 border border-gray-200 whitespace-nowrap">{byTenantReportData.year || reportYear}/{m}</th>
+                    ))}
+                    <th className="text-right px-3 py-2 border border-gray-200 font-semibold">總和</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {byTenantReportData.rows.length === 0 ? (
+                    <tr><td colSpan={17} className="px-3 py-4 text-gray-500 text-center">尚無資料</td></tr>
+                  ) : (
+                    byTenantReportData.rows.map((r, idx) => {
+                      const prev = byTenantReportData.rows[idx - 1];
+                      const sameAsPrev = prev && prev.propertyId === r.propertyId;
+                      return (
+                        <tr key={r.key} className={`hover:bg-gray-50 ${sameAsPrev ? '' : 'border-t-2 border-teal-100'}`}>
+                          <td className="text-center px-2 py-2 border border-gray-200 text-xs text-gray-400">{idx + 1}</td>
+                          <td className="px-3 py-2 border border-gray-200">{sameAsPrev ? <span className="text-gray-300">〃</span> : r.propertyLabel}</td>
+                          <td className="px-3 py-2 border border-gray-200">
+                            {r.tenantName}
+                            {!r.isCurrent && <span className="ml-2 text-xs text-gray-400">（已退租）</span>}
+                          </td>
+                          <td className="text-center px-2 py-2 border border-gray-200 text-xs text-gray-600 whitespace-nowrap">{fmtPeriod(r.startMonth, r.endMonth)}</td>
+                          {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => {
+                            const st = r.monthStatus?.[m] || 'empty';
+                            const actual = r.months[m] || 0;
+                            const expected = r.monthsExpected?.[m] || 0;
+                            const isSplit = !!r.monthsSplit?.[m];
+                            const isReceivedNoExpect = (st === 'partial' || st === 'completed') && expected === 0 && actual > 0;
+                            const cellBg = isSplit                          ? 'bg-teal-50 text-teal-700'
+                              : isReceivedNoExpect                          ? 'bg-green-50 text-green-700'
+                              : st === 'completed'                          ? 'bg-green-50 text-green-800'
+                              : st === 'partial'                            ? 'bg-orange-50 text-orange-800'
+                              : st === 'overdue'                            ? 'bg-red-50 text-red-700'
+                              : st === 'pending'                            ? 'bg-yellow-50 text-yellow-800'
+                              : (actual > 0 ? 'bg-green-50 text-green-700' : '');
+                            return (
+                              <td key={m} className={`text-right px-2 py-2 border border-gray-200 align-top ${cellBg}`}>
+                                {isSplit && (
+                                  <div>
+                                    <div className="font-medium">{fmt(actual)}</div>
+                                    <div className="text-xs opacity-60">分攤</div>
+                                  </div>
+                                )}
+                                {!isSplit && (st === 'completed' || isReceivedNoExpect) && <div className="font-medium">{fmt(actual)}</div>}
+                                {!isSplit && !isReceivedNoExpect && st === 'partial' && (
+                                  <div>
+                                    <div className="font-medium">{fmt(actual)}</div>
+                                    <div className="text-xs opacity-60">應收 {fmt(expected)}</div>
+                                  </div>
+                                )}
+                                {(st === 'pending' || st === 'overdue') && (
+                                  <div>
+                                    <div className="text-xs font-semibold">{st === 'overdue' ? '逾期' : '待收'}</div>
+                                    <div className="text-xs">{fmt(expected)}</div>
+                                  </div>
+                                )}
+                                {st === 'empty' && actual > 0 && <div className="font-medium">{fmt(actual)}</div>}
+                              </td>
+                            );
+                          })}
+                          <td className="text-right px-3 py-2 border border-gray-200 font-semibold">{fmt(r.total)}</td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+                {byTenantReportData.rows.length > 0 && (() => {
+                  const rows = byTenantReportData.rows;
+                  const grandTotal = rows.reduce((s, r) => s + (r.total || 0), 0);
+                  return (
+                    <tfoot className="bg-teal-50 font-semibold text-sm border-t-2 border-teal-300">
+                      <tr>
+                        <td className="px-2 py-2 border border-gray-200 text-center text-xs text-gray-500">—</td>
+                        <td className="px-3 py-2 border border-gray-200 text-teal-800" colSpan={3}>合計</td>
+                        {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => {
+                          const sum = rows.reduce((s, r) => s + (r.months?.[m] || 0), 0);
+                          return <td key={m} className="text-right px-2 py-2 border border-gray-200 text-teal-800">{sum > 0 ? fmt(sum) : ''}</td>;
+                        })}
+                        <td className="text-right px-3 py-2 border border-gray-200 text-teal-900">{fmt(grandTotal)}</td>
+                      </tr>
+                    </tfoot>
+                  );
+                })()}
+              </table>
+            </div>
+          )}
+          {!reportLoading && byTenantReportData.rows.length > 0 && (
             <div className="flex flex-wrap gap-3 mt-2 text-xs no-print">
               <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-green-200" />已收</span>
               <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-teal-200" />分攤</span>

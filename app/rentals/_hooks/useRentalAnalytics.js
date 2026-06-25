@@ -16,6 +16,7 @@ export function useRentalAnalytics({ accounts = [], properties = [] } = {}) {
   const [reportCategoryFilter, setReportCategoryFilter] = useState('');
   const [incomeReportData,     setIncomeReportData]     = useState({ year: null, rows: [] });
   const [operatingReportData,  setOperatingReportData]  = useState({ year: null, rows: [] });
+  const [byTenantReportData,   setByTenantReportData]   = useState({ year: null, rows: [] });
   const [reportLoading,        setReportLoading]        = useState(false);
 
   // ── 逾期催繳 ──────────────────────────────────────────────────
@@ -130,6 +131,25 @@ export function useRentalAnalytics({ accounts = [], properties = [] } = {}) {
       console.error('[fetchOperatingReport]', e);
       showToast('營運報表載入失敗，請重試。', 'error');
       setOperatingReportData({ year: reportYear, rows: [] });
+    } finally {
+      setReportLoading(false);
+    }
+  }
+
+  async function fetchByTenantReport() {
+    const qs = buildReportParams();
+    if (qs === null) return;
+    setReportLoading(true);
+    try {
+      const res = await fetch(`/api/rentals/reports/income-by-tenant?${qs}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (data.error) throw new Error(data.message || data.error);
+      setByTenantReportData({ year: data.year, rows: data.rows || [] });
+    } catch (e) {
+      console.error('[fetchByTenantReport]', e);
+      showToast('依租客收入報表載入失敗，請重試。', 'error');
+      setByTenantReportData({ year: reportYear, rows: [] });
     } finally {
       setReportLoading(false);
     }
@@ -401,6 +421,7 @@ export function useRentalAnalytics({ accounts = [], properties = [] } = {}) {
     reportCategoryFilter, setReportCategoryFilter,
     incomeReportData,
     operatingReportData,
+    byTenantReportData,
     reportLoading,
     // overdue
     overdueReportData,
@@ -432,6 +453,7 @@ export function useRentalAnalytics({ accounts = [], properties = [] } = {}) {
     // functions
     fetchIncomeReport,
     fetchOperatingReport,
+    fetchByTenantReport,
     fetchOverdueReport,
     fetchVacancyReport,
     fetchRentFiling,

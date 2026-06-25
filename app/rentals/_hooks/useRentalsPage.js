@@ -33,7 +33,7 @@ const LEGACY_TAB_TO_SUB = {
   incomeReport: 'income', operatingReport: 'operating',
   overdueReport: 'overdue', depositTracking: 'deposit', vacancyReport: 'vacancy',
 };
-const VALID_ANALYTICS_SUB = ['income', 'operating', 'overdue', 'deposit', 'vacancy'];
+const VALID_ANALYTICS_SUB = ['income', 'byTenant', 'operating', 'overdue', 'deposit', 'vacancy'];
 
 function resolveRentalsMainTab(tabParam) {
   if (!tabParam) return 'overview';
@@ -218,7 +218,7 @@ export function useRentalsPage() {
     reportStartDate, setReportStartDate,
     reportEndDate, setReportEndDate,
     reportCategoryFilter, setReportCategoryFilter,
-    incomeReportData, operatingReportData, reportLoading,
+    incomeReportData, operatingReportData, byTenantReportData, reportLoading,
     overdueReportData, overdueReportLoading,
     overdueSelectedIds, setOverdueSelectedIds,
     showOverdueBatch, setShowOverdueBatch,
@@ -231,7 +231,7 @@ export function useRentalsPage() {
     rentFilingYear, setRentFilingYear, rentFilingData, rentFilingLoading,
     showRentFilingModal, setShowRentFilingModal,
     editingRentFiling, rentFilingForm, setRentFilingForm, rentFilingSaving,
-    fetchIncomeReport, fetchOperatingReport, fetchOverdueReport, fetchVacancyReport, fetchRentFiling,
+    fetchIncomeReport, fetchOperatingReport, fetchByTenantReport, fetchOverdueReport, fetchVacancyReport, fetchRentFiling,
     openQuickPay, confirmQuickPay, batchConfirmOverdueIncomes,
     seedRentFilingYear,
     openRentFilingModalForNew: _openRentFilingModalForNew,
@@ -341,6 +341,7 @@ export function useRentalsPage() {
       if (analyticsSub === 'deposit')    { fetchContracts(); if (properties.length === 0) fetchProperties(); }
       if (analyticsSub === 'vacancy')    fetchVacancyReport();
       if (analyticsSub === 'income')     { fetchIncomeReport();    fetchProperties(); }
+      if (analyticsSub === 'byTenant')   { fetchByTenantReport();  fetchProperties(); }
       if (analyticsSub === 'operating')  { fetchOperatingReport(); fetchProperties(); }
     }
     if (activeTab === 'rentFiling') { fetchRentFiling(); if (properties.length === 0) fetchProperties(); if (contracts.length === 0) fetchContracts(); }
@@ -511,7 +512,7 @@ export function useRentalsPage() {
     reportStartDate, setReportStartDate,
     reportEndDate, setReportEndDate,
     reportCategoryFilter, setReportCategoryFilter,
-    incomeReportData, operatingReportData, reportLoading,
+    incomeReportData, operatingReportData, byTenantReportData, reportLoading,
     overdueReportData, overdueReportLoading,
     overdueSelectedIds, setOverdueSelectedIds,
     showOverdueBatch, setShowOverdueBatch,
@@ -524,7 +525,7 @@ export function useRentalsPage() {
     rentFilingYear, setRentFilingYear, rentFilingData, rentFilingLoading,
     showRentFilingModal, setShowRentFilingModal,
     editingRentFiling, rentFilingForm, setRentFilingForm, rentFilingSaving,
-    fetchIncomeReport, fetchOperatingReport, fetchOverdueReport, fetchVacancyReport, fetchRentFiling,
+    fetchIncomeReport, fetchOperatingReport, fetchByTenantReport, fetchOverdueReport, fetchVacancyReport, fetchRentFiling,
     openQuickPay, confirmQuickPay, batchConfirmOverdueIncomes,
     seedRentFilingYear,
     openRentFilingModalForNew, openRentFilingModalForEdit, saveRentFilingFromModal, deleteRentFilingRow,
