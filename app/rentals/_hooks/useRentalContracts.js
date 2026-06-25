@@ -142,7 +142,11 @@ export function useRentalContracts({ initialFilter, onAfterSave } = {}) {
     try {
       const url = editingContract ? `/api/rentals/contracts/${editingContract.id}` : '/api/rentals/contracts';
       const method = editingContract ? 'PATCH' : 'POST';
-      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(formToSave) });
+      // PATCH 不允許修改 propertyId / tenantId，移除避免 API 拒絕
+      const payload = editingContract
+        ? (({ propertyId, tenantId, category, ...rest }) => rest)(formToSave)
+        : formToSave;
+      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const data = await res.json();
       if (!res.ok) {
         if (data?.code === 'ACTIVE_CONTRACT_EXISTS') {
