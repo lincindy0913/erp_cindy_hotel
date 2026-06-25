@@ -437,6 +437,12 @@ export function useUtilityParse({ showMessage, setActiveTab, fetchPaymentRecords
         return;
       }
 
+      // Show the OCR-service text (scanned PDFs have no client-side text layer)
+      if (data.raw && data.raw.trim()) {
+        setExtractedText(data.raw);
+        if (Array.isArray(data.page_texts)) setPageTexts(data.page_texts);
+      }
+
       const allRecords = Array.isArray(data.records) && data.records.length > 0 ? data.records : [];
       setOcrRecords(allRecords);
       if (data.validation) setOcrValidation(data.validation);

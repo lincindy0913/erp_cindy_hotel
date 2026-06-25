@@ -5,6 +5,9 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     libglib2.0-0 \
     libgl1 \
+    tesseract-ocr \
+    tesseract-ocr-chi-tra \
+    tesseract-ocr-eng \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

@@ -97,28 +97,101 @@ async def google_vision_ocr(img_b64: str) -> str:
 
 
 # ─────────────────────────────────────────────────────────────
-# Smart text extractor: direct first, Vision API only if needed
+# Local OCR via Tesseract (no API key needed, works offline)
+# Handles scanned 台電 / 自來水 bills that have no text layer.
+# ─────────────────────────────────────────────────────────────
+def tesseract_ocr_page(pdf_bytes: bytes, page_num: int, dpi: int = 300) -> str:
+    import io
+    import pytesseract
+    from PIL import Image
+
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    page = doc[page_num]
+    rect = page.rect
+    # Auto-rotate landscape pages to portrait for better OCR
+    if rect.width > rect.height:
+        mat = fitz.Matrix(dpi / 72, dpi / 72).prerotate(-90)
+    else:
+        mat = fitz.Matrix(dpi / 72, dpi / 72)
+    pix = page.get_pixmap(matrix=mat, colorspace=fitz.csRGB)
+    img = Image.open(io.BytesIO(pix.tobytes("png")))
+    doc.close()
+    # chi_tra (Traditional Chinese) + eng for the mixed-language bills
+    return pytesseract.image_to_string(img, lang="chi_tra+eng").strip()
+
+
+# ─────────────────────────────────────────────────────────────
+# Smart text extractor: direct → Vision (if key) → Tesseract (local)
 # ─────────────────────────────────────────────────────────────
 _MIN_TEXT_LEN = 80  # threshold: fewer chars → likely scanned → need OCR
 
 async def extract_page_text(pdf_bytes: bytes, page_num: int) -> tuple[str, str]:
-    """Returns (text, method) where method is 'direct', 'vision', or 'direct_fallback'."""
+    """Returns (text, method): 'direct', 'vision', 'tesseract', or 'direct_fallback'."""
     direct_text = pdf_page_to_text_direct(pdf_bytes, page_num)
     if len(direct_text) >= _MIN_TEXT_LEN:
         return direct_text, "direct"
 
-    # No Vision key configured — return direct text rather than crashing
-    if not GOOGLE_VISION_API_KEY:
-        return direct_text, "direct_fallback"
+    # Scanned page — try Google Vision first if a key is configured
+    if GOOGLE_VISION_API_KEY:
+        try:
+            img_b64 = pdf_page_to_base64(pdf_bytes, page_num)
+            vision_text = await google_vision_ocr(img_b64)
+            if len(vision_text) >= 10:
+                return vision_text, "vision"
+        except Exception:
+            pass  # invalid key / quota / network — fall through to Tesseract
 
-    # Scanned PDF: try Google Vision, but fall back gracefully if unavailable
+    # Local Tesseract OCR — no API key, works for scanned PDFs
     try:
-        img_b64 = pdf_page_to_base64(pdf_bytes, page_num)
-        vision_text = await google_vision_ocr(img_b64)
-        return vision_text, "vision"
+        tess_text = tesseract_ocr_page(pdf_bytes, page_num)
+        if len(tess_text) >= 10:
+            return tess_text, "tesseract"
     except Exception:
-        # Vision unavailable (invalid key, quota, network) — use PyMuPDF text
-        return direct_text, "direct_fallback"
+        traceback.print_exc()
+
+    return direct_text, "direct_fallback"
+
+
+# ─────────────────────────────────────────────────────────────
+# Electricity SUMMARY-TABLE parser (麗格 page-1 style)
+# One page lists every meter in a grid:
+#   序號 地址 電號 使用度數 電費金額 營業稅 應繳總金額
+# Far cleaner to OCR than the 9 detailed bill pages.
+# ─────────────────────────────────────────────────────────────
+_ACCT_RE = re.compile(r'(\d{2}-\d{2}-\d{4}-\d{2}-\d)')
+
+def parse_electricity_summary(text: str) -> list:
+    """Parse a Taipower summary table; returns one record per meter row.
+
+    Robust to OCR row wrapping: anchors on the 電號 pattern, takes the address
+    from the text before it and the four amounts after it on the same line.
+    """
+    records = []
+    for raw in text.split('\n'):
+        m = _ACCT_RE.search(raw)
+        if not m:
+            continue
+        acct = m.group(1)
+        before = raw[:m.start()].strip()
+        after = raw[m.end():]
+        # numbers after the 電號: 使用度數 / 電費金額 / 營業稅 / 應繳總金額
+        nums = [n.replace(',', '') for n in re.findall(r'[\d,]{2,}', after)
+                if n.replace(',', '').isdigit()]
+        # address = before minus a leading 序號 (1-2 digits)
+        addr = re.sub(r'^\d{1,2}[\s.|]*', '', before).strip()
+        records.append({
+            "館別": "麗格",
+            "類型": "電費",
+            "繳費期限": "未辨識",
+            "地址": addr or "未辨識",
+            "電號": acct,
+            "尖峰度數": "0", "半尖峰度數": "0", "離峰度數": "0",
+            "使用度數": nums[0] if len(nums) > 0 else "0",
+            "電費金額": nums[1] if len(nums) > 1 else "0",
+            "應繳稅額": nums[2] if len(nums) > 2 else "0",
+            "應繳總金額": nums[3] if len(nums) > 3 else "0",
+        })
+    return records
 
 
 # ─────────────────────────────────────────────────────────────
@@ -566,14 +639,15 @@ async def ocr_pdf(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"PDF open failed: {str(e)}")
 
-    records = []
     billing_period = None
     methods_used: list[str] = []
+    page_texts: list[dict] = []
 
     try:
         for page_idx in range(num_pages):
             text, method = await extract_page_text(pdf_bytes, page_idx)
             methods_used.append(method)
+            page_texts.append({"pageNum": page_idx + 1, "text": text})
 
             # Detect billing period from first page
             if page_idx == 0 and not billing_period:
@@ -585,12 +659,21 @@ async def ocr_pdf(
                     if m:
                         billing_period = m.group(1).strip()
 
-            if bill_type == "電費":
-                rec = parse_electricity_page(text, page_idx + 1, billing_period)
-            else:
-                rec = parse_water_page(text, page_idx + 1, billing_period)
-
-            records.append(rec)
+        records = []
+        if bill_type == "電費":
+            # Prefer the summary table (one page lists every meter) when present
+            for p in page_texts:
+                summary = parse_electricity_summary(p["text"])
+                if len(summary) >= 2:  # a real summary has multiple meter rows
+                    records = summary
+                    break
+            # Otherwise parse each detailed bill page individually
+            if not records:
+                records = [parse_electricity_page(p["text"], p["pageNum"], billing_period)
+                           for p in page_texts]
+        else:
+            records = [parse_water_page(p["text"], p["pageNum"], billing_period)
+                       for p in page_texts]
 
     except HTTPException:
         raise
@@ -607,10 +690,13 @@ async def ocr_pdf(
     # Backward-compat: first record as single parsed object
     first = clean_records[0] if clean_records else {}
 
+    raw_text = "\n\n".join(f"--- 第 {p['pageNum']} 頁 ---\n{p['text']}" for p in page_texts)
+
     return {
         "records": clean_records,
         "parsed": first,
-        "raw": "",
+        "raw": raw_text,
+        "page_texts": page_texts,
         "num_pages": num_pages,
         "count": len(clean_records),
         "validation": validation,
