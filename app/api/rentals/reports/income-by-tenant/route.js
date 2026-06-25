@@ -15,8 +15,9 @@ export const dynamic = 'force-dynamic';
  * 同一物業若在同年度有不同租客（換租客 / 退租新簽），會拆成多列，
  * 各自顯示其承租期間（最早～最晚有收款記錄的月份）與各月收費。
  *
- * 租客來源為 RentalIncome.tenantId（產生收款紀錄當下的快照），
- * 因此即使合約之後換了租客，本報表仍能還原各期間實際承租人。
+ * 租客來源以「收入紀錄所屬合約的租客」(RentalIncome.contract.tenant) 為準，
+ * 與合約管理顯示一致；查無合約租客時才退回 RentalIncome.tenantId 快照。
+ * 不同合約（不同租客 / 不同期間）會各自拆成獨立的列。
  */
 export async function GET(request) {
   const auth = await requirePermission(PERMISSIONS.RENTAL_VIEW);
@@ -88,6 +89,12 @@ export async function GET(request) {
           dueDate: true,
           isSplitAllocation: true,
           tenant: { select: { id: true, fullName: true, companyName: true, tenantType: true } },
+          contract: {
+            select: {
+              tenantId: true,
+              tenant: { select: { id: true, fullName: true, companyName: true, tenantType: true } },
+            },
+          },
         },
         orderBy: [{ propertyId: 'asc' }, { incomeMonth: 'asc' }],
       }),
@@ -118,7 +125,7 @@ export async function GET(request) {
     for (const p of propertyList) {
       propMap.set(p.id, {
         label: propLabel(p),
-        sortOrder: p.asset?.sortOrder ?? p.sortOrder ?? null,
+        sortOrder: p.sortOrder ?? p.asset?.sortOrder ?? null,
       });
     }
 
@@ -165,7 +172,10 @@ export async function GET(request) {
     const priority = { empty: 0, pending: 1, completed: 2, partial: 3, overdue: 4 };
 
     for (const i of incomes) {
-      const row = ensureRow(i.propertyId, i.tenantId, i.tenant);
+      // 以合約上的租客為準（收入紀錄的 tenantId 快照可能過時），查無合約租客才退回快照
+      const effTenantId = i.contract?.tenantId ?? i.tenantId;
+      const effTenant = i.contract?.tenant ?? i.tenant;
+      const row = ensureRow(i.propertyId, effTenantId, effTenant);
       const paid = i.status === 'completed' || i.status === 'partial';
       const amount = paid ? Number(i.actualAmount ?? 0) : 0;
       const m = i.incomeMonth;
@@ -186,7 +196,7 @@ export async function GET(request) {
       if (row.endMonth == null || m > row.endMonth) row.endMonth = m;
 
       const pmKey = `${i.propertyId}_${m}`;
-      if (!pmTenant.has(pmKey)) pmTenant.set(pmKey, { tenantId: i.tenantId, tenant: i.tenant });
+      if (!pmTenant.has(pmKey)) pmTenant.set(pmKey, { tenantId: effTenantId, tenant: effTenant });
     }
 
     // 水電費：歸屬到該物業該月有收款的租客；查無則歸入「未對應租客」列

@@ -72,9 +72,11 @@ async function exportByTenantExcel({ rows, year }) {
     { header: '合計',  key: 'total', width: 14, format: 'amount' },
   ];
   const data = rows.map((r, i) => {
+    const prev = rows[i - 1];
+    const sameAsPrev = prev && prev.propertyId === r.propertyId;
     const row = {
-      idx:    i + 1,
-      label:  r.propertyLabel,
+      idx:    sameAsPrev ? '〃' : (r.sortOrder ?? (i + 1)),
+      label:  sameAsPrev ? '〃' : r.propertyLabel,
       tenant: r.isCurrent ? r.tenantName : `${r.tenantName}（已退租）`,
       period: fmtPeriod(r.startMonth, r.endMonth),
       total:  r.total || 0,
@@ -536,7 +538,7 @@ export default function AnalyticsTab({
                       const sameAsPrev = prev && prev.propertyId === r.propertyId;
                       return (
                         <tr key={r.key} className={`hover:bg-gray-50 ${sameAsPrev ? '' : 'border-t-2 border-teal-100'}`}>
-                          <td className="text-center px-2 py-2 border border-gray-200 text-xs text-gray-400">{idx + 1}</td>
+                          <td className="text-center px-2 py-2 border border-gray-200 text-xs text-gray-500">{sameAsPrev ? <span className="text-gray-300">〃</span> : (r.sortOrder ?? (idx + 1))}</td>
                           <td className="px-3 py-2 border border-gray-200">{sameAsPrev ? <span className="text-gray-300">〃</span> : r.propertyLabel}</td>
                           <td className="px-3 py-2 border border-gray-200">
                             {r.tenantName}
