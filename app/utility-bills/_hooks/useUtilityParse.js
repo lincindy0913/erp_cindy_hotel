@@ -256,10 +256,14 @@ export function useUtilityParse({ showMessage, setActiveTab, fetchPaymentRecords
       showMessage('請先選擇 PDF 檔案', 'error');
       return;
     }
+    const water = activeTab === 'water';
     setLoading(true);
     setExtractedText('');
     setPageTexts([]);
     setSummary(null);
+    setFormRecords([]);
+    setOcrRecords([]);
+    setOcrValidation(null);
     try {
       const { texts, numPages } = await extractTextFromPdf(pdfFile, startPage);
       setPageTexts(texts);
@@ -267,11 +271,50 @@ export function useUtilityParse({ showMessage, setActiveTab, fetchPaymentRecords
       setExtractedText(fullText);
       if (texts.length === 0) {
         showMessage('無內容或 PDF 為掃描檔（無文字層），無法擷取文字', 'error');
+        setLoading(false);
+        return;
+      }
+      const allText = texts.map(t => t.text).join('\n');
+      const detected = autoDetectMeta(pdfFile.name, allText);
+      if (Object.keys(detected).length) setMeta(prev => ({ ...prev, ...detected }));
+
+      if (water) {
+        // Auto-parse water bill fields from each page
+        const records = [];
+        for (const { text } of texts) {
+          if (text.trim().length < 30) continue;
+          const stripped = text.replace(/\s+/g, '');
+          if (!stripped.includes('水號') && !stripped.includes('繳費年月')) continue;
+          const parsed = parseWaterBillPage(text);
+          if (parsed.總金額 !== '0' || parsed.水號) records.push(parsed);
+        }
+        if (records.length > 0) {
+          setOcrRecords(records);
+          setFormRecords(records.map(r => {
+            const waterFeeSubtotal = parseInt(r.水費項目小計) || 0;
+            const agencyFee = parseInt(r.代徵費用小計) || 0;
+            return {
+              類型: '水費',
+              水號: r.水號 || '（未辨識，請手動填入）',
+              用水地址: r.用水地址 || '（未辨識，請手動填入）',
+              繳費年月: r.繳費年月 || '未辨識',
+              用水度數: r.用水度數 || '0',
+              本期實用度數: r.本期實用度數 || '0',
+              基本費: r.基本費 || '0',
+              用水費: r.用水費 || '0',
+              水費項目小計: r.水費項目小計 || String(waterFeeSubtotal),
+              營業稅: r.營業稅 || '0',
+              代徵費用小計: r.代徵費用小計 || '0',
+              水源保育與回饋費: r.水源保育與回饋費 || '0',
+              總金額: r.總金額 || String(waterFeeSubtotal + agencyFee),
+            };
+          }));
+          showMessage(`已讀取並辨識 ${records.length} 筆水費單，請核對欄位後儲存`);
+        } else {
+          showMessage(`已讀取第 ${startPage}～${numPages} 頁（共 ${texts.length} 頁），未自動辨識到水費單欄位，可嘗試「OCR掃描」`);
+        }
       } else {
         showMessage(`已讀取第 ${startPage}～${numPages} 頁，共 ${texts.length} 頁`);
-        const allText = texts.map(t => t.text).join('\n');
-        const detected = autoDetectMeta(pdfFile.name, allText);
-        if (Object.keys(detected).length) setMeta(prev => ({ ...prev, ...detected }));
       }
     } catch (err) {
       console.error(err);
