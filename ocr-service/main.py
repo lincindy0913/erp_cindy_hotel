@@ -102,15 +102,23 @@ async def google_vision_ocr(img_b64: str) -> str:
 _MIN_TEXT_LEN = 80  # threshold: fewer chars → likely scanned → need OCR
 
 async def extract_page_text(pdf_bytes: bytes, page_num: int) -> tuple[str, str]:
-    """Returns (text, method) where method is 'direct' or 'vision'."""
+    """Returns (text, method) where method is 'direct', 'vision', or 'direct_fallback'."""
     direct_text = pdf_page_to_text_direct(pdf_bytes, page_num)
     if len(direct_text) >= _MIN_TEXT_LEN:
         return direct_text, "direct"
 
-    # Scanned PDF: fall back to Google Vision
-    img_b64 = pdf_page_to_base64(pdf_bytes, page_num)
-    vision_text = await google_vision_ocr(img_b64)
-    return vision_text, "vision"
+    # No Vision key configured — return direct text rather than crashing
+    if not GOOGLE_VISION_API_KEY:
+        return direct_text, "direct_fallback"
+
+    # Scanned PDF: try Google Vision, but fall back gracefully if unavailable
+    try:
+        img_b64 = pdf_page_to_base64(pdf_bytes, page_num)
+        vision_text = await google_vision_ocr(img_b64)
+        return vision_text, "vision"
+    except Exception:
+        # Vision unavailable (invalid key, quota, network) — use PyMuPDF text
+        return direct_text, "direct_fallback"
 
 
 # ─────────────────────────────────────────────────────────────
