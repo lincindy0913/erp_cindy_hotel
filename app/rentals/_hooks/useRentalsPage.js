@@ -111,7 +111,9 @@ export function useRentalsPage() {
     reminderThreshold, setReminderThreshold,
     contractMap, getRenewalDepth,
     fetchContracts, openContractModal, openRenewalModal, saveContract,
-    moveContract, deleteContract, handleDepositAction, printContracts,
+    moveContract, deleteContract, forceDeleteContract, confirmMergeDelete,
+    mergeDeleteModal, setMergeDeleteModal, mergeTargetId, setMergeTargetId,
+    handleDepositAction, printContracts,
     markReminderSent, clearReminder,
   } = useRentalContracts({
     initialFilter: {
@@ -444,7 +446,9 @@ export function useRentalsPage() {
     reminderThreshold, setReminderThreshold,
     contractMap, getRenewalDepth,
     fetchContracts, openContractModal, openRenewalModal, saveContract,
-    moveContract, deleteContract, handleDepositAction, printContracts,
+    moveContract, deleteContract, forceDeleteContract, confirmMergeDelete,
+    mergeDeleteModal, setMergeDeleteModal, mergeTargetId, setMergeTargetId,
+    handleDepositAction, printContracts,
     markReminderSent, clearReminder,
     // incomes
     incomes, incomesError,

@@ -55,10 +55,12 @@ export async function GET(request) {
       prisma.rentalContract.findMany({
         where,
         include: {
-          property:  { select: { id: true, name: true, buildingName: true, sortOrder: true, category: true } },
-          tenant:    { select: { id: true, fullName: true, companyName: true, tenantType: true, phone: true } },
-          reminders: { orderBy: { createdAt: 'desc' }, take: 1,
-                       select: { id: true, sentAt: true, sentBy: true, channel: true } },
+          property:         { select: { id: true, name: true, buildingName: true, sortOrder: true, category: true } },
+          tenant:           { select: { id: true, fullName: true, companyName: true, tenantType: true, phone: true } },
+          reminders:        { orderBy: { createdAt: 'desc' }, take: 1,
+                              select: { id: true, sentAt: true, sentBy: true, channel: true } },
+          renewalContracts: { select: { id: true, contractNo: true, status: true }, take: 1,
+                              orderBy: { id: 'asc' } },
         },
         orderBy: [{ property: { sortOrder: 'asc' } }, { id: 'asc' }],
         take: LIMIT,
@@ -68,9 +70,10 @@ export async function GET(request) {
 
     const result = contracts.map(c => ({
       ...c,
-      propertyName:   c.property.name,
-      tenantName:     c.tenant.tenantType === 'company' ? c.tenant.companyName : c.tenant.fullName,
-      latestReminder: c.reminders?.[0] ?? null,
+      propertyName:      c.property.name,
+      tenantName:        c.tenant.tenantType === 'company' ? c.tenant.companyName : c.tenant.fullName,
+      latestReminder:    c.reminders?.[0] ?? null,
+      renewedByContract: c.renewalContracts?.[0] ?? null,
     }));
 
     const res = NextResponse.json(result);

@@ -27,6 +27,9 @@ export function useRentalContracts({ initialFilter, onAfterSave } = {}) {
   const [contractSaving,  setContractSaving]  = useState(false);
   const [reminderOpen,    setReminderOpen]    = useState(false);
   const [reminderThreshold, setReminderThreshold] = useState(60);
+  // merge-delete dialog: { contract, paidCount }
+  const [mergeDeleteModal, setMergeDeleteModal] = useState(null);
+  const [mergeTargetId,    setMergeTargetId]    = useState('');
 
   const contractMap = useMemo(
     () => new Map(contracts.map(c => [c.id, c])),
@@ -186,13 +189,25 @@ export function useRentalContracts({ initialFilter, onAfterSave } = {}) {
     const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
     const next = [...sorted];
     [next[idx], next[swapIdx]] = [next[swapIdx], next[idx]];
+    // 樂觀更新：立即顯示新順序
     setContracts(next.map((c, i) => ({ ...c, property: { ...c.property, sortOrder: i + 1 } })));
-    const res = await fetch('/api/rentals/contracts', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'reorder', orderedIds: next.map(c => c.id) }),
-    });
-    if (!res.ok) { showToast('排序更新失敗', 'error'); fetchContracts(); }
+    try {
+      const res = await fetch('/api/rentals/contracts', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reorder', orderedIds: next.map(c => c.id) }),
+      });
+      if (!res.ok) {
+        showToast('排序更新失敗', 'error');
+        fetchContracts();
+      } else {
+        showToast('排序已更新', 'success');
+        fetchContracts();
+      }
+    } catch {
+      showToast('排序更新失敗', 'error');
+      fetchContracts();
+    }
   }
 
   function deleteContract(id) {
@@ -204,6 +219,41 @@ export function useRentalContracts({ initialFilter, onAfterSave } = {}) {
         fetchContracts();
       } catch (err) { showToast('刪除失敗: ' + err.message, 'error'); }
     }, '刪除合約');
+  }
+
+  function forceDeleteContract(contract) {
+    const msg = `⚠️ 強制刪除重複合約\n\n合約編號：${contract.contractNo}\n物業：${contract.propertyName}\n狀態：${contract.status}\n\n此操作將同時刪除該合約下所有「未收款」的租金紀錄，且無法還原。\n\n確定此為重複登打，要刪除嗎？`;
+    confirm(msg, async () => {
+      try {
+        const res = await fetch(`/api/rentals/contracts/${contract.id}?force=true`, { method: 'DELETE' });
+        const data = await res.json();
+        if (!res.ok) {
+          if (data?.code === 'HAS_PAID_RECORDS') {
+            // 有已收款記錄 → 開啟「移轉並刪除」dialog
+            setMergeTargetId('');
+            setMergeDeleteModal({ contract, paidCount: data.paidCount });
+          } else {
+            showToast(data.error || '刪除失敗', 'error');
+          }
+          return;
+        }
+        showToast(`合約 ${contract.contractNo} 已刪除`, 'success');
+        fetchContracts();
+      } catch (err) { showToast('刪除失敗: ' + err.message, 'error'); }
+    }, '強制刪除重複合約', true);
+  }
+
+  async function confirmMergeDelete() {
+    if (!mergeDeleteModal || !mergeTargetId) return;
+    const { contract } = mergeDeleteModal;
+    try {
+      const res = await fetch(`/api/rentals/contracts/${contract.id}?force=true&reassignTo=${mergeTargetId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) { showToast(data.error || '移轉失敗', 'error'); return; }
+      showToast(`合約 ${contract.contractNo} 的收款已移轉並刪除`, 'success');
+      setMergeDeleteModal(null);
+      fetchContracts();
+    } catch (err) { showToast('移轉失敗: ' + err.message, 'error'); }
   }
 
   function handleDepositAction(contractId, action) {
@@ -268,6 +318,8 @@ export function useRentalContracts({ initialFilter, onAfterSave } = {}) {
     contractSaving,
     reminderOpen, setReminderOpen,
     reminderThreshold, setReminderThreshold,
+    mergeDeleteModal, setMergeDeleteModal,
+    mergeTargetId, setMergeTargetId,
     contractMap,
     getRenewalDepth,
     fetchContracts,
@@ -276,6 +328,8 @@ export function useRentalContracts({ initialFilter, onAfterSave } = {}) {
     saveContract,
     moveContract,
     deleteContract,
+    forceDeleteContract,
+    confirmMergeDelete,
     handleDepositAction,
     printContracts,
     markReminderSent,

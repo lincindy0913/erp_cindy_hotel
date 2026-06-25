@@ -70,7 +70,11 @@ export default function RentalTabContent({ p }) {
       contractMap={p.contractMap} getRenewalDepth={p.getRenewalDepth}
       fetchContracts={p.fetchContracts} openContractModal={p.openContractModal}
       openRenewalModal={p.openRenewalModal} moveContract={p.moveContract}
-      deleteContract={p.deleteContract} handleDepositAction={p.handleDepositAction}
+      deleteContract={p.deleteContract} forceDeleteContract={p.forceDeleteContract}
+      confirmMergeDelete={p.confirmMergeDelete}
+      mergeDeleteModal={p.mergeDeleteModal} setMergeDeleteModal={p.setMergeDeleteModal}
+      mergeTargetId={p.mergeTargetId} setMergeTargetId={p.setMergeTargetId}
+      handleDepositAction={p.handleDepositAction}
       printContracts={p.printContracts} markReminderSent={p.markReminderSent}
       clearReminder={p.clearReminder} properties={p.properties} tenants={p.tenants}
       fetchTenants={p.fetchTenants}

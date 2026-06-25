@@ -112,6 +112,83 @@ export function useUtilityParse({ showMessage, setActiveTab, fetchPaymentRecords
     return out;
   }
 
+  // Per-page parser for Taiwan Water Corporation bills (one meter per page)
+  function parseWaterBillPage(pageText) {
+    // Strip ALL whitespace and normalize full-width chars so pdfjs item-splitting doesn't break matching
+    const ts = pageText
+      .replace(/\s+/g, '')
+      .replace(/[！-～]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+
+    const out = {
+      水號: '', 用水地址: '', 繳費年月: '',
+      用水度數: '0', 本期實用度數: '0',
+      基本費: '0', 用水費: '0', 水費項目小計: '0',
+      營業稅: '0', 代徵費用小計: '0', 水源保育與回饋費: '0',
+      總金額: '0',
+    };
+
+    // 水號: station (1-3 chars) + account (6-10 digits) + check digit
+    // Use lazy {1,3}? so station "9A" doesn't greedily consume leading digit of account "0..."
+    const acctM = ts.match(/水號([0-9A-Za-z]{1,3}?)(\d{6,10})([\w])(?!\d)/);
+    if (acctM) out.水號 = `${acctM[1]}-${acctM[2]}-${acctM[3]}`;
+
+    // 用水地址: up to next known label
+    const addrM = ts.match(/用水地址(.+?)(?=水表口徑|水表表號|用戶|代繳|繳費年月)/);
+    if (addrM) out.用水地址 = addrM[1];
+
+    // 繳費年月 e.g. 115/06
+    const ymM = ts.match(/繳費年月(\d{2,3}\/\d{1,2})/);
+    if (ymM) out.繳費年月 = ymM[1];
+
+    // 用水度數
+    const usageM = ts.match(/用水度數(\d+)/);
+    if (usageM) out.用水度數 = usageM[1];
+
+    // 本期實用度數
+    const actualM = ts.match(/本期實用度數(\d+)/);
+    if (actualM) out.本期實用度數 = actualM[1];
+
+    // 基本費
+    const baseM = ts.match(/基本費\$?([\d,]+\.?\d*)/);
+    if (baseM) out.基本費 = baseM[1].replace(/,/g, '');
+
+    // 用水費 — direct amount first, then formula fallback
+    const feeM = ts.match(/用水費\$?([\d,]+\.?\d*)/);
+    if (feeM) {
+      out.用水費 = feeM[1].replace(/,/g, '');
+    } else {
+      const calcM = ts.match(/用水費[^0-9]*\$?([\d,]+\.?\d*)/);
+      if (calcM) out.用水費 = calcM[1].replace(/,/g, '');
+    }
+
+    // 水費項目小計
+    const subtotalM = ts.match(/水費項目小計\$?([\d,]+)/);
+    if (subtotalM) out.水費項目小計 = subtotalM[1].replace(/,/g, '');
+
+    // 營業稅
+    const taxM = ts.match(/營業稅\$?([\d,]+)/);
+    if (taxM) out.營業稅 = taxM[1].replace(/,/g, '');
+
+    // 代徵費用小計
+    const agencyM = ts.match(/代徵費用小計\$?([\d,]+)/);
+    if (agencyM) out.代徵費用小計 = agencyM[1].replace(/,/g, '');
+
+    // 水源保育與回饋費
+    const conservM = ts.match(/水源保育與回饋費\$?([\d,]+)/);
+    if (conservM) out.水源保育與回饋費 = conservM[1].replace(/,/g, '');
+
+    // 代繳(代收)總金額 — . matches any paren variant （）or ()
+    const totalM = ts.match(/代繳.代收.總金額([\d,]+)/);
+    if (totalM) {
+      out.總金額 = totalM[1].replace(/,/g, '');
+    } else {
+      const totalAlt = ts.match(/總金額([\d,]+)/);
+      if (totalAlt) out.總金額 = totalAlt[1].replace(/,/g, '');
+    }
+
+    return out;
+  }
+
   function parseWaterBillFields(allText) {
     const t = allText.replace(/\s+/g, ' ').replace(/　/g, ' ');
     const out = { 用水地址: '', 水號: '', 用水量: '', 基本費: '', 水費: '', 營業稅: '', 其他費用: '', 總金額: '' };
@@ -217,6 +294,88 @@ export function useUtilityParse({ showMessage, setActiveTab, fetchPaymentRecords
     setOcrRecords([]);
     setOcrValidation(null);
     try {
+      // Step 1: try client-side text extraction (works for text-based PDFs like 台水)
+      // For OCR scan, always start from page 1 to capture all bills
+      const { texts, numPages } = await extractTextFromPdf(pdfFile, 1);
+      setPageTexts(texts);
+      const fullText = texts.map(t => `--- 第 ${t.pageNum} 頁 ---\n${t.text}`).join('\n\n');
+      setExtractedText(fullText);
+      const hasText = texts.some(t => t.text.trim().length > 50);
+
+      if (hasText) {
+        const allPageText = texts.map(t => t.text).join(' ');
+        const detected = autoDetectMeta(pdfFile.name, allPageText);
+        if (Object.keys(detected).length) setMeta(prev => ({ ...prev, ...detected }));
+
+        if (water) {
+          // Parse each page as a separate Taiwan Water meter bill
+          const records = [];
+          for (const { text } of texts) {
+            if (text.trim().length < 50) continue;
+            const stripped = text.replace(/\s+/g, '');
+            if (!stripped.includes('水號') && !stripped.includes('繳費年月')) continue;
+            const parsed = parseWaterBillPage(text);
+            if (parsed.總金額 !== '0' || parsed.水號) records.push(parsed);
+          }
+          if (records.length === 0) {
+            // PDF has a text layer but no water bill fields matched — stop here, don't call OCR service
+            showMessage('已提取 PDF 文字，但未辨識到台水水費欄位，請確認 PDF 格式是否正確', 'error');
+            setLoading(false);
+            return;
+          }
+          if (records.length > 0) {
+            setOcrRecords(records);
+            setFormRecords(records.map(r => {
+              const waterFeeSubtotal = parseInt(r.水費項目小計) || 0;
+              const agencyFee = parseInt(r.代徵費用小計) || 0;
+              return {
+                類型: '水費',
+                水號: r.水號 || '（未辨識，請手動填入）',
+                用水地址: r.用水地址 || '（未辨識，請手動填入）',
+                繳費年月: r.繳費年月 || '未辨識',
+                用水度數: r.用水度數 || '0',
+                本期實用度數: r.本期實用度數 || '0',
+                基本費: r.基本費 || '0',
+                用水費: r.用水費 || '0',
+                水費項目小計: r.水費項目小計 || String(waterFeeSubtotal),
+                營業稅: r.營業稅 || '0',
+                代徵費用小計: r.代徵費用小計 || '0',
+                水源保育與回饋費: r.水源保育與回饋費 || '0',
+                總金額: r.總金額 || String(waterFeeSubtotal + agencyFee),
+              };
+            }));
+            showMessage(`辨識完成，共 ${records.length} 筆水費單，請核對欄位內容`);
+            setLoading(false);
+            return;
+          }
+        } else {
+          // Electricity: parse entire document as single record
+          const allText = texts.map(t => t.text).join('\n');
+          const parsed = parseTaipowerFields(allText);
+          if (parsed.電號 || parsed.應繳總金額) {
+            const fee = parseInt(parsed.電費金額) || 0;
+            const tax = parseInt(parsed.應繳稅額) || 0;
+            const record = {
+              類型: '電費',
+              繳費期限: '未辨識',
+              地址: parsed.地址 || '（未辨識，請手動填入）',
+              電號: parsed.電號 || '（未辨識，請手動填入）',
+              尖峰度數: '0', 半尖峰度數: '0', 離峰度數: '0',
+              使用度數: parsed.使用度數 || '0',
+              電費金額: parsed.電費金額 || '0',
+              應繳稅額: parsed.應繳稅額 || '0',
+              應繳總金額: parsed.應繳總金額 || String(fee + tax),
+            };
+            setOcrRecords([record]);
+            setFormRecords([record]);
+            showMessage('辨識完成，請核對欄位內容');
+            setLoading(false);
+            return;
+          }
+        }
+      }
+
+      // Step 2: fallback to external OCR service (for scanned PDFs with no text layer)
       const form = new FormData();
       form.append('file', pdfFile);
       form.append('bill_type', water ? '水費' : '電費');
@@ -233,13 +392,12 @@ export function useUtilityParse({ showMessage, setActiveTab, fetchPaymentRecords
       setOcrRecords(allRecords);
       if (data.validation) setOcrValidation(data.validation);
 
-      const detected = autoDetectMeta(pdfFile.name, '');
-      const updatedMeta = { ...meta, ...detected };
-      if (Object.keys(detected).length) setMeta(updatedMeta);
+      const detected2 = autoDetectMeta(pdfFile.name, '');
+      if (Object.keys(detected2).length) setMeta(prev => ({ ...prev, ...detected2 }));
 
       if (allRecords.length > 0) {
         if (water) {
-          const waterForms = allRecords.map(r => {
+          setFormRecords(allRecords.map(r => {
             const waterFeeSubtotal = parseInt(r.水費項目小計) || 0;
             const agencyFee = parseInt(r.代徵費用小計) || 0;
             return {
@@ -257,10 +415,9 @@ export function useUtilityParse({ showMessage, setActiveTab, fetchPaymentRecords
               水源保育與回饋費: r.水源保育與回饋費 || '0',
               總金額: r.總金額 || String(waterFeeSubtotal + agencyFee),
             };
-          });
-          setFormRecords(waterForms);
+          }));
         } else {
-          const forms = allRecords.map(r => {
+          setFormRecords(allRecords.map(r => {
             const fee = parseInt(r.電費金額) || 0;
             const tax = parseInt(r.應繳稅額) || 0;
             return {
@@ -276,18 +433,16 @@ export function useUtilityParse({ showMessage, setActiveTab, fetchPaymentRecords
               應繳稅額: r.應繳稅額 || '0',
               應繳總金額: String(fee + tax),
             };
-          });
-          setFormRecords(forms);
+          }));
         }
       }
 
       const billLabel = water ? '水費單' : '電費單';
-      const msg = allRecords.length > 1
+      showMessage(allRecords.length > 1
         ? `辨識完成，共 ${allRecords.length} 筆${billLabel}，請核對欄位內容`
-        : 'OCR 辨識完成，請核對欄位內容';
-      showMessage(msg);
+        : 'OCR 辨識完成，請核對欄位內容');
     } catch (err) {
-      showMessage('OCR 服務無法連線：' + (err?.message || ''), 'error');
+      showMessage('辨識失敗：' + (err?.message || ''), 'error');
     }
     setLoading(false);
   };

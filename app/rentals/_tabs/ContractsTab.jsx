@@ -16,7 +16,9 @@ export default function ContractsTab({
   reminderThreshold, setReminderThreshold,
   contractMap, getRenewalDepth,
   fetchContracts, openContractModal, openRenewalModal,
-  moveContract, deleteContract, handleDepositAction, printContracts,
+  moveContract, deleteContract, forceDeleteContract, confirmMergeDelete,
+  mergeDeleteModal, setMergeDeleteModal, mergeTargetId, setMergeTargetId,
+  handleDepositAction, printContracts,
   markReminderSent, clearReminder,
   properties, tenants, fetchTenants,
 }) {
@@ -132,7 +134,7 @@ export default function ContractsTab({
         <table className="w-full text-sm">
           <thead className="bg-teal-50 sticky top-0 z-10">
             <tr>
-              <th className="text-center px-2 py-2 w-16 text-sm font-medium text-gray-700 whitespace-nowrap">序號</th>
+              <SortableTh label="序號" colKey="sortOrder" sortKey={contractSortKey} sortDir={contractSortDir} onSort={contractToggleSort} className="px-2 py-2 w-16" align="center" />
               <SortableTh label="分類" colKey="category" sortKey={contractSortKey} sortDir={contractSortDir} onSort={contractToggleSort} className="px-2 py-2 w-20" align="center" />
               <SortableTh label="合約編號" colKey="contractNo" sortKey={contractSortKey} sortDir={contractSortDir} onSort={contractToggleSort} className="px-3 py-2" />
               <SortableTh label="物業" colKey="propertyName" sortKey={contractSortKey} sortDir={contractSortDir} onSort={contractToggleSort} className="px-3 py-2" />
@@ -171,23 +173,7 @@ export default function ContractsTab({
 
               return (
                 <tr key={c.id} className={`border-t hover:bg-gray-50 ${isExpiring ? 'bg-yellow-50' : ''}`}>
-                  <td className="px-2 py-2 text-center">
-                    <div className="flex flex-col items-center gap-0.5">
-                      <span className="text-xs text-gray-500 font-mono">{rowIdx + 1}</span>
-                      <div className="flex gap-0.5">
-                        <button
-                          onClick={() => moveContract(c.id, 'up')}
-                          disabled={rowIdx === 0}
-                          className="text-gray-400 hover:text-gray-700 disabled:opacity-20 leading-none"
-                          title="上移">▲</button>
-                        <button
-                          onClick={() => moveContract(c.id, 'down')}
-                          disabled={rowIdx === sortedContracts.length - 1}
-                          className="text-gray-400 hover:text-gray-700 disabled:opacity-20 leading-none"
-                          title="下移">▼</button>
-                      </div>
-                    </div>
-                  </td>
+                  <td className="px-2 py-2 text-center text-xs text-gray-500 font-mono">{rowIdx + 1}</td>
                   <td className="px-2 py-2 text-center">
                     {c.property?.category
                       ? <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${CATEGORY_COLORS[c.property.category] || 'bg-gray-100 text-gray-700'}`}>{c.property.category}</span>
@@ -195,16 +181,15 @@ export default function ContractsTab({
                   </td>
                   <td className="px-3 py-2 font-mono text-xs">
                     {c.contractNo}
-                    {c.previousContractId && (() => {
-                      const depth = getRenewalDepth(c.id);
-                      const prev  = contractMap.get(c.previousContractId);
-                      return (
-                        <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-teal-100 text-teal-700 font-normal cursor-default"
-                          title={prev ? `續自 ${prev.contractNo}` : '續約'}>
-                          第 {depth} 次續約
-                        </span>
-                      );
-                    })()}
+                    {c.previousContractId && (
+                      <span className="ml-1 text-[10px] text-teal-700 font-normal">(續約)</span>
+                    )}
+                    {c.renewedByContract && (
+                      <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-purple-100 text-purple-700 font-normal cursor-default"
+                        title={`已被 ${c.renewedByContract.contractNo} 續約`}>
+                        已續約 ↗
+                      </span>
+                    )}
                   </td>
                   <td className="px-3 py-2">{c.propertyName}</td>
                   <td className="px-3 py-2">{c.tenantName}</td>
@@ -243,6 +228,14 @@ export default function ContractsTab({
                     {c.status === 'pending' && (
                       <button onClick={() => deleteContract(c.id)} className="text-red-600 hover:text-red-800 text-xs">刪除</button>
                     )}
+                    {c.status !== 'pending' && (
+                      <button
+                        onClick={() => forceDeleteContract(c)}
+                        className="text-orange-500 hover:text-orange-700 text-xs ml-1"
+                        title="刪除重複登打的合約（須無已收款記錄）">
+                        刪除(重複)
+                      </button>
+                    )}
                   </td>
                 </tr>
               );
@@ -251,6 +244,48 @@ export default function ContractsTab({
           </tbody>
         </table>
       </div>
+
+      {/* ── 移轉收款並刪除 Dialog ── */}
+      {mergeDeleteModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setMergeDeleteModal(null)}>
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 p-6" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-red-700 mb-3">⚠️ 移轉收款並刪除重複合約</h3>
+            <div className="bg-red-50 border border-red-200 rounded p-3 mb-4 text-sm text-red-800 space-y-1">
+              <div><span className="font-medium">合約：</span>{mergeDeleteModal.contract.contractNo}</div>
+              <div><span className="font-medium">物業：</span>{mergeDeleteModal.contract.propertyName}</div>
+              <div><span className="font-medium">已收款：</span>{mergeDeleteModal.paidCount} 筆（將移轉至目標合約）</div>
+            </div>
+            <p className="text-sm text-gray-600 mb-3">
+              請選擇要將收款記錄移轉到的目標合約（通常為同物業的正式合約）：
+            </p>
+            <select
+              value={mergeTargetId}
+              onChange={e => setMergeTargetId(e.target.value)}
+              className="w-full border rounded px-3 py-2 text-sm mb-4">
+              <option value="">── 請選擇目標合約 ──</option>
+              {contracts
+                .filter(c => c.id !== mergeDeleteModal.contract.id && c.propertyId === mergeDeleteModal.contract.propertyId)
+                .map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.contractNo}｜{c.tenantName}｜{c.startDate}～{c.endDate}｜{c.status}
+                  </option>
+                ))}
+            </select>
+            <p className="text-xs text-gray-400 mb-4">
+              移轉後：目標合約中同月份若已有收款則保留目標合約資料；若目標無該月份則移轉過去。此操作無法還原。
+            </p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setMergeDeleteModal(null)} className="px-4 py-2 text-sm bg-gray-200 rounded hover:bg-gray-300">取消</button>
+              <button
+                onClick={confirmMergeDelete}
+                disabled={!mergeTargetId}
+                className="px-4 py-2 text-sm bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50">
+                確認移轉並刪除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

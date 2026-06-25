@@ -280,10 +280,12 @@ export async function PATCH(request, { params }) {
 export async function DELETE(request, { params }) {
   const auth = await requirePermission(PERMISSIONS.RENTAL_EDIT);
   if (!auth.ok) return auth.response;
-  
+
   try {
     const { id } = await params;
     const contractId = parseInt(id);
+    const { searchParams } = new URL(request.url);
+    const force = searchParams.get('force') === 'true';
 
     const contract = await prisma.rentalContract.findUnique({
       where: { id: contractId }
@@ -293,11 +295,67 @@ export async function DELETE(request, { params }) {
       return createErrorResponse('NOT_FOUND', '找不到合約', 404);
     }
 
-    if (contract.status !== 'pending') {
-      return createErrorResponse('VALIDATION_FAILED', '只能刪除待審核狀態的合約', 400);
+    if (contract.status !== 'pending' && !force) {
+      return createErrorResponse('VALIDATION_FAILED', '只能刪除待審核狀態的合約；若確認為重複登打，請使用強制刪除', 400);
     }
 
-    await prisma.rentalContract.delete({ where: { id: contractId } });
+    const reassignTo = searchParams.get('reassignTo') ? parseInt(searchParams.get('reassignTo')) : null;
+
+    // 確認是否有已收款的 income 記錄
+    const [paidCount, totalCount] = await Promise.all([
+      prisma.rentalIncome.count({
+        where: { contractId, status: { in: ['completed', 'paid', 'partial'] } },
+      }),
+      prisma.rentalIncome.count({ where: { contractId } }),
+    ]);
+
+    if (paidCount > 0 && !reassignTo) {
+      return NextResponse.json(
+        { error: `此合約有 ${paidCount} 筆已收款記錄，請選擇要移轉到的目標合約後再刪除。`, code: 'HAS_PAID_RECORDS', paidCount },
+        { status: 400 }
+      );
+    }
+
+    await prisma.$transaction(async tx => {
+      if (reassignTo && totalCount > 0) {
+        // 取得本合約所有 income 記錄
+        const sourceIncomes = await tx.rentalIncome.findMany({
+          where: { contractId },
+          select: { id: true, incomeYear: true, incomeMonth: true, status: true },
+        });
+
+        for (const inc of sourceIncomes) {
+          // 確認目標合約同月份是否已有記錄
+          const targetIncome = await tx.rentalIncome.findUnique({
+            where: { contractId_incomeYear_incomeMonth: { contractId: reassignTo, incomeYear: inc.incomeYear, incomeMonth: inc.incomeMonth } },
+            select: { id: true, status: true },
+          });
+
+          if (!targetIncome) {
+            // 目標無同月份 → 直接移轉
+            await tx.rentalIncome.update({ where: { id: inc.id }, data: { contractId: reassignTo } });
+          } else if (['completed', 'paid', 'partial'].includes(inc.status) && targetIncome.status === 'pending') {
+            // 本合約已收款，目標是 pending → 刪目標 pending，移轉本合約已收款記錄
+            await tx.rentalIncome.delete({ where: { id: targetIncome.id } });
+            await tx.rentalIncome.update({ where: { id: inc.id }, data: { contractId: reassignTo } });
+          } else {
+            // 目標已有有效記錄 → 刪除本合約此月份記錄（payments 會 cascade 刪除）
+            await tx.rentalIncome.delete({ where: { id: inc.id } });
+          }
+        }
+      } else if (totalCount > 0) {
+        // 無 reassign 且只有 pending income → 直接刪除
+        await tx.rentalIncome.deleteMany({ where: { contractId } });
+      }
+
+      // 解除其他合約對本合約的 previousContractId 參照
+      await tx.rentalContract.updateMany({
+        where: { previousContractId: contractId },
+        data: { previousContractId: null },
+      });
+
+      await tx.rentalContract.delete({ where: { id: contractId } });
+    });
 
     await auditFromSession(prisma, auth.session, {
       action: AUDIT_ACTIONS.RENTAL_CONTRACT_DELETE,
@@ -305,7 +363,7 @@ export async function DELETE(request, { params }) {
       targetRecordId: contractId,
       targetRecordNo: contract.contractNo,
       beforeState: { contractNo: contract.contractNo, status: contract.status },
-      note: `刪除租約 ${contract.contractNo}`,
+      note: `刪除租約 ${contract.contractNo}（${reassignTo ? `移轉 income 至合約#${reassignTo}` : force ? '強制刪除重複' : '一般刪除'}）`,
     });
 
     return NextResponse.json({ success: true });

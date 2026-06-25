@@ -180,7 +180,7 @@ export default function CashierTab({
             title="篩選已收款但尚未連結現金流記錄的項目（月結前補登用）">
             未入帳
           </button>
-          <button onClick={fetchIncomes} className="bg-teal-600 text-white px-3 py-1 rounded text-sm hover:bg-teal-700">查詢</button>
+          <button onClick={() => fetchIncomes()} className="bg-teal-600 text-white px-3 py-1 rounded text-sm hover:bg-teal-700">查詢</button>
           <button onClick={printIncomes} className="px-3 py-1 text-sm rounded border border-gray-300 hover:bg-gray-50">🖨️ 列印</button>
           <button onClick={generateMonthlyIncome} className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700">
             產生 {incomeFilter.year || new Date().getFullYear()}/{incomeFilter.month || (new Date().getMonth() + 1)} 月租金
