@@ -46,7 +46,12 @@ export function useUtilityParse({ showMessage, setActiveTab, fetchPaymentRecords
       pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.mjs';
     }
     const arrayBuffer = await file.arrayBuffer();
-    const doc = await pdfjsLib.getDocument({ data: arrayBuffer, useSystemFonts: true }).promise;
+    const doc = await pdfjsLib.getDocument({
+      data: arrayBuffer,
+      useSystemFonts: true,
+      cMapUrl: '/cmaps/',
+      cMapPacked: true,
+    }).promise;
     const numPages = doc.numPages;
     const texts = [];
     const from = Math.max(1, Math.min(fromPage, numPages));
@@ -311,7 +316,8 @@ export function useUtilityParse({ showMessage, setActiveTab, fetchPaymentRecords
           }));
           showMessage(`已讀取並辨識 ${records.length} 筆水費單，請核對欄位後儲存`);
         } else {
-          showMessage(`已讀取第 ${startPage}～${numPages} 頁（共 ${texts.length} 頁），未自動辨識到水費單欄位，可嘗試「OCR掃描」`);
+          const pagesWithText = texts.filter(t => t.text.trim().length > 10).length;
+          showMessage(`已讀取第 ${startPage}～${numPages} 頁（共 ${texts.length} 頁，${pagesWithText} 頁有文字內容），未辨識到水費單欄位，可嘗試「OCR掃描」`);
         }
       } else {
         showMessage(`已讀取第 ${startPage}～${numPages} 頁，共 ${texts.length} 頁`);
