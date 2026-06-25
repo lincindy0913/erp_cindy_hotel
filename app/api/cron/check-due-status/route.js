@@ -27,12 +27,23 @@ export async function POST(request) {
 
   try {
     const today = todayStr();
-    const result = await prisma.check.updateMany({
-      where: { status: 'pending', dueDate: { lte: today } },
-      data: { status: 'due' }
-    });
+    const [checkResult, contractResult] = await Promise.all([
+      prisma.check.updateMany({
+        where: { status: 'pending', dueDate: { lte: today } },
+        data: { status: 'due' }
+      }),
+      prisma.rentalContract.updateMany({
+        where: { status: 'active', endDate: { lt: today } },
+        data: { status: 'expired' }
+      }),
+    ]);
 
-    return NextResponse.json({ success: true, updatedCount: result.count, date: today });
+    return NextResponse.json({
+      success: true,
+      checksUpdated: checkResult.count,
+      contractsExpired: contractResult.count,
+      date: today,
+    });
   } catch (error) {
     return handleApiError(error);
   }

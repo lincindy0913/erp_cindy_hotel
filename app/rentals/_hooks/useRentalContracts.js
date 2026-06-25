@@ -122,6 +122,15 @@ export function useRentalContracts({ initialFilter, onAfterSave } = {}) {
       return;
     }
 
+    // 結束日期已過 → 不可設為「生效中」，否則系統載入時會自動還原為「已到期」
+    if (contractForm.status === 'active' && contractForm.endDate) {
+      const today = new Date().toISOString().slice(0, 10);
+      if (contractForm.endDate < today) {
+        showToast(`合約期限（${contractForm.endDate}）已過，請先延長結束日期後再設為「生效中」。`, 'error');
+        return;
+      }
+    }
+
     let formToSave = contractForm;
     if (!editingContract && contractForm.propertyId && !contractForm.previousContractId) {
       const activeContract = contracts.find(
