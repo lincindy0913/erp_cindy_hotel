@@ -445,7 +445,7 @@ export function useUtilityParse({ showMessage, setActiveTab, fetchPaymentRecords
 
       const allRecords = Array.isArray(data.records) && data.records.length > 0 ? data.records : [];
       setOcrRecords(allRecords);
-      if (data.validation) setOcrValidation(data.validation);
+      if (data.validation && data.validation.computed) setOcrValidation(data.validation);
 
       const detected2 = autoDetectMeta(pdfFile.name, '');
       if (Object.keys(detected2).length) setMeta(prev => ({ ...prev, ...detected2 }));

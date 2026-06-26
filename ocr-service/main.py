@@ -224,6 +224,73 @@ def parse_summary_totals(text: str) -> dict | None:
         return None
 
 
+def _num_near(text: str, anchor: str, window: int = 90) -> str | None:
+    """First multi-digit number (optionally followed by 元) within `window`
+    chars after `anchor`. Skips ＊＊＊ masks and English words in between."""
+    idx = text.find(anchor)
+    if idx < 0:
+        return None
+    seg = text[idx + len(anchor): idx + len(anchor) + window]
+    m = re.search(r'(\d[\d,]{2,})\s*元', seg) or re.search(r'(\d[\d,]{2,})', seg)
+    return m.group(1).replace(',', '') if m else None
+
+
+def parse_electricity_detail(text: str, page_num: int, billing_period: str = None) -> dict:
+    """Parse ONE Taipower detail bill page (one meter per page).
+
+    Detail pages have large, clear text — far more OCR-reliable than the packed
+    summary table. Anchors on the 電號 pattern and the English labels
+    ('Total Amount', 'Due Date') which Tesseract reads cleanly.
+    """
+    am = _ACCT_RE.search(text)
+    acct = am.group(1) if am else "未辨識"
+
+    # 應繳總金額 — English 'Total Amount' first (reliable), then Chinese
+    total = _num_near(text, 'Total Amount') or _num_near(text, '應繳總金額')
+    # 電費金額 = 稅前應繳總金額
+    fee = _num_near(text, '稅前應繳總金額')
+    # 營業稅
+    tax = _num_near(text, '營業稅', window=40)
+
+    # 繳費期限 — 'Due Date' English anchor, else any 3碼/2碼/2碼 date
+    dm = re.search(r'Due\s*Date\D{0,25}(\d{3}/\d{2}/\d{2})', text) or re.search(r'(\d{3}/\d{2}/\d{2})', text)
+    due = dm.group(1) if dm else "未辨識"
+
+    # 度數 breakdown — best effort
+    pm = re.search(r'經常[\(（]?尖峰[\)）]?度數\D{0,15}(\d{2,6})', text)
+    sm = re.search(r'(?:週六)?半尖峰度數\D{0,15}(\d{2,6})', text)
+    om = re.search(r'離峰度數\D{0,15}(\d{2,6})', text)
+    peak = pm.group(1) if pm else None
+    semi = sm.group(1) if sm else None
+    off = om.group(1) if om else None
+    usage = str((int(peak or 0) + int(semi or 0) + int(off or 0))) if (peak or semi or off) else None
+
+    # 用電地址 — best effort (full-width chars on detail pages)
+    addr_m = _ADDR_RE.search(text)
+    addr = addr_m.group(1).strip() if addr_m else "未辨識"
+
+    # derive 營業稅 from total - fee when missing
+    if not tax and total and fee and total.isdigit() and fee.isdigit():
+        diff = int(total) - int(fee)
+        if 0 <= diff < int(total):
+            tax = str(diff)
+
+    return {
+        "館別": "麗格",
+        "類型": "電費",
+        "繳費期限": due,
+        "地址": addr,
+        "電號": acct,
+        "尖峰度數": peak or "0",
+        "半尖峰度數": semi or "0",
+        "離峰度數": off or "0",
+        "使用度數": usage or "0",
+        "電費金額": fee or "0",
+        "應繳稅額": tax or "0",
+        "應繳總金額": total or "0",
+    }
+
+
 # ─────────────────────────────────────────────────────────────
 # Field parsers
 # ─────────────────────────────────────────────────────────────
@@ -686,17 +753,35 @@ async def ocr_pdf(
         records = []
         expected_totals = None
         if bill_type == "電費":
-            # Prefer the summary table (one page lists every meter) when present
+            # Classify pages: a DETAIL page has exactly one distinct 電號,
+            # a SUMMARY page lists many. Detail pages have large/clear text
+            # (one meter each) and OCR far more reliably than the packed table.
+            detail_pages = []
+            summary_text = None
             for p in page_texts:
-                summary = parse_electricity_summary(p["text"])
-                if len(summary) >= 2:  # a real summary has multiple meter rows
-                    records = summary
-                    expected_totals = parse_summary_totals(p["text"])
-                    break
-            # Otherwise parse each detailed bill page individually
-            if not records:
-                records = [parse_electricity_page(p["text"], p["pageNum"], billing_period)
-                           for p in page_texts]
+                accts = set(_ACCT_RE.findall(p["text"]))
+                if len(accts) == 1:
+                    detail_pages.append(p)
+                elif len(accts) >= 3 and summary_text is None:
+                    summary_text = p["text"]
+
+            if len(detail_pages) >= 2:
+                # One record per detail page (the reliable path for this bill)
+                records = [parse_electricity_detail(p["text"], p["pageNum"], billing_period)
+                           for p in detail_pages]
+                if summary_text:
+                    expected_totals = parse_summary_totals(summary_text)
+            else:
+                # No detail pages — fall back to the summary table
+                for p in page_texts:
+                    summary = parse_electricity_summary(p["text"])
+                    if len(summary) >= 2:
+                        records = summary
+                        expected_totals = parse_summary_totals(p["text"])
+                        break
+                if not records:
+                    records = [parse_electricity_page(p["text"], p["pageNum"], billing_period)
+                               for p in page_texts]
         else:
             records = [parse_water_page(p["text"], p["pageNum"], billing_period)
                        for p in page_texts]

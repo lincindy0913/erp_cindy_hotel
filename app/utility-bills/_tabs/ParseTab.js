@@ -200,7 +200,7 @@ export default function ParseTab({
               </tfoot>
             </table>
           </div>
-          {ocrValidation && (
+          {ocrValidation && ocrValidation.computed && ocrValidation.expected && (
             <div className={`mt-3 p-3 rounded-lg text-xs border ${ocrValidation.passed ? 'bg-green-50 border-green-300 text-green-800' : 'bg-amber-50 border-amber-300 text-amber-800'}`}>
               <span className="font-semibold">{ocrValidation.passed ? '✓ 合計驗證通過' : '⚠ 合計驗證差異'}</span>
               {!ocrValidation.passed && (
