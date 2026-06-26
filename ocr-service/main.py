@@ -159,26 +159,39 @@ async def extract_page_text(pdf_bytes: bytes, page_num: int) -> tuple[str, str]:
 # Far cleaner to OCR than the 9 detailed bill pages.
 # ─────────────────────────────────────────────────────────────
 _ACCT_RE = re.compile(r'(\d{2}-\d{2}-\d{4}-\d{2}-\d)')
+_NUM_RE = re.compile(r'\d[\d,]+')          # 2+ char numbers (skips single-digit 序號)
+_ADDR_RE = re.compile(r'([一-鿿]{1,8}?[街路段巷弄][一-鿿\dA-Za-z~\-、，.·]*?\d+號[一-鿿\dA-Za-z~\-、，.·]*)')
 
 def parse_electricity_summary(text: str) -> list:
     """Parse a Taipower summary table; returns one record per meter row.
 
-    Robust to OCR row wrapping: anchors on the 電號 pattern, takes the address
-    from the text before it and the four amounts after it on the same line.
+    Tesseract reads the table row-by-row but often splits a single row across
+    several lines, so we scan the WHOLE page (not line-by-line): anchor on each
+    distinct 電號, take the first 4 multi-digit numbers that follow it
+    (使用度數/電費金額/營業稅/應繳總金額), and the address that precedes it.
     """
+    # Keep the first occurrence of each distinct 電號 in document order.
+    # (A detail bill page repeats the same 電號 → only 1 distinct → returns [].)
+    seen = set()
+    matches = []
+    for m in _ACCT_RE.finditer(text):
+        if m.group(1) not in seen:
+            seen.add(m.group(1))
+            matches.append(m)
+    if len(matches) < 2:
+        return []
+
     records = []
-    for raw in text.split('\n'):
-        m = _ACCT_RE.search(raw)
-        if not m:
-            continue
+    for idx, m in enumerate(matches):
         acct = m.group(1)
-        before = raw[:m.start()].strip()
-        after = raw[m.end():]
-        # numbers after the 電號: 使用度數 / 電費金額 / 營業稅 / 應繳總金額
-        nums = [n.replace(',', '') for n in re.findall(r'[\d,]{2,}', after)
+        seg_end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
+        seg_after = text[m.end():seg_end]
+        nums = [n.replace(',', '') for n in _NUM_RE.findall(seg_after)
                 if n.replace(',', '').isdigit()]
-        # address = before minus a leading 序號 (1-2 digits)
-        addr = re.sub(r'^\d{1,2}[\s.|]*', '', before).strip()
+        # address sits before the 電號 (after the previous row's amounts)
+        seg_before = text[(matches[idx - 1].end() if idx > 0 else 0):m.start()]
+        am = _ADDR_RE.search(seg_before)
+        addr = am.group(1).strip() if am else ''
         records.append({
             "館別": "麗格",
             "類型": "電費",
@@ -192,6 +205,23 @@ def parse_electricity_summary(text: str) -> list:
             "應繳總金額": nums[3] if len(nums) > 3 else "0",
         })
     return records
+
+
+def parse_summary_totals(text: str) -> dict | None:
+    """Parse the 總計 row of a Taipower summary table → expected column totals.
+
+    e.g. "總計 應繳金額 : 25,400 119,094 5,956 125,050"
+    Used to validate that the per-meter rows sum correctly (replaces the old
+    hard-coded expected totals, which were for a different property).
+    """
+    m = re.search(r'總\s*計[^\d]*([\d,]+)[^\d]+([\d,]+)[^\d]+([\d,]+)[^\d]+([\d,]+)', text)
+    if not m:
+        return None
+    keys = ["使用度數", "電費金額", "應繳稅額", "應繳總金額"]
+    try:
+        return {k: int(m.group(i + 1).replace(',', '')) for i, k in enumerate(keys)}
+    except Exception:
+        return None
 
 
 # ─────────────────────────────────────────────────────────────
@@ -586,15 +616,9 @@ def parse_water_page(text: str, page_num: int, billing_period: str = None) -> di
 
 # ─────────────────────────────────────────────────────────────
 # Step 8: Validate electricity bill totals
+# Expected totals come from the 總計 row of the bill's own summary table
+# (parse_summary_totals); there is no hard-coded per-property expectation.
 # ─────────────────────────────────────────────────────────────
-EXPECTED_TOTALS = {
-    "使用度數": 38390,
-    "電費金額": 159555,
-    "應繳稅額": 7978,
-    "應繳總金額": 167533,
-}
-
-
 def safe_int(v) -> int:
     try:
         return int(str(v).replace(",", "").strip())
@@ -602,10 +626,10 @@ def safe_int(v) -> int:
         return 0
 
 
-def validate_totals(records: list) -> dict:
-    computed = {k: sum(safe_int(r.get(k)) for r in records) for k in EXPECTED_TOTALS}
-    passed = all(computed[k] == EXPECTED_TOTALS[k] for k in EXPECTED_TOTALS)
-    return {"computed": computed, "expected": EXPECTED_TOTALS, "passed": passed}
+def validate_totals(records: list, expected: dict) -> dict:
+    computed = {k: sum(safe_int(r.get(k)) for r in records) for k in expected}
+    passed = all(computed[k] == expected[k] for k in expected)
+    return {"computed": computed, "expected": expected, "passed": passed}
 
 
 # ─────────────────────────────────────────────────────────────
@@ -660,12 +684,14 @@ async def ocr_pdf(
                         billing_period = m.group(1).strip()
 
         records = []
+        expected_totals = None
         if bill_type == "電費":
             # Prefer the summary table (one page lists every meter) when present
             for p in page_texts:
                 summary = parse_electricity_summary(p["text"])
                 if len(summary) >= 2:  # a real summary has multiple meter rows
                     records = summary
+                    expected_totals = parse_summary_totals(p["text"])
                     break
             # Otherwise parse each detailed bill page individually
             if not records:
@@ -684,8 +710,9 @@ async def ocr_pdf(
     # Clean internal fields
     clean_records = [{k: v for k, v in r.items() if not k.startswith("_")} for r in records]
 
-    # Validate totals (electricity only)
-    validation = validate_totals(clean_records) if bill_type == "電費" else {}
+    # Validate per-meter rows against the 總計 row (only when we have it)
+    validation = (validate_totals(clean_records, expected_totals)
+                  if (bill_type == "電費" and expected_totals) else {})
 
     # Backward-compat: first record as single parsed object
     first = clean_records[0] if clean_records else {}
