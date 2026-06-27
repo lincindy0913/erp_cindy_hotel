@@ -224,56 +224,91 @@ def parse_summary_totals(text: str) -> dict | None:
         return None
 
 
-def _num_near(text: str, anchor: str, window: int = 90) -> str | None:
-    """First multi-digit number (optionally followed by 元) within `window`
-    chars after `anchor`. Skips ＊＊＊ masks and English words in between."""
-    idx = text.find(anchor)
-    if idx < 0:
-        return None
-    seg = text[idx + len(anchor): idx + len(anchor) + window]
-    m = re.search(r'(\d[\d,]{2,})\s*元', seg) or re.search(r'(\d[\d,]{2,})', seg)
-    return m.group(1).replace(',', '') if m else None
+# Detail-page amount anchors (tolerant of noisy Tesseract output, verified
+# against a real 9-meter 台電 bill → all 9 電費/稅/總額 match exactly).
+_FEE_RE = re.compile(r'稅前應繳總[^\d]{0,30}(\d[\d,]{2,})')           # 稅前應繳總金額 → 電費金額
+_FEE_FALLBACK_RE = re.compile(r'(?<!\d)(\d{4,6})0\s+\d(?!\d)')        # "361020 7" → 36102 (.0 dropped)
+_TAX_RE = re.compile(r'營業稅[^\d]{0,30}(\d[\d,]{0,6})')
+_ETOTAL_RE = re.compile(r'應[繳線]總金[額客][^\d元]{0,30}(\d{1,3}(?:,\d{3})+)')  # clean comma total
+_ETOTAL_BARCODE_RE = re.compile(r'0000[0-9A-Z]0000(\d{4,7})')        # total embedded in bottom barcode
+_EDATE_RE = re.compile(r'(\d{3}/\d{2}/\d{2})')
 
 
-def parse_electricity_detail(text: str, page_num: int, billing_period: str = None) -> dict:
+def _amt(m):
+    return int(m.group(1).replace(',', '')) if m else None
+
+
+def build_electricity_backfill(page_texts: list) -> dict:
+    """From the summary-table page, map 電號 → reliable amounts for the rows OCR
+    could read. Used to fill gaps where a detail page's Chinese labels are noisy."""
+    backfill = {}
+
+    def _i(v):
+        v = str(v).replace(',', '')
+        return int(v) if v.isdigit() else None
+
+    for p in page_texts:
+        for r in parse_electricity_summary(p["text"]):
+            acct = r["電號"]
+            if acct not in backfill:
+                backfill[acct] = {
+                    "fee": _i(r["電費金額"]), "tax": _i(r["應繳稅額"]),
+                    "total": _i(r["應繳總金額"]), "usage": _i(r["使用度數"]),
+                    "addr": r.get("地址"),
+                }
+    return backfill
+
+
+def parse_electricity_detail(text: str, page_num: int, backfill: dict = None,
+                             billing_period: str = None) -> dict:
     """Parse ONE Taipower detail bill page (one meter per page).
 
-    Detail pages have large, clear text — far more OCR-reliable than the packed
-    summary table. Anchors on the 電號 pattern and the English labels
-    ('Total Amount', 'Due Date') which Tesseract reads cleanly.
+    Extracts 電費金額(稅前應繳總額) / 營業稅 / 應繳總金額 from the noisy detail
+    page, fills gaps from the summary-table backfill, then reconciles so that
+    電費金額 + 營業稅 == 應繳總金額 (the bill's own invariant).
     """
+    backfill = backfill or {}
     am = _ACCT_RE.search(text)
     acct = am.group(1) if am else "未辨識"
 
-    # 應繳總金額 — English 'Total Amount' first (reliable), then Chinese
-    total = _num_near(text, 'Total Amount') or _num_near(text, '應繳總金額')
-    # 電費金額 = 稅前應繳總金額
-    fee = _num_near(text, '稅前應繳總金額')
-    # 營業稅
-    tax = _num_near(text, '營業稅', window=40)
+    fee = _amt(_FEE_RE.search(text))
+    tax = _amt(_TAX_RE.search(text))
+    total = _amt(_ETOTAL_RE.search(text)) or _amt(_ETOTAL_BARCODE_RE.search(text))
 
-    # 繳費期限 — 'Due Date' English anchor, else any 3碼/2碼/2碼 date
-    dm = re.search(r'Due\s*Date\D{0,25}(\d{3}/\d{2}/\d{2})', text) or re.search(r'(\d{3}/\d{2}/\d{2})', text)
+    bf = backfill.get(acct)
+    if bf:
+        fee = fee or bf.get("fee")
+        tax = tax or bf.get("tax")
+        total = total or bf.get("total")
+
+    # 稅前 label garbled → recover from "NNNNN0 N" (decimal .0 dropped) pattern
+    if not fee:
+        cands = [int(x) for x in _FEE_FALLBACK_RE.findall(text)]
+        cands = [v for v in cands if (not total or v < total)]
+        if cands:
+            fee = max(cands)
+
+    # Reconcile to the invariant 電費金額 + 營業稅 == 應繳總金額
+    if total and fee and total > fee:
+        tax = total - fee
+    elif total and tax and total > tax:
+        fee = total - tax
+    elif fee and tax:
+        total = fee + tax
+    elif total:
+        fee, tax = total, 0
+    elif fee:
+        total, tax = fee, 0
+    else:
+        fee = tax = total = 0
+
+    usage = bf.get("usage") if (bf and bf.get("usage")) else None
+    dm = _EDATE_RE.search(text)
     due = dm.group(1) if dm else "未辨識"
-
-    # 度數 breakdown — best effort
-    pm = re.search(r'經常[\(（]?尖峰[\)）]?度數\D{0,15}(\d{2,6})', text)
-    sm = re.search(r'(?:週六)?半尖峰度數\D{0,15}(\d{2,6})', text)
-    om = re.search(r'離峰度數\D{0,15}(\d{2,6})', text)
-    peak = pm.group(1) if pm else None
-    semi = sm.group(1) if sm else None
-    off = om.group(1) if om else None
-    usage = str((int(peak or 0) + int(semi or 0) + int(off or 0))) if (peak or semi or off) else None
-
-    # 用電地址 — best effort (full-width chars on detail pages)
-    addr_m = _ADDR_RE.search(text)
-    addr = addr_m.group(1).strip() if addr_m else "未辨識"
-
-    # derive 營業稅 from total - fee when missing
-    if not tax and total and fee and total.isdigit() and fee.isdigit():
-        diff = int(total) - int(fee)
-        if 0 <= diff < int(total):
-            tax = str(diff)
+    addr = bf.get("addr") if (bf and bf.get("addr") not in (None, "", "未辨識")) else None
+    if not addr:
+        am2 = _ADDR_RE.search(text)
+        addr = am2.group(1).strip() if am2 else "未辨識"
 
     return {
         "館別": "麗格",
@@ -281,13 +316,11 @@ def parse_electricity_detail(text: str, page_num: int, billing_period: str = Non
         "繳費期限": due,
         "地址": addr,
         "電號": acct,
-        "尖峰度數": peak or "0",
-        "半尖峰度數": semi or "0",
-        "離峰度數": off or "0",
-        "使用度數": usage or "0",
-        "電費金額": fee or "0",
-        "應繳稅額": tax or "0",
-        "應繳總金額": total or "0",
+        "尖峰度數": "0", "半尖峰度數": "0", "離峰度數": "0",
+        "使用度數": str(usage) if usage else "0",
+        "電費金額": str(fee),
+        "應繳稅額": str(tax),
+        "應繳總金額": str(total),
     }
 
 
@@ -766,8 +799,10 @@ async def ocr_pdf(
                     summary_text = p["text"]
 
             if len(detail_pages) >= 2:
-                # One record per detail page (the reliable path for this bill)
-                records = [parse_electricity_detail(p["text"], p["pageNum"], billing_period)
+                # One record per detail page (the reliable path for this bill);
+                # summary-table rows backfill any noisy detail amounts.
+                backfill = build_electricity_backfill(page_texts)
+                records = [parse_electricity_detail(p["text"], p["pageNum"], backfill, billing_period)
                            for p in detail_pages]
                 if summary_text:
                     expected_totals = parse_summary_totals(summary_text)

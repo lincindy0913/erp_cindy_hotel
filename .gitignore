@@ -63,3 +63,9 @@ backup.dump
 # demo data (contains plaintext passwords)
 /data/
 
+
+# 測試用帳單 PDF（含電號等資料，勿入庫）
+docs/operational-excellence/*.pdf
+test-electric.pdf
+ocr-service/_ocr_result.json
+_ocr_result.json
