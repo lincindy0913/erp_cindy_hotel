@@ -97,6 +97,18 @@ async def google_vision_ocr(img_b64: str) -> str:
 
 
 # ─────────────────────────────────────────────────────────────
+# Normalize OCR text: Tesseract often inserts a space between every CJK
+# glyph (e.g. "稅 前 應 繳 總 金 額"), which breaks label matching. Collapse
+# spaces that sit *between two CJK characters* (no-op for engines that don't
+# add them, e.g. Google Vision / Debian Tesseract).
+# ─────────────────────────────────────────────────────────────
+_CJK_SPACE_RE = re.compile(r'(?<=[一-鿿])[ \t]+(?=[一-鿿])')
+
+def normalize_ocr_text(text: str) -> str:
+    return _CJK_SPACE_RE.sub('', text)
+
+
+# ─────────────────────────────────────────────────────────────
 # Local OCR via Tesseract (no API key needed, works offline)
 # Handles scanned 台電 / 自來水 bills that have no text layer.
 # ─────────────────────────────────────────────────────────────
@@ -117,7 +129,8 @@ def tesseract_ocr_page(pdf_bytes: bytes, page_num: int, dpi: int = 300) -> str:
     img = Image.open(io.BytesIO(pix.tobytes("png")))
     doc.close()
     # chi_tra (Traditional Chinese) + eng for the mixed-language bills
-    return pytesseract.image_to_string(img, lang="chi_tra+eng").strip()
+    text = pytesseract.image_to_string(img, lang="chi_tra+eng")
+    return normalize_ocr_text(text).strip()
 
 
 # ─────────────────────────────────────────────────────────────
@@ -228,14 +241,26 @@ def parse_summary_totals(text: str) -> dict | None:
 # against a real 9-meter 台電 bill → all 9 電費/稅/總額 match exactly).
 _FEE_RE = re.compile(r'稅前應繳總[^\d]{0,30}(\d[\d,]{2,})')           # 稅前應繳總金額 → 電費金額
 _FEE_FALLBACK_RE = re.compile(r'(?<!\d)(\d{4,6})0\s+\d(?!\d)')        # "361020 7" → 36102 (.0 dropped)
-_TAX_RE = re.compile(r'營業稅[^\d]{0,30}(\d[\d,]{0,6})')
-_ETOTAL_RE = re.compile(r'應[繳線]總金[額客][^\d元]{0,30}(\d{1,3}(?:,\d{3})+)')  # clean comma total
-_ETOTAL_BARCODE_RE = re.compile(r'0000[0-9A-Z]0000(\d{4,7})')        # total embedded in bottom barcode
+_TAX_RE = re.compile(r'營業稅[^\d元]{0,12}(\d{2,6})[^\d]{0,3}元')   # value must be a real amount ending in 元
+_TAXCOL_RE = re.compile(r'(\d{1,5})\.\s?0?\s*元[^\d]{0,18}應[繳繼線總]')  # columnar 營業稅 (value just before 應繳總金額)
+_ETOTAL_BARCODE_RE = re.compile(r'0000[0-9A-Z.]?0000(\d{4,7})')      # total embedded in bottom barcode
+_COMMA_AMT_RE = re.compile(r'(\d{1,3}(?:,\d{3})+)\s*元')             # clean comma amount before 元
 _EDATE_RE = re.compile(r'(\d{3}/\d{2}/\d{2})')
 
 
 def _amt(m):
     return int(m.group(1).replace(',', '')) if m else None
+
+
+def _extract_total(text: str):
+    """應繳總金額 is the largest *comma-grouped* amount on the bill (it appears
+    several times and is bigger than any decimal sub-amount, which never carry a
+    comma). Falls back to the bottom barcode."""
+    cands = [int(m.replace(',', '')) for m in _COMMA_AMT_RE.findall(text)]
+    bc = _ETOTAL_BARCODE_RE.search(text)
+    if bc:
+        cands.append(int(bc.group(1)))
+    return max(cands) if cands else None
 
 
 def build_electricity_backfill(page_texts: list) -> dict:
@@ -271,34 +296,36 @@ def parse_electricity_detail(text: str, page_num: int, backfill: dict = None,
     am = _ACCT_RE.search(text)
     acct = am.group(1) if am else "未辨識"
 
-    fee = _amt(_FEE_RE.search(text))
-    tax = _amt(_TAX_RE.search(text))
-    total = _amt(_ETOTAL_RE.search(text)) or _amt(_ETOTAL_BARCODE_RE.search(text))
-
-    bf = backfill.get(acct)
-    if bf:
-        fee = fee or bf.get("fee")
-        tax = tax or bf.get("tax")
-        total = total or bf.get("total")
-
-    # 稅前 label garbled → recover from "NNNNN0 N" (decimal .0 dropped) pattern
-    if not fee:
-        cands = [int(x) for x in _FEE_FALLBACK_RE.findall(text)]
-        cands = [v for v in cands if (not total or v < total)]
+    # Direct extractions from THIS page (most reliable when present)
+    total = _extract_total(text)
+    fee_d = _amt(_FEE_RE.search(text))
+    tax_d = _amt(_TAX_RE.search(text)) or _amt(_TAXCOL_RE.search(text))
+    # 稅前 label garbled → recover from "NNNNN0 N" (decimal .0 dropped) pattern;
+    # require a meaningful gap below total so we don't grab the total itself.
+    if fee_d is None:
+        cands = [int(x) for x in _FEE_FALLBACK_RE.findall(text) if (not total or int(x) < total - 50)]
         if cands:
-            fee = max(cands)
+            fee_d = max(cands)
 
-    # Reconcile to the invariant 電費金額 + 營業稅 == 應繳總金額
-    if total and fee and total > fee:
-        tax = total - fee
-    elif total and tax and total > tax:
-        fee = total - tax
-    elif fee and tax:
-        total = fee + tax
+    bf = backfill.get(acct) or {}
+    total = total or bf.get("total")
+
+    # Reconcile to 電費金額 + 營業稅 == 應繳總金額, preferring page-direct values
+    # over the (noisier) summary-table backfill.
+    if total and tax_d is not None and total > tax_d:
+        fee, tax = total - tax_d, tax_d
+    elif total and fee_d is not None and total > fee_d:
+        fee, tax = fee_d, total - fee_d
+    elif total and bf.get("fee") and total > bf["fee"]:
+        fee, tax = bf["fee"], total - bf["fee"]
+    elif total and bf.get("tax") and total > bf["tax"]:
+        fee, tax = total - bf["tax"], bf["tax"]
+    elif fee_d is not None and tax_d is not None:
+        fee, tax, total = fee_d, tax_d, fee_d + tax_d
     elif total:
         fee, tax = total, 0
-    elif fee:
-        total, tax = fee, 0
+    elif fee_d is not None:
+        fee, tax, total = fee_d, 0, fee_d
     else:
         fee = tax = total = 0
 

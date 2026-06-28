@@ -69,3 +69,8 @@ docs/operational-excellence/*.pdf
 test-electric.pdf
 ocr-service/_ocr_result.json
 _ocr_result.json
+_test_elec.pdf
+_ocr_v*.json
+_ocr_*.json
+__pycache__/
+*.pyc
