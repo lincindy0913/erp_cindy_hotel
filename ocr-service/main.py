@@ -112,7 +112,7 @@ def normalize_ocr_text(text: str) -> str:
 # Local OCR via Tesseract (no API key needed, works offline)
 # Handles scanned 台電 / 自來水 bills that have no text layer.
 # ─────────────────────────────────────────────────────────────
-def tesseract_ocr_page(pdf_bytes: bytes, page_num: int, dpi: int = 300) -> str:
+def tesseract_ocr_page(pdf_bytes: bytes, page_num: int, dpi: int = 300, psm: int = None) -> str:
     import io
     import pytesseract
     from PIL import Image
@@ -128,8 +128,10 @@ def tesseract_ocr_page(pdf_bytes: bytes, page_num: int, dpi: int = 300) -> str:
     pix = page.get_pixmap(matrix=mat, colorspace=fitz.csRGB)
     img = Image.open(io.BytesIO(pix.tobytes("png")))
     doc.close()
-    # chi_tra (Traditional Chinese) + eng for the mixed-language bills
-    text = pytesseract.image_to_string(img, lang="chi_tra+eng")
+    # chi_tra (Traditional Chinese) + eng for the mixed-language bills.
+    # psm=6 (uniform block) reads the dense summary TABLE far better.
+    config = f"--psm {psm}" if psm else ""
+    text = pytesseract.image_to_string(img, lang="chi_tra+eng", config=config)
     return normalize_ocr_text(text).strip()
 
 
@@ -174,6 +176,54 @@ async def extract_page_text(pdf_bytes: bytes, page_num: int) -> tuple[str, str]:
 _ACCT_RE = re.compile(r'(\d{2}-\d{2}-\d{4}-\d{2}-\d)')
 _NUM_RE = re.compile(r'\d[\d,]+')          # 2+ char numbers (skips single-digit 序號)
 _ADDR_RE = re.compile(r'([一-鿿]{1,8}?[街路段巷弄][一-鿿\dA-Za-z~\-、，.·]*?\d+號[一-鿿\dA-Za-z~\-、，.·]*)')
+
+
+# ─────────────────────────────────────────────────────────────
+# 固定電表登記簿：電號 → (館別, 地址)。地址/電號每月不變，OCR 只需讀
+# 變動的「使用度數 / 金額」，再用此表還原地址、修正電號 OCR 誤差。
+# 新增館別時把該館所有電表加進來即可。
+# ─────────────────────────────────────────────────────────────
+METER_REGISTRY = {
+    # 麗軒（中美路99-1號）
+    "13-04-0525-49-0": ("麗軒", "中美路99-1號B1B2公設"),
+    "13-04-0525-50-4": ("麗軒", "中美路99-1號B1"),
+    "13-04-0525-53-7": ("麗軒", "中美路99-1號1F"),
+    "13-04-0525-55-9": ("麗軒", "中美路99-1號2F"),
+    "13-04-0525-57-1": ("麗軒", "中美路99-1號3F"),
+    "13-04-0525-59-3": ("麗軒", "中美路99-1號4F"),
+    "13-04-0525-61-7": ("麗軒", "中美路99-1號5F"),
+    "13-04-0525-63-9": ("麗軒", "中美路99-1號6F"),
+    "13-04-0525-65-1": ("麗軒", "中美路99-1號7F"),
+    "13-04-0525-67-3": ("麗軒", "中美路99-1號8F"),
+    "13-04-0525-69-5": ("麗軒", "中美路99-1號9F"),
+    # 麗格（商校街）
+    "13-11-2085-00-4": ("麗格", "商校街258號BF~7樓 公設"),
+    "13-11-2085-10-6": ("麗格", "商校街258號地下2~7樓，260、262號地下1樓"),
+    "13-11-2085-30-0": ("麗格", "商校街258號1樓"),
+    "13-11-2086-40-3": ("麗格", "商校街260號2·3樓"),
+    "13-11-2087-40-4": ("麗格", "商校街262號2·3樓"),
+    "13-11-2086-50-6": ("麗格", "商校街260號4·5樓"),
+    "13-11-2087-50-7": ("麗格", "商校街262號4·5樓"),
+    "13-11-2086-60-8": ("麗格", "商校街260號6·7樓"),
+    "13-11-2087-60-9": ("麗格", "商校街262號6·7樓"),
+}
+
+def _lev(a: str, b: str) -> int:
+    m, n = len(a), len(b)
+    dp = list(range(n + 1))
+    for i in range(1, m + 1):
+        prev, dp[0] = dp[0], i
+        for j in range(1, n + 1):
+            prev, dp[j] = dp[j], min(dp[j] + 1, dp[j - 1] + 1, prev + (a[i - 1] != b[j - 1]))
+    return dp[n]
+
+def match_meter(acct: str, taken: set):
+    """OCR 電號還原成登記簿的正確電號（貪婪比對：已配對者不重複用）。"""
+    if acct in METER_REGISTRY and acct not in taken:
+        return acct
+    a = acct.replace('-', '')
+    cands = sorted((_lev(a, k.replace('-', '')), k) for k in METER_REGISTRY if k not in taken)
+    return cands[0][1] if cands and cands[0][0] <= 2 else acct
 
 def parse_electricity_summary(text: str) -> list:
     """Parse a Taipower summary table; returns one record per meter row.
@@ -235,6 +285,47 @@ def parse_summary_totals(text: str) -> dict | None:
         return {k: int(m.group(i + 1).replace(',', '')) for i, k in enumerate(keys)}
     except Exception:
         return None
+
+
+# Summary-table number (allows '.' or ',' as a misread thousands separator)
+_SUM_NUM_RE = re.compile(r'\d[\d.,]*\d|\d')
+
+def parse_summary_table_hi(text: str, detail_totals: dict = None) -> list:
+    """Parse a high-DPI / PSM-6 summary table → one record per meter.
+
+    The summary grid reads 使用度數 + 金額 columns reliably at 400 DPI/PSM 6.
+    地址/電號 come from METER_REGISTRY (fixed key); the noisier 電號 OCR is
+    restored by fuzzy match, and 應繳總金額 is overridden by the detail page's
+    big-font/barcode value when available.
+    """
+    detail_totals = detail_totals or {}
+    records = []
+    taken = set()
+    ms = list(_ACCT_RE.finditer(text))
+    for i, m in enumerate(ms):
+        seg = text[m.end(): ms[i + 1].start() if i + 1 < len(ms) else len(text)]
+        nums = [int(re.sub(r'[.,]', '', t)) for t in _SUM_NUM_RE.findall(seg)]
+        acct = match_meter(m.group(0), taken)
+        if acct in taken:
+            continue
+        taken.add(acct)
+        reg = METER_REGISTRY.get(acct)
+        warehouse = reg[0] if reg else ("麗軒" if acct.startswith("13-04") else "麗格")
+        addr = reg[1] if reg else "未辨識"
+        usage = nums[0] if len(nums) > 0 else 0
+        fee = nums[1] if len(nums) > 1 else 0
+        tax = nums[2] if len(nums) > 2 else 0
+        total = nums[3] if len(nums) > 3 else (fee + tax)
+        if acct in detail_totals:          # 明細頁(大字+條碼)較準
+            total = detail_totals[acct]
+        records.append({
+            "館別": warehouse, "類型": "電費", "繳費期限": "未辨識",
+            "地址": addr, "電號": acct,
+            "尖峰度數": "0", "半尖峰度數": "0", "離峰度數": "0",
+            "使用度數": str(usage), "電費金額": str(fee),
+            "應繳稅額": str(tax), "應繳總金額": str(total),
+        })
+    return records
 
 
 # Detail-page amount anchors (tolerant of noisy Tesseract output, verified
@@ -830,36 +921,64 @@ async def ocr_pdf(
         expected_totals = None
         if bill_type == "電費":
             # Classify pages: a DETAIL page has exactly one distinct 電號,
-            # a SUMMARY page lists many. Detail pages have large/clear text
-            # (one meter each) and OCR far more reliably than the packed table.
+            # a SUMMARY page lists many.
             detail_pages = []
-            summary_text = None
-            for p in page_texts:
+            summary_idx = None
+            for i, p in enumerate(page_texts):
                 accts = set(_ACCT_RE.findall(p["text"]))
                 if len(accts) == 1:
                     detail_pages.append(p)
-                elif len(accts) >= 3 and summary_text is None:
-                    summary_text = p["text"]
+                elif len(accts) >= 3 and summary_idx is None:
+                    summary_idx = i
 
-            if len(detail_pages) >= 2:
-                # One record per detail page (the reliable path for this bill);
-                # summary-table rows backfill any noisy detail amounts.
-                backfill = build_electricity_backfill(page_texts)
-                records = [parse_electricity_detail(p["text"], p["pageNum"], backfill, billing_period)
+            # Detail pages give the reliable 電號 + 應繳總金額 (big font + barcode)
+            backfill = build_electricity_backfill(page_texts)
+            detail_recs = [parse_electricity_detail(p["text"], p["pageNum"], backfill, billing_period)
                            for p in detail_pages]
-                if summary_text:
-                    expected_totals = parse_summary_totals(summary_text)
-            else:
-                # No detail pages — fall back to the summary table
+            detail_totals = {}
+            _t = set()
+            for r in detail_recs:
+                a = match_meter(r["電號"], _t)
+                _t.add(a)
+                try:
+                    detail_totals[a] = int(r["應繳總金額"])
+                except Exception:
+                    pass
+
+            # PRIMARY: re-OCR the summary page at 400 DPI / PSM 6 → reliable
+            # 使用度數 column; 地址/電號 from the fixed registry.
+            if summary_idx is not None:
+                try:
+                    hi = tesseract_ocr_page(pdf_bytes, summary_idx, dpi=400, psm=6)
+                    records = parse_summary_table_hi(hi, detail_totals)
+                    expected_totals = parse_summary_totals(hi) or parse_summary_totals(page_texts[summary_idx]["text"])
+                except Exception:
+                    traceback.print_exc()
+
+            # Fallbacks: detail-page records, then per-page parse
+            if len(records) < 2:
+                records = detail_recs
+            if len(records) < 2:
                 for p in page_texts:
                     summary = parse_electricity_summary(p["text"])
                     if len(summary) >= 2:
                         records = summary
-                        expected_totals = parse_summary_totals(p["text"])
                         break
-                if not records:
-                    records = [parse_electricity_page(p["text"], p["pageNum"], billing_period)
-                               for p in page_texts]
+            if not records:
+                records = [parse_electricity_page(p["text"], p["pageNum"], billing_period)
+                           for p in page_texts]
+
+            # 統一套用固定登記簿：還原正確電號、地址、館別（不論走哪條解析路徑）
+            _seen = set()
+            for r in records:
+                acct = match_meter(r.get("電號", ""), _seen)
+                _seen.add(acct)
+                r["電號"] = acct
+                reg = METER_REGISTRY.get(acct)
+                if reg:
+                    r["館別"] = reg[0]
+                    if r.get("地址") in (None, "", "未辨識"):
+                        r["地址"] = reg[1]
         else:
             records = [parse_water_page(p["text"], p["pageNum"], billing_period)
                        for p in page_texts]
