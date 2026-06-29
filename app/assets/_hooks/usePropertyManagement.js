@@ -7,7 +7,7 @@ import { getApiError } from '@/lib/get-api-error';
 export function usePropertyManagement({ properties, setProperties, loadProperties, selected, setSelected, showConfirm }) {
   const { showToast } = useToast();
 
-  // Property inline edit (序號/分類/狀態)
+  // Property inline edit (資產編號/分類/狀態)
   const [propInlineEdit, setPropInlineEdit] = useState(null);
   const [propInlineSaving, setPropInlineSaving] = useState(false);
 

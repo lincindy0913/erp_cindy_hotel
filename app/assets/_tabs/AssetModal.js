@@ -35,7 +35,7 @@ export function AssetModal({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label htmlFor="f-2" className="text-gray-600">序號</label>
+              <label htmlFor="f-2" className="text-gray-600">資產編號</label>
               <input id="f-2" className="w-full border rounded px-3 py-2 mt-1" placeholder="例：A001" value={form.serialNo}
                 onChange={e => setForm(f => ({ ...f, serialNo: e.target.value }))} />
             </div>
