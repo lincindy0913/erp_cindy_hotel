@@ -246,6 +246,10 @@ _TAXCOL_RE = re.compile(r'(\d{1,5})\.\s?0?\s*元[^\d]{0,18}應[繳繼線總]')  
 _ETOTAL_BARCODE_RE = re.compile(r'0000[0-9A-Z.]?0000(\d{4,7})')      # total embedded in bottom barcode
 _COMMA_AMT_RE = re.compile(r'(\d{1,3}(?:,\d{3})+)\s*元')             # clean comma amount before 元
 _EDATE_RE = re.compile(r'(\d{3}/\d{2}/\d{2})')
+# 計費度數 sub-fields (must end in 度數 so we don't catch 需量/契約 values)
+_PEAK_RE = re.compile(r'經常[(（]?尖峰[)）]?度數[^\d]{0,30}(\d{2,6})')          # 經常(尖峰)度數
+_SEMIPEAK_RE = re.compile(r'半[人入]?尖峰度數[^\d]{0,30}(\d{2,6})')            # (週六)半尖峰度數
+_OFFPEAK_RE = re.compile(r'離峰度數[^\d]{0,30}(\d{2,6})')                     # 離峰度數
 
 
 def _amt(m):
@@ -329,7 +333,19 @@ def parse_electricity_detail(text: str, page_num: int, backfill: dict = None,
     else:
         fee = tax = total = 0
 
+    # 計費度數 breakdown — 半尖峰/離峰 OCR reliably; 經常(尖峰) often does not
+    # (small/faint print), so it stays 0 for manual entry on noisy pages.
+    pm = _PEAK_RE.search(text)
+    sm = _SEMIPEAK_RE.search(text)
+    om = _OFFPEAK_RE.search(text)
+    peak = int(pm.group(1)) if pm else 0
+    semi = int(sm.group(1)) if sm else 0
+    off = int(om.group(1)) if om else 0
+    # 使用度數: prefer summary backfill; else the sum when all three read
     usage = bf.get("usage") if (bf and bf.get("usage")) else None
+    if not usage and peak and semi and off:
+        usage = peak + semi + off
+
     dm = _EDATE_RE.search(text)
     due = dm.group(1) if dm else "未辨識"
     addr = bf.get("addr") if (bf and bf.get("addr") not in (None, "", "未辨識")) else None
@@ -343,7 +359,7 @@ def parse_electricity_detail(text: str, page_num: int, backfill: dict = None,
         "繳費期限": due,
         "地址": addr,
         "電號": acct,
-        "尖峰度數": "0", "半尖峰度數": "0", "離峰度數": "0",
+        "尖峰度數": str(peak), "半尖峰度數": str(semi), "離峰度數": str(off),
         "使用度數": str(usage) if usage else "0",
         "電費金額": str(fee),
         "應繳稅額": str(tax),
