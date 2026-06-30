@@ -331,7 +331,7 @@ export default function CashierTab({
           <tbody>
             {incomes.length === 0 ? (
               <tr><td colSpan={colSpan} className="text-center py-8 text-gray-400">暫無資料</td></tr>
-            ) : sortedIncomes.map(income => {
+            ) : sortedIncomes.map((income, idx) => {
               const isOverdue = income.status === 'pending' && income.dueDate < todayStr();
               const expected = Number(income.expectedAmount || 0);
               const actual = Number(income.actualAmount || 0);
@@ -344,8 +344,10 @@ export default function CashierTab({
               const totalExpected = expected + utilityExpected;
               return (
                 <tr key={income.id} className={`border-t ${isOverdue ? 'bg-orange-50 border-l-4 border-l-red-400 hover:bg-orange-100' : 'hover:bg-gray-50'}`}>
-                  {/* 序號 */}
-                  <td className="px-3 py-2 text-center text-xs text-gray-500">
+                  {/* 序號（正常流水號）*/}
+                  <td className="px-3 py-2 text-center text-xs text-gray-500">{idx + 1}</td>
+                  {/* 資產編號（點擊可編輯）*/}
+                  <td className="px-3 py-2 text-center text-xs text-gray-700 font-mono">
                     {propInlineEdit?.propertyId === income.propertyId && propInlineEdit.field === 'sortOrder' ? (
                       <input autoFocus type="number" min="1" step="1"
                         value={propInlineEdit.value}
@@ -360,13 +362,11 @@ export default function CashierTab({
                     ) : (
                       <span onClick={() => setPropInlineEdit({ propertyId: income.propertyId, field: 'sortOrder', value: income.contractSortOrder ?? '' })}
                         className="cursor-pointer hover:text-indigo-600 hover:underline"
-                        title="點擊編輯序號">
+                        title="點擊編輯資產編號">
                         {income.contractSortOrder ?? '—'}
                       </span>
                     )}
                   </td>
-                  {/* 資產編號 */}
-                  <td className="px-3 py-2 text-center text-xs text-gray-700 font-mono">{income.contractSortOrder ?? '—'}</td>
                   <td className="px-3 py-2 text-center">
                     {!income.isLocked && (
                       <input type="checkbox"

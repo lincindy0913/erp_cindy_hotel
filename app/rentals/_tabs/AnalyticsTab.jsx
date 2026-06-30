@@ -27,7 +27,7 @@ async function exportIncomeExcel({ rows, year }) {
   ];
   const data = sorted.map((r, i) => {
     const row = {
-      idx:   r.sortOrder ?? (i + 1),
+      idx:   i + 1,
       assetNo: r.sortOrder ?? '',
       label: r.tenantName ? `${r.propertyLabel}(${r.tenantName})` : r.propertyLabel,
       total: r.total || 0,
@@ -78,7 +78,7 @@ async function exportByTenantExcel({ rows, year }) {
     const prev = rows[i - 1];
     const sameAsPrev = prev && prev.propertyId === r.propertyId;
     const row = {
-      idx:    sameAsPrev ? '〃' : (r.sortOrder ?? (i + 1)),
+      idx:    i + 1,
       assetNo: sameAsPrev ? '〃' : (r.sortOrder ?? ''),
       label:  sameAsPrev ? '〃' : r.propertyLabel,
       tenant: r.isCurrent ? r.tenantName : `${r.tenantName}（已退租）`,
@@ -124,7 +124,7 @@ async function exportOperatingExcel({ rows, year }) {
     { header: '淨利率%',   key: 'margin', width: 10 },
   ];
   const data = rows.map((r, i) => ({
-    idx:    r.sortOrder ?? (i + 1),
+    idx:    i + 1,
     assetNo: r.sortOrder ?? '',
     label:  r.propertyLabel,
     rent:   r.rentOnly ?? r.rentIncome ?? 0,
@@ -169,7 +169,7 @@ async function exportOverdueExcel({ items }) {
     { header: '逾期天數', key: 'days',    width: 10 },
   ];
   const data = items.map((i, idx) => ({
-    idx:    i.contractSortOrder ?? (idx + 1),
+    idx:    idx + 1,
     assetNo: i.contractSortOrder ?? '',
     prop:   i.propertyName,
     tenant: i.tenantName || i.tenant?.companyName || i.tenant?.fullName || '—',
@@ -405,7 +405,7 @@ export default function AnalyticsTab({
                       ];
                       return sorted.map((r, idx) => (
                       <tr key={r.propertyId} className={r.isTerminated ? 'bg-gray-50/60 opacity-70' : 'hover:bg-gray-50'}>
-                        <td className="text-center px-2 py-2 border border-gray-200 text-xs text-gray-400">{r.sortOrder ?? (idx + 1)}</td>
+                        <td className="text-center px-2 py-2 border border-gray-200 text-xs text-gray-400">{idx + 1}</td>
                         <td className="text-center px-2 py-2 border border-gray-200 text-xs text-gray-500">{r.sortOrder ?? '—'}</td>
                         <td className="px-3 py-2 border border-gray-200">
                           {r.tenantName ? `${r.propertyLabel}(${r.tenantName})` : r.propertyLabel}
@@ -554,7 +554,7 @@ export default function AnalyticsTab({
                       const sameAsPrev = prev && prev.propertyId === r.propertyId;
                       return (
                         <tr key={r.key} className={`hover:bg-gray-50 ${sameAsPrev ? '' : 'border-t-2 border-teal-100'}`}>
-                          <td className="text-center px-2 py-2 border border-gray-200 text-xs text-gray-500">{sameAsPrev ? <span className="text-gray-300">〃</span> : (r.sortOrder ?? (idx + 1))}</td>
+                          <td className="text-center px-2 py-2 border border-gray-200 text-xs text-gray-500">{idx + 1}</td>
                           <td className="text-center px-2 py-2 border border-gray-200 text-xs text-gray-500">{sameAsPrev ? <span className="text-gray-300">〃</span> : (r.sortOrder ?? '—')}</td>
                           <td className="px-3 py-2 border border-gray-200">{sameAsPrev ? <span className="text-gray-300">〃</span> : r.propertyLabel}</td>
                           <td className="px-3 py-2 border border-gray-200">
@@ -697,7 +697,7 @@ export default function AnalyticsTab({
                   ) : (
                     operatingReportData.rows.map((r, idx) => (
                       <tr key={r.propertyId} className="hover:bg-gray-50">
-                        <td className="text-center px-2 py-2 border border-gray-200 text-xs text-gray-400">{r.sortOrder ?? (idx + 1)}</td>
+                        <td className="text-center px-2 py-2 border border-gray-200 text-xs text-gray-400">{idx + 1}</td>
                         <td className="text-center px-2 py-2 border border-gray-200 text-xs text-gray-500">{r.sortOrder ?? '—'}</td>
                         <td className="px-3 py-2 border border-gray-200">{r.propertyLabel}</td>
                         <td className="text-right px-3 py-2 border border-gray-200">{fmt(r.rentOnly ?? r.rentIncome)}</td>
@@ -875,7 +875,7 @@ export default function AnalyticsTab({
                             <input type="checkbox" checked={overdueSelectedIds.has(i.id)}
                               onChange={e => setOverdueSelectedIds(prev => { const n = new Set(prev); e.target.checked ? n.add(i.id) : n.delete(i.id); return n; })} />
                           </td>
-                          <td className="text-center px-2 py-2 border border-gray-200 text-xs text-gray-400">{i.contractSortOrder ?? (idx + 1)}</td>
+                          <td className="text-center px-2 py-2 border border-gray-200 text-xs text-gray-400">{idx + 1}</td>
                           <td className="text-center px-2 py-2 border border-gray-200 text-xs text-gray-500">{i.contractSortOrder ?? '—'}</td>
                           <td className="px-3 py-2 border border-gray-200">{i.propertyName}</td>
                           <td className="px-3 py-2 border border-gray-200 font-medium">{tenantName}</td>

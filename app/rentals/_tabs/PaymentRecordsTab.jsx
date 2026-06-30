@@ -96,7 +96,7 @@ export default function PaymentRecordsTab({
               <tr key={p.id} className={`border-t ${p.incomeIsLocked ? 'bg-amber-50 border-l-4 border-l-amber-400 hover:bg-amber-100' : `hover:bg-gray-50 ${idx % 2 === 0 ? '' : 'bg-gray-50/50'}`}`}>
                 <td className="px-3 py-2 text-center text-xs text-gray-500">
                   <div className="flex flex-col items-center gap-0.5">
-                    <span>{p.serialNo || '—'}</span>
+                    <span>{idx + 1}</span>
                     {p.incomeIsLocked && (
                       <span title={`已鎖帳${p.incomeLockedBy ? `（${p.incomeLockedBy}）` : ''}`}
                         className="text-amber-500 leading-none">🔒</span>

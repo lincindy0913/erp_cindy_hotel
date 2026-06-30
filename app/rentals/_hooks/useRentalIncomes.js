@@ -320,7 +320,7 @@ export function useRentalIncomes({ initialIncomeFilter, accounts = [], propertie
       `租金收入明細　${y}/${m}`,
       ['序號', '資產編號', '物業', '分類', '租客', '應收金額', '實收金額', '到期日', '狀態'],
       sortedIncomes.map((i, idx) => [
-        i.contractSortOrder ?? (idx + 1),
+        idx + 1,
         i.contractSortOrder ?? '—',
         i.propertyName,
         i.contractCategory || '—',
