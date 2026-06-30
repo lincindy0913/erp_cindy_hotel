@@ -227,6 +227,33 @@ def match_meter(acct: str, taken: set):
     cands = sorted((_lev(a, k.replace('-', '')), k) for k in METER_REGISTRY if k not in taken)
     return cands[0][1] if cands and cands[0][0] <= 2 else acct
 
+
+# ─────────────────────────────────────────────────────────────
+# 固定水表登記簿：水號 → (館別, 用水地址)。同電表登記簿概念——水號/地址
+# 每期不變，OCR 只需讀「使用度數 / 應繳總金額」，再用此表還原地址、
+# 修正水號 OCR 誤差。新增館別/水表時把該水號加進來即可。
+# ─────────────────────────────────────────────────────────────
+WATER_REGISTRY = {
+    # 麗軒（中美路99-1號）
+    "9A022021025": ("麗軒", "中美路99-1號"),
+    # 麗格（商校街）— 待提供水號後補上
+}
+
+# 水號樣式：數字+1~2英文字母+8~11碼數字（例：9A022021025、9AM07951027）
+_WATER_ACCT_RE = re.compile(r'\d\s*[A-Z]{1,2}\s*\d[\d\s]{6,12}\d')
+
+def _norm_water(s: str) -> str:
+    """水號正規化：只留英數、轉大寫，方便比對（去掉 OCR 的空白/破折號）。"""
+    return re.sub(r'[^0-9A-Za-z]', '', str(s or '')).upper()
+
+def match_water(acct: str, taken: set):
+    """OCR 水號還原成登記簿的正確水號（貪婪比對：已配對者不重複用）。"""
+    a = _norm_water(acct)
+    if a in WATER_REGISTRY and a not in taken:
+        return a
+    cands = sorted((_lev(a, k), k) for k in WATER_REGISTRY if k not in taken)
+    return cands[0][1] if cands and cands[0][0] <= 2 else (a or acct)
+
 def parse_electricity_summary(text: str) -> list:
     """Parse a Taipower summary table; returns one record per meter row.
 
@@ -779,8 +806,8 @@ def parse_water_page(text: str, page_num: int, billing_period: str = None) -> di
             else:
                 result["繳費年月"] = "未辨識"
 
-    # ── 用水度數 (green highlighted on bill) ──
-    m = re.search(r'用水度數\s+(\d+)', text)
+    # ── 用水度數 (使用度數；綠色標示) — 容忍冒號/換行 ──
+    m = re.search(r'用水度數[^\d]{0,10}(\d+)', text)
     result["用水度數"] = m.group(1) if m else "0"
 
     # ── 本期實用度數 ──
@@ -796,14 +823,14 @@ def parse_water_page(text: str, page_num: int, billing_period: str = None) -> di
         m = re.search(r'實用度數\D{0,30}?(\d+)', text)
     result["本期實用度數"] = m.group(1) if m else "0"
 
-    # ── 水費項目小計 ("$327元" or "$289元") — reliable anchor ──
-    m = re.search(r'水費項目小計\s*\$?([\d,]+)\s*元', text)
+    # ── 水費項目小計 ("$327元"、"水費項目小計：6024元") — reliable anchor ──
+    m = re.search(r'水費項目小計\s*[:：]?\s*\$?([\d,]+)\s*元', text)
     result["水費項目小計"] = m.group(1).replace(",", "") if m else "0"
 
     # ── 基本費 & 用水費 ──
-    # Strategy 1: direct match "基本費\n132.30元"
-    m_base = re.search(r'基本費\s+([\d,]+(?:\.\s?\d+)?)\s*元', text)
-    m_water = re.search(r'用水費\s+([\d,]+(?:\.\s?\d+)?)\s*元', text)
+    # Strategy 1: direct match "基本費\n132.30元" 或 "基本費：392.7元"
+    m_base = re.search(r'基本費\s*[:：]?\s*([\d,]+(?:\.\s?\d+)?)\s*元', text)
+    m_water = re.search(r'用水費\s*[:：]?\s*([\d,]+(?:\.\s?\d+)?)\s*元', text)
 
     if m_base:
         result["基本費"] = m_base.group(1).replace(",", "").replace(" ", "")
@@ -830,17 +857,13 @@ def parse_water_page(text: str, page_num: int, billing_period: str = None) -> di
         result["用水費"] = "0"
 
     # ── 營業稅 ──
-    # Direct: "營業稅\n16元". Columnar fallback: find first integer+元 after "營業稅"
-    m = re.search(r'營業稅\s+([\d,]+)\s*元', text)
-    if not m:
-        tax_idx = text.find('營業稅')
-        if tax_idx >= 0:
-            after = text[tax_idx + 3:]
-            m = re.search(r'(\d{1,6})\s*元', after[:300])
+    # "營業稅：287" / "營業稅\n16元"：取緊接其後的數字（容忍冒號，不強制要 元，
+    # 避免抓到後面的應繳總金額）。
+    m = re.search(r'營業稅\s*[:：]?\s*([\d,]{1,7})', text)
     result["營業稅"] = m.group(1).replace(",", "") if m else "0"
 
-    # ── 代徵費用小計 ("$9元" or "$0元") ──
-    m = re.search(r'代徵費用小計\s*\$?([\d,]+)\s*元', text)
+    # ── 代徵費用小計 ("$9元"、"代徵費用小計：268元") ──
+    m = re.search(r'代徵費用小計\s*[:：]?\s*\$?([\d,]+)\s*元', text)
     result["代徵費用小計"] = m.group(1).replace(",", "") if m else "0"
 
     # ── 水源保育與回饋費 ("9元") ──
@@ -849,11 +872,13 @@ def parse_water_page(text: str, page_num: int, billing_period: str = None) -> di
         m = re.search(r'水源保育[與及]?回饋費?\s*[：:\s]*([\d,]+)', text)
     result["水源保育與回饋費"] = m.group(1).replace(",", "") if m else "0"
 
-    # ── 代繳(代收)總金額 ("336元") ──
-    # Reliable pattern: "代繳(代收)總金額\n336元" (often on one OCR line)
-    m = re.search(r'代繳\s*[\(（]代收[\)）]\s*總金額\s+([\d,]+)\s*元?', text)
+    # ── 應繳總金額 / 代繳(代收)總金額 ──
+    # 台水新版：「應繳總金額：NT$6292元」；舊版：「代繳(代收)總金額 336元」。
+    m = re.search(r'應繳總金額\s*[:：]?\s*(?:NT\s*\$|\$)?\s*([\d,]+)\s*元', text)
     if not m:
-        m = re.search(r'總金額\s+([\d,]+)\s*元', text)
+        m = re.search(r'代繳\s*[\(（]代收[\)）]\s*總金額\s+([\d,]+)\s*元?', text)
+    if not m:
+        m = re.search(r'總金額\s*[:：]?\s*(?:NT\s*\$|\$)?\s*([\d,]+)\s*元', text)
     if not m:
         m = re.search(r'(?:本期應繳|合計)[：:\s]*([\d,]+)', text)
     result["總金額"] = m.group(1).replace(",", "") if m else "0"
@@ -1016,8 +1041,30 @@ async def ocr_pdf(
                     if r.get("地址") in (None, "", "未辨識"):
                         r["地址"] = reg[1]
         else:
-            records = [parse_water_page(p["text"], p["pageNum"], billing_period)
-                       for p in page_texts]
+            # 水費：一張帳單常跨多頁（本期實用度數/應繳總金額 在後頁）。
+            # 依「水號」分頁分組（含水號的頁起新帳單，後續無水號頁併入），
+            # 每組合併文字解析成一筆，再用固定登記簿還原水號/用水地址/館別。
+            groups = []
+            for p in page_texts:
+                if ('水號' in p["text"]) or not groups:
+                    groups.append([p])
+                else:
+                    groups[-1].append(p)
+
+            records = []
+            taken = set()
+            for g in groups:
+                combined = "\n".join(pg["text"] for pg in g)
+                rec = parse_water_page(combined, g[0]["pageNum"], billing_period)
+                # 套用固定水表登記簿：修正水號 OCR 誤差、還原用水地址/館別
+                acct = match_water(rec.get("水號", ""), taken)
+                taken.add(acct)
+                rec["水號"] = acct
+                reg = WATER_REGISTRY.get(acct)
+                if reg:                       # 登記簿為準：水號/地址固定
+                    rec["館別"] = reg[0]
+                    rec["用水地址"] = reg[1]
+                records.append(rec)
 
     except HTTPException:
         raise
