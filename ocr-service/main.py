@@ -976,6 +976,7 @@ async def ocr_pdf(
                            for p in detail_pages]
             detail_totals = {}
             detail_usage = {}
+            detail_tiers = {}
             _t = set()
             for r in detail_recs:
                 a = match_meter(r["電號"], _t)
@@ -984,8 +985,12 @@ async def ocr_pdf(
                     detail_totals[a] = int(r["應繳總金額"])
                 except Exception:
                     pass
-                u = (safe_int(r.get("尖峰度數")) + safe_int(r.get("半尖峰度數"))
-                     + safe_int(r.get("離峰度數")))
+                pk = safe_int(r.get("尖峰度數"))
+                sm = safe_int(r.get("半尖峰度數"))
+                of = safe_int(r.get("離峰度數"))
+                if pk or sm or of:
+                    detail_tiers[a] = (pk, sm, of)   # 明細頁三段度數分項
+                u = pk + sm + of
                 if u > 0:
                     detail_usage[a] = u
 
@@ -1029,7 +1034,8 @@ async def ocr_pdf(
                 records = [parse_electricity_page(p["text"], p["pageNum"], billing_period)
                            for p in page_texts]
 
-            # 統一套用固定登記簿：還原正確電號、地址、館別（不論走哪條解析路徑）。
+            # 統一套用固定登記簿：還原正確電號、地址、館別（不論走哪條解析路徑），
+            # 並用明細頁三段度數補上彙總表沒有的「尖峰/半尖峰/離峰」分項。
             _seen = set()
             for r in records:
                 acct = match_meter(r.get("電號", ""), _seen)
@@ -1040,6 +1046,18 @@ async def ocr_pdf(
                     r["館別"] = reg[0]
                     if r.get("地址") in (None, "", "未辨識"):
                         r["地址"] = reg[1]
+                # 補三段度數：僅在目前分項全為 0、且三段相加 == 合計度數時才填，
+                # 確保「尖峰+半尖峰+離峰 == 使用度數」一致（避免顯示對不上的分項）。
+                tiers = detail_tiers.get(acct)
+                cur_usage = safe_int(r.get("使用度數"))
+                cur_tier_sum = (safe_int(r.get("尖峰度數")) + safe_int(r.get("半尖峰度數"))
+                                + safe_int(r.get("離峰度數")))
+                if tiers and cur_tier_sum == 0:
+                    pk, sm, of = tiers
+                    if cur_usage == 0 or pk + sm + of == cur_usage:
+                        r["尖峰度數"], r["半尖峰度數"], r["離峰度數"] = str(pk), str(sm), str(of)
+                        if cur_usage == 0:
+                            r["使用度數"] = str(pk + sm + of)
         else:
             # 水費：一張帳單常跨多頁（本期實用度數/應繳總金額 在後頁）。
             # 依「水號」分頁分組（含水號的頁起新帳單，後續無水號頁併入），
