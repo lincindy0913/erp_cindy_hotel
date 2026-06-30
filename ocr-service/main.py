@@ -319,6 +319,8 @@ WATER_REGISTRY = {
 
 # 水號樣式：數字+1~2英文字母+8~11碼數字（例：9A022021025、9AM07951027）
 _WATER_ACCT_RE = re.compile(r'\d\s*[A-Z]{1,2}\s*\d[\d\s]{6,12}\d')
+# 計數用：容忍破折號/空格、檢號可為英文（彙總表多為「9A07-951017-8」、個別帳單為「9A 07951017 8」）
+_WATER_TOKEN_RE = re.compile(r'\d\s*[A-Z]{1,2}\s*[\d\s\-]{8,12}[0-9A-Z]')
 
 def _norm_water(s: str) -> str:
     """水號正規化：只留英數、轉大寫，方便比對（去掉 OCR 的空白/破折號）。"""
@@ -1177,8 +1179,19 @@ async def ocr_pdf(
             # 水費：一張帳單常跨多頁（本期實用度數/應繳總金額 在後頁）。
             # 依「水號」分頁分組（含水號的頁起新帳單，後續無水號頁併入），
             # 每組合併文字解析成一筆，再用固定登記簿還原水號/用水地址/館別。
+            def _distinct_water_count(text):
+                # 同一頁出現的不同水號數（正規化去重）；彙總表頁會列出多個水號。
+                # 用 _WATER_TOKEN_RE（容忍破折號/空格、檢號英文）才抓得到彙總表的「9A07-951017-8」。
+                nums = {_norm_water(m.group(0)) for m in _WATER_TOKEN_RE.finditer(text or '')}
+                # 只保留長度合理（站所2+編號8+檢號1=11 上下）的，避免雜訊誤判
+                return len({n for n in nums if 9 <= len(n) <= 12})
+
             groups = []
             for p in page_texts:
+                # 跳過彙總表頁（一頁列出多個水號 ≥3）：否則它會被當成一戶，
+                # 解析出多餘/重複的記錄（個別帳單每頁只有 1 個水號）。
+                if _distinct_water_count(p["text"]) >= 3:
+                    continue
                 if ('水號' in p["text"]) or not groups:
                     groups.append([p])
                 else:

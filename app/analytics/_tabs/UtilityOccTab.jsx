@@ -67,7 +67,7 @@ function UtilityOccupancyPivot({ data }) {
             <tr className="bg-cyan-700 text-white">
               <th className="px-3 py-2 text-left font-medium whitespace-nowrap sticky left-0 z-10 bg-cyan-700 min-w-[200px]">指標</th>
               {months.map((m) => (
-                <th key={m.month} className="px-2 py-2 text-right font-medium whitespace-nowrap">
+                <th key={m.month} className="px-2 py-2 text-right font-medium whitespace-nowrap bg-cyan-700">
                   {String(m.month).padStart(2, '0')} 月
                 </th>
               ))}
