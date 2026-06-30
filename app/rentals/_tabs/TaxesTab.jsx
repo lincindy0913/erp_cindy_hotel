@@ -68,6 +68,8 @@ export default function TaxesTab({
           <table className="w-full text-sm">
             <thead className="bg-teal-50 sticky top-0 z-10">
               <tr>
+                <th className="text-center px-3 py-2 border-b border-gray-200">序號</th>
+                <th className="text-center px-3 py-2 border-b border-gray-200">資產編號</th>
                 <th className="text-left px-3 py-2 border-b border-gray-200">門牌</th>
                 <th className="text-right px-3 py-2 border-b border-gray-200">地價稅</th>
                 <th className="text-right px-3 py-2 border-b border-gray-200">房屋稅</th>
@@ -75,9 +77,11 @@ export default function TaxesTab({
             </thead>
             <tbody>
               {taxTableRows.length === 0 ? (
-                <tr><td colSpan={3} className="px-3 py-6 text-center text-gray-500">載入後顯示</td></tr>
-              ) : taxTableRows.map(r => (
+                <tr><td colSpan={5} className="px-3 py-6 text-center text-gray-500">載入後顯示</td></tr>
+              ) : taxTableRows.map((r, idx) => (
                 <tr key={r.propertyId} className="border-b border-gray-100 hover:bg-gray-50">
+                  <td className="px-3 py-2 text-center text-xs text-gray-500">{idx + 1}</td>
+                  <td className="px-3 py-2 text-center text-xs text-gray-700 font-mono">{r.sortOrder ?? '—'}</td>
                   <td className="px-3 py-2">{r.doorplate}</td>
                   <td className="px-3 py-2">
                     <input type="number" min="0" step="1" value={r.landTax === '' ? '' : r.landTax}
@@ -196,6 +200,8 @@ export default function TaxesTab({
             <table className="w-full text-sm">
               <thead className="bg-teal-50 sticky top-0 z-10">
                 <tr>
+                  <th className="text-center px-3 py-2">序號</th>
+                  <th className="text-center px-3 py-2">資產編號</th>
                   <th className="text-left px-3 py-2">物業</th>
                   <th className="text-center px-3 py-2">年度</th>
                   <th className="text-left px-3 py-2">稅種</th>
@@ -209,9 +215,11 @@ export default function TaxesTab({
               </thead>
               <tbody>
                 {taxes.length === 0 ? (
-                  <tr><td colSpan={9} className="text-center py-8 text-gray-400">暫無資料</td></tr>
-                ) : taxes.map(tax => (
+                  <tr><td colSpan={11} className="text-center py-8 text-gray-400">暫無資料</td></tr>
+                ) : taxes.map((tax, idx) => (
                   <tr key={tax.id} className="border-t hover:bg-gray-50">
+                    <td className="px-3 py-2 text-center text-xs text-gray-500">{idx + 1}</td>
+                    <td className="px-3 py-2 text-center text-xs text-gray-700 font-mono">{tax.property?.sortOrder ?? '—'}</td>
                     <td className="px-3 py-2">
                       <span>{tax.property?.name}</span>
                       {tax.property?.asset?.hasHouseTax && (

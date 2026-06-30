@@ -155,6 +155,8 @@ export default function OverviewTab({
                   <table className="w-full text-xs">
                     <thead className="sticky top-0 z-10 bg-white">
                       <tr className="text-gray-400 border-b">
+                        <th className="text-center pb-1">序號</th>
+                        <th className="text-center pb-1">資產編號</th>
                         <th className="text-left pb-1">物業</th>
                         <th className="text-left pb-1">租客</th>
                         <th className="text-right pb-1">金額</th>
@@ -162,8 +164,10 @@ export default function OverviewTab({
                       </tr>
                     </thead>
                     <tbody>
-                      {summary.overdueDetails.map(d => (
+                      {summary.overdueDetails.map((d, idx) => (
                         <tr key={d.id} className="border-b border-gray-50 hover:bg-red-50">
+                          <td className="py-1.5 text-center text-gray-500">{idx + 1}</td>
+                          <td className="py-1.5 text-center text-gray-700 font-mono">{d.sortOrder ?? '—'}</td>
                           <td className="py-1.5 text-gray-700">{d.propertyName}</td>
                           <td className="py-1.5 text-gray-600">{d.tenantName}</td>
                           <td className="py-1.5 text-right font-medium text-red-600">${fmt(d.expectedAmount)}</td>
@@ -190,6 +194,8 @@ export default function OverviewTab({
                   <table className="w-full text-xs">
                     <thead className="sticky top-0 z-10 bg-white">
                       <tr className="text-gray-400 border-b">
+                        <th className="text-center pb-1">序號</th>
+                        <th className="text-center pb-1">資產編號</th>
                         <th className="text-left pb-1">物業</th>
                         <th className="text-left pb-1">租客</th>
                         <th className="text-right pb-1">月租</th>
@@ -197,8 +203,10 @@ export default function OverviewTab({
                       </tr>
                     </thead>
                     <tbody>
-                      {summary.expiringContractDetails.map(c => (
+                      {summary.expiringContractDetails.map((c, idx) => (
                         <tr key={c.id} className="border-b border-gray-50 hover:bg-yellow-50">
+                          <td className="py-1.5 text-center text-gray-500">{idx + 1}</td>
+                          <td className="py-1.5 text-center text-gray-700 font-mono">{c.sortOrder ?? '—'}</td>
                           <td className="py-1.5 text-gray-700">{c.propertyName}</td>
                           <td className="py-1.5 text-gray-600">{c.tenantName}</td>
                           <td className="py-1.5 text-right font-medium">${fmt(c.monthlyRent)}</td>

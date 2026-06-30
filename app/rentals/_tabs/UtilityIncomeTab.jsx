@@ -44,6 +44,8 @@ export default function UtilityIncomeTab({
         <table className="w-full text-sm">
           <thead className="bg-teal-50 sticky top-0 z-10">
             <tr>
+              <th className="text-center px-3 py-2">序號</th>
+              <th className="text-center px-3 py-2">資產編號</th>
               <th className="text-left px-3 py-2">物業</th>
               <th className="text-center px-3 py-2">年月</th>
               <th className="text-right px-3 py-2">應收</th>
@@ -54,9 +56,11 @@ export default function UtilityIncomeTab({
           </thead>
           <tbody>
             {utilityList.length === 0 ? (
-              <tr><td colSpan={6} className="text-center py-8 text-gray-400">暫無資料</td></tr>
-            ) : utilityList.map(u => (
+              <tr><td colSpan={8} className="text-center py-8 text-gray-400">暫無資料</td></tr>
+            ) : utilityList.map((u, idx) => (
               <tr key={u.id} className="border-t hover:bg-gray-50">
+                <td className="px-3 py-2 text-center text-xs text-gray-500">{idx + 1}</td>
+                <td className="px-3 py-2 text-center text-xs text-gray-700 font-mono">{u.sortOrder ?? '—'}</td>
                 <td className="px-3 py-2">{u.propertyName}</td>
                 <td className="px-3 py-2 text-center">{u.incomeYear}/{u.incomeMonth}</td>
                 <td className="px-3 py-2 text-right">${fmt(u.expectedAmount)}</td>

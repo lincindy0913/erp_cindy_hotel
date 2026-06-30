@@ -56,7 +56,7 @@ export async function GET(request) {
             startDate: true,
             endDate: true,
             propertyId: true,
-            property: { select: { id: true, name: true } }
+            property: { select: { id: true, name: true, sortOrder: true } }
           }
         }
       },
@@ -71,7 +71,7 @@ export async function GET(request) {
       const propertyMap = new Map();
       for (const c of t.contracts) {
         if (c.property && (c.status === 'active' || c.status === 'pending')) {
-          propertyMap.set(c.property.id, c.property.name);
+          propertyMap.set(c.property.id, { name: c.property.name, sortOrder: c.property.sortOrder });
         }
       }
       return {
@@ -79,7 +79,7 @@ export async function GET(request) {
         activeContractCount: activeContracts.length,
         totalContractCount: t.contracts.length,
         terminatedContractCount: terminatedContracts.length,
-        properties: Array.from(propertyMap.entries()).map(([id, name]) => ({ id, name })),
+        properties: Array.from(propertyMap.entries()).map(([id, v]) => ({ id, name: v.name, sortOrder: v.sortOrder })),
         lastTerminatedDate: terminatedContracts.length > 0
           ? terminatedContracts.sort((a, b) => (b.endDate || '').localeCompare(a.endDate || ''))[0].endDate
           : null,

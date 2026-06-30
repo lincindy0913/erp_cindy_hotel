@@ -84,7 +84,7 @@ export async function GET() {
     const overdueDetails = await prisma.rentalIncome.findMany({
       where: { status: 'pending', dueDate: { lt: today } },
       include: {
-        property: { select: { name: true } },
+        property: { select: { name: true, sortOrder: true } },
         tenant: { select: { fullName: true, companyName: true, tenantType: true } }
       },
       orderBy: { dueDate: 'asc' },
@@ -95,7 +95,7 @@ export async function GET() {
     const expiringContractDetails = await prisma.rentalContract.findMany({
       where: { status: 'active', endDate: { lte: futureDateStr, gte: today } },
       include: {
-        property: { select: { name: true } },
+        property: { select: { name: true, sortOrder: true } },
         tenant: { select: { fullName: true, companyName: true, tenantType: true } }
       },
       orderBy: { endDate: 'asc' },
@@ -121,6 +121,7 @@ export async function GET() {
       overdueDetails: overdueDetails.map(i => ({
         id: i.id,
         propertyName: i.property.name,
+        sortOrder: i.property.sortOrder,
         tenantName: i.tenant.tenantType === 'company' ? i.tenant.companyName : i.tenant.fullName,
         expectedAmount: Number(i.expectedAmount),
         dueDate: i.dueDate,
@@ -131,6 +132,7 @@ export async function GET() {
       expiringContractDetails: expiringContractDetails.map(c => ({
         id: c.id,
         propertyName: c.property.name,
+        sortOrder: c.property.sortOrder,
         tenantName: c.tenant.tenantType === 'company' ? c.tenant.companyName : c.tenant.fullName,
         endDate: c.endDate,
         monthlyRent: Number(c.monthlyRent),

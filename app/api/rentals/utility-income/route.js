@@ -29,12 +29,12 @@ export async function GET(request) {
     const list = await prisma.rentalUtilityIncome.findMany({
       where,
       include: {
-        property: { select: { id: true, name: true, buildingName: true, warehouse: true } },
+        property: { select: { id: true, name: true, buildingName: true, warehouse: true, sortOrder: true } },
       },
       orderBy: [{ incomeYear: 'desc' }, { incomeMonth: 'desc' }, { propertyId: 'asc' }],
     });
 
-    return NextResponse.json(list.map(u => ({ ...u, propertyName: u.property.name })));
+    return NextResponse.json(list.map(u => ({ ...u, propertyName: u.property.name, sortOrder: u.property.sortOrder })));
   } catch (error) {
     return handleApiError(error);
   }

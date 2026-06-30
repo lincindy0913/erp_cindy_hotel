@@ -27,6 +27,8 @@ export default function TenantsTab({
         <table className="w-full text-sm">
           <thead className="bg-teal-50 sticky top-0 z-10">
             <tr>
+              <th className="text-center px-3 py-2 text-sm font-medium text-gray-700 whitespace-nowrap">序號</th>
+              <th className="text-center px-3 py-2 text-sm font-medium text-gray-700 whitespace-nowrap">資產編號</th>
               <SortableTh label="代碼" colKey="tenantCode" sortKey={tenantSortKey} sortDir={tenantSortDir} onSort={tenantToggleSort} className="px-3 py-2" />
               <SortableTh label="類型" colKey="tenantType" sortKey={tenantSortKey} sortDir={tenantSortDir} onSort={tenantToggleSort} className="px-3 py-2" />
               <SortableTh label="姓名/公司" colKey="displayName" sortKey={tenantSortKey} sortDir={tenantSortDir} onSort={tenantToggleSort} className="px-3 py-2" />
@@ -55,15 +57,17 @@ export default function TenantsTab({
                 ..._sorted.filter(t => isRetired(t)),
               ];
               if (sorted.length === 0) return (
-                <tr><td colSpan={10} className="text-center py-8 text-gray-400">暫無資料</td></tr>
+                <tr><td colSpan={12} className="text-center py-8 text-gray-400">暫無資料</td></tr>
               );
-              return sorted.map(t => {
+              return sorted.map((t, idx) => {
                 const activeContracts = (t.contracts || []).filter(c => c.status === 'active' || c.status === 'pending');
                 const retiredContracts = (t.contracts || []).filter(c => c.status === 'terminated' || c.status === 'expired');
                 return (
                   <tr key={t.id}
                     onClick={() => openTenantModal(t)}
                     className={`border-t cursor-pointer hover:bg-teal-50/40 transition-colors ${t.isBlacklisted ? 'bg-red-50' : ''}`}>
+                    <td className="px-3 py-2 text-center text-xs text-gray-500">{idx + 1}</td>
+                    <td className="px-3 py-2 text-center text-xs text-gray-700 font-mono">{(t.properties || []).map(p => p.sortOrder).filter(x => x != null).join(', ') || '—'}</td>
                     <td className="px-3 py-2 font-mono text-xs">{t.tenantCode}</td>
                     <td className="px-3 py-2">{t.tenantType === 'company' ? '公司' : '個人'}</td>
                     <td className="px-3 py-2 font-medium">

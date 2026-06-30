@@ -32,7 +32,7 @@ export async function GET(request) {
     const records = await prisma.rentalMaintenance.findMany({
       where,
       include: {
-        property: { select: { id: true, name: true, buildingName: true } }
+        property: { select: { id: true, name: true, buildingName: true, sortOrder: true } }
       },
       orderBy: { maintenanceDate: 'desc' },
       take: TAKE + 1,

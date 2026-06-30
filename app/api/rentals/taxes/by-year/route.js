@@ -29,8 +29,8 @@ export async function GET(request) {
 
     const [properties, taxes] = await Promise.all([
       prisma.rentalProperty.findMany({
-        orderBy: { name: 'asc' },
-        select: { id: true, name: true, address: true, buildingName: true, unitNo: true }
+        orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+        select: { id: true, name: true, address: true, buildingName: true, unitNo: true, sortOrder: true }
       }),
       prisma.propertyTax.findMany({
         where: { taxYear: y, taxType: { in: TAX_TYPES } },
@@ -46,6 +46,7 @@ export async function GET(request) {
 
     const rows = properties.map(p => ({
       propertyId: p.id,
+      sortOrder: p.sortOrder,
       doorplate: p.name || [p.buildingName, p.unitNo].filter(Boolean).join(' ') || p.address || `#${p.id}`,
       landTax: taxMap[p.id]?.[LAND_TAX] ?? '',
       houseTax: taxMap[p.id]?.[HOUSE_TAX] ?? ''

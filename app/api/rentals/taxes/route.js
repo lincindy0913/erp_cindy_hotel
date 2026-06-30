@@ -31,7 +31,7 @@ export async function GET(request) {
         include: {
           property: {
             select: {
-              id: true, name: true, buildingName: true,
+              id: true, name: true, buildingName: true, sortOrder: true,
               asset: { select: { id: true, hasHouseTax: true, hasLandTax: true, hasMaintenanceFee: true } },
             },
           },
