@@ -117,6 +117,7 @@ export async function GET(request) {
         status: f.status,
         note: f.note,
         confirmedAt: f.confirmedAt,
+        sortOrder: f.property.sortOrder,
         propertyName: f.property.name,
         address: f.property.address,
         buildingName: f.property.buildingName,

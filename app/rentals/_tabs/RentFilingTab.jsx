@@ -45,6 +45,7 @@ export default function RentFilingTab({
           <thead className="bg-teal-50 text-teal-900 text-xs sticky top-0 z-10">
             <tr>
               <th className="px-3 py-2 text-left">列</th>
+              <th className="px-3 py-2 text-left">資產編號</th>
               <th className="px-3 py-2 text-left">物業</th>
               <th className="px-3 py-2 text-left">地址</th>
               <th className="px-3 py-2 text-left">所有權人／稅籍</th>
@@ -61,12 +62,13 @@ export default function RentFilingTab({
           </thead>
           <tbody className="divide-y divide-gray-100">
             {rentFilingLoading ? (
-              <tr><td colSpan={13} className="text-center py-12 text-gray-400">載入中…</td></tr>
+              <tr><td colSpan={14} className="text-center py-12 text-gray-400">載入中…</td></tr>
             ) : rentFilingData.rows.length === 0 ? (
-              <tr><td colSpan={13} className="text-center py-12 text-gray-400">尚無資料，可使用「為全部物業建立草稿」或「新增申報列」</td></tr>
+              <tr><td colSpan={14} className="text-center py-12 text-gray-400">尚無資料，可使用「為全部物業建立草稿」或「新增申報列」</td></tr>
             ) : rentFilingData.rows.map((r) => (
               <tr key={r.id} className="hover:bg-gray-50">
                 <td className="px-3 py-2 text-xs text-gray-500">{r.slotIndex + 1}</td>
+                <td className="px-3 py-2 text-xs text-gray-700 font-mono">{r.sortOrder ?? '—'}</td>
                 <td className="px-3 py-2 font-medium">{r.propertyName}</td>
                 <td className="px-3 py-2 text-xs text-gray-600 max-w-[140px]" title={r.address || ''}>{r.address || '—'}</td>
                 <td className="px-3 py-2 text-xs">
@@ -106,7 +108,7 @@ export default function RentFilingTab({
           {rentFilingData.rows.length > 0 && (
             <tfoot className="bg-gray-50 font-semibold text-sm">
               <tr>
-                <td colSpan={8} className="px-3 py-2 text-right">合計</td>
+                <td colSpan={9} className="px-3 py-2 text-right">合計</td>
                 <td className="px-3 py-2 text-right">${fmt(rentFilingData.totals.declaredAnnual)}</td>
                 <td className="px-3 py-2 text-right">${fmt(rentFilingData.totals.estimatedHouseTax)}</td>
                 <td className="px-3 py-2 text-right">${fmt(rentFilingData.totals.actualAnnual)}</td>

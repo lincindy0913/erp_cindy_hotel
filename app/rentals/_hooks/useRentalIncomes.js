@@ -269,14 +269,14 @@ export function useRentalIncomes({ initialIncomeFilter, accounts = [], propertie
   function exportIncomeCSV() {
     const today = todayStr();
     const rows = [
-      ['物業', '棟別', '租客', '年', '月', '分類', '應收', '已收', '欠款', '到期日', '狀態', '備註'],
+      ['資產編號', '物業', '棟別', '租客', '年', '月', '分類', '應收', '已收', '欠款', '到期日', '狀態', '備註'],
       ...sortedIncomes.map(i => {
         const expected  = Number(i.expectedAmount || 0);
         const actual    = Number(i.actualAmount   || 0);
         const remaining = Math.max(0, expected - actual);
         const isOvd = i.status === 'pending' && i.dueDate < today;
         const statusLabel = isOvd ? '逾期' : (INCOME_STATUSES.find(s => s.value === i.status)?.label || i.status);
-        return [i.propertyName || '', i.buildingName || '', i.tenantName || '',
+        return [i.contractSortOrder ?? '', i.propertyName || '', i.buildingName || '', i.tenantName || '',
           i.incomeYear || '', i.incomeMonth || '', i.contractCategory || '',
           expected, actual, remaining, i.dueDate || '', statusLabel, i.note || ''];
       }),
@@ -318,9 +318,10 @@ export function useRentalIncomes({ initialIncomeFilter, accounts = [], propertie
     const m = incomeFilter.month ? String(incomeFilter.month).padStart(2, '0') : '全月';
     openPrintWindow(
       `租金收入明細　${y}/${m}`,
-      ['序號', '物業', '分類', '租客', '應收金額', '實收金額', '到期日', '狀態'],
+      ['序號', '資產編號', '物業', '分類', '租客', '應收金額', '實收金額', '到期日', '狀態'],
       sortedIncomes.map((i, idx) => [
         i.contractSortOrder ?? (idx + 1),
+        i.contractSortOrder ?? '—',
         i.propertyName,
         i.contractCategory || '—',
         i.tenantName,

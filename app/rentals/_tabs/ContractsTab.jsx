@@ -135,6 +135,7 @@ export default function ContractsTab({
           <thead className="bg-teal-50 sticky top-0 z-10">
             <tr>
               <SortableTh label="序號" colKey="sortOrder" sortKey={contractSortKey} sortDir={contractSortDir} onSort={contractToggleSort} className="px-2 py-2 w-16" align="center" />
+              <th className="text-center px-2 py-2 text-sm font-medium text-gray-700 whitespace-nowrap w-16">資產編號</th>
               <SortableTh label="分類" colKey="category" sortKey={contractSortKey} sortDir={contractSortDir} onSort={contractToggleSort} className="px-2 py-2 w-20" align="center" />
               <SortableTh label="合約編號" colKey="contractNo" sortKey={contractSortKey} sortDir={contractSortDir} onSort={contractToggleSort} className="px-3 py-2" />
               <SortableTh label="物業" colKey="propertyName" sortKey={contractSortKey} sortDir={contractSortDir} onSort={contractToggleSort} className="px-3 py-2" />
@@ -150,7 +151,7 @@ export default function ContractsTab({
           </thead>
           <tbody>
             {contracts.length === 0 ? (
-              <tr><td colSpan={12} className="text-center py-8 text-gray-400">暫無資料</td></tr>
+              <tr><td colSpan={13} className="text-center py-8 text-gray-400">暫無資料</td></tr>
             ) : (() => {
               const contractAccessors = {
                 sortOrder: c => c.property?.sortOrder ?? 999999,
@@ -174,6 +175,7 @@ export default function ContractsTab({
               return (
                 <tr key={c.id} className={`border-t hover:bg-gray-50 ${isExpiring ? 'bg-yellow-50' : ''}`}>
                   <td className="px-2 py-2 text-center text-xs text-gray-500 font-mono">{rowIdx + 1}</td>
+                  <td className="px-2 py-2 text-center text-xs text-gray-700 font-mono">{c.property?.sortOrder ?? '—'}</td>
                   <td className="px-2 py-2 text-center">
                     {c.property?.category
                       ? <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${CATEGORY_COLORS[c.property.category] || 'bg-gray-100 text-gray-700'}`}>{c.property.category}</span>

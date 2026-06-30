@@ -276,8 +276,9 @@ export function useRentalContracts({ initialFilter, onAfterSave } = {}) {
     const statusLabel = contractFilter.status ? `（${contractFilter.status}）` : '';
     openPrintWindow(
       `合約清單${statusLabel}`,
-      ['合約編號', '物業', '租客', '起始日', '到期日', '月租金', '押金', '狀態'],
+      ['資產編號', '合約編號', '物業', '租客', '起始日', '到期日', '月租金', '押金', '狀態'],
       contracts.map(c => [
+        c.property?.sortOrder ?? '—',
         c.contractNo, c.propertyName, c.tenantName, c.startDate, c.endDate,
         `NT$ ${Number(c.monthlyRent || 0).toLocaleString('zh-TW')}`,
         `NT$ ${Number(c.depositAmount || 0).toLocaleString('zh-TW')}`,

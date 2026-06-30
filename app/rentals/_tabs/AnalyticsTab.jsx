@@ -16,6 +16,7 @@ async function exportIncomeExcel({ rows, year }) {
   const months = [1,2,3,4,5,6,7,8,9,10,11,12];
   const columns = [
     { header: '序號',  key: 'idx',   width: 6 },
+    { header: '資產編號', key: 'assetNo', width: 8 },
     { header: '房號',  key: 'label', width: 22 },
     ...months.map(m => ({ header: `${m}月`, key: `m${m}`, width: 12, format: 'amount' })),
     { header: '合計',  key: 'total', width: 14, format: 'amount' },
@@ -27,6 +28,7 @@ async function exportIncomeExcel({ rows, year }) {
   const data = sorted.map((r, i) => {
     const row = {
       idx:   r.sortOrder ?? (i + 1),
+      assetNo: r.sortOrder ?? '',
       label: r.tenantName ? `${r.propertyLabel}(${r.tenantName})` : r.propertyLabel,
       total: r.total || 0,
     };
@@ -42,7 +44,7 @@ async function exportIncomeExcel({ rows, year }) {
     return row;
   });
   // 合計列
-  const sumRow = { idx: '', label: '合計', _isSummary: true, total: rows.reduce((s, r) => s + (r.total || 0), 0) };
+  const sumRow = { idx: '', assetNo: '', label: '合計', _isSummary: true, total: rows.reduce((s, r) => s + (r.total || 0), 0) };
   months.forEach(m => { sumRow[`m${m}`] = rows.reduce((s, r) => s + (r.months?.[m] || 0), 0) || ''; });
   data.push(sumRow);
 
@@ -109,6 +111,7 @@ async function exportOperatingExcel({ rows, year }) {
   if (!rows?.length) return;
   const columns = [
     { header: '序號',       key: 'idx',    width: 6 },
+    { header: '資產編號',   key: 'assetNo', width: 10 },
     { header: '物業',       key: 'label',  width: 24 },
     { header: '租金實收',   key: 'rent',   width: 14, format: 'amount' },
     { header: '水電實收',   key: 'util',   width: 14, format: 'amount' },
@@ -120,6 +123,7 @@ async function exportOperatingExcel({ rows, year }) {
   ];
   const data = rows.map((r, i) => ({
     idx:    r.sortOrder ?? (i + 1),
+    assetNo: r.sortOrder ?? '',
     label:  r.propertyLabel,
     rent:   r.rentOnly ?? r.rentIncome ?? 0,
     util:   r.utilityIncome || 0,
@@ -137,7 +141,7 @@ async function exportOperatingExcel({ rows, year }) {
   const sumProfit = rows.reduce((s, r) => s + (r.netProfit || 0), 0);
   const sumIncome = sumRent + sumUtil;
   const totalMgn  = sumIncome > 0 ? `${Math.round((sumProfit / sumIncome) * 10000) / 100}%` : '-';
-  data.push({ idx: '', label: '合計', rent: sumRent, util: sumUtil, maint: sumMaint, tax: sumTax, exp: sumExp, profit: sumProfit, margin: totalMgn, _isSummary: true });
+  data.push({ idx: '', assetNo: '', label: '合計', rent: sumRent, util: sumUtil, maint: sumMaint, tax: sumTax, exp: sumExp, profit: sumProfit, margin: totalMgn, _isSummary: true });
 
   await exportToXlsx({
     filename:  `物業營運分析_${year}年`,
@@ -374,6 +378,7 @@ export default function AnalyticsTab({
                 <thead className="bg-teal-50 sticky top-0 z-10">
                   <tr>
                     <th className="text-center px-2 py-2 border border-gray-200 w-8 text-gray-500">序號</th>
+                    <th className="text-center px-2 py-2 border border-gray-200 w-12 text-gray-500">資產編號</th>
                     <th className="text-left px-3 py-2 border border-gray-200">房號</th>
                     {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => (
                       <th key={m} className="text-right px-2 py-2 border border-gray-200 whitespace-nowrap">{incomeReportData.year || reportYear}/{m}</th>
@@ -383,7 +388,7 @@ export default function AnalyticsTab({
                 </thead>
                 <tbody>
                   {incomeReportData.rows.length === 0 ? (
-                    <tr><td colSpan={15} className="px-3 py-4 text-gray-500 text-center">尚無資料</td></tr>
+                    <tr><td colSpan={16} className="px-3 py-4 text-gray-500 text-center">尚無資料</td></tr>
                   ) : (
                     (() => {
                       const sorted = [
@@ -393,6 +398,7 @@ export default function AnalyticsTab({
                       return sorted.map((r, idx) => (
                       <tr key={r.propertyId} className={r.isTerminated ? 'bg-gray-50/60 opacity-70' : 'hover:bg-gray-50'}>
                         <td className="text-center px-2 py-2 border border-gray-200 text-xs text-gray-400">{r.sortOrder ?? (idx + 1)}</td>
+                        <td className="text-center px-2 py-2 border border-gray-200 text-xs text-gray-500">{r.sortOrder ?? '—'}</td>
                         <td className="px-3 py-2 border border-gray-200">
                           {r.tenantName ? `${r.propertyLabel}(${r.tenantName})` : r.propertyLabel}
                           {r.isTerminated && <span className="ml-2 text-xs text-gray-400">（已退租）</span>}
@@ -453,6 +459,7 @@ export default function AnalyticsTab({
                   return (
                     <tfoot className="bg-teal-50 font-semibold text-sm border-t-2 border-teal-300">
                       <tr>
+                        <td className="px-2 py-2 border border-gray-200 text-center text-xs text-gray-500">—</td>
                         <td className="px-2 py-2 border border-gray-200 text-center text-xs text-gray-500">—</td>
                         <td className="px-3 py-2 border border-gray-200 text-teal-800">合計</td>
                         {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => {
@@ -662,6 +669,7 @@ export default function AnalyticsTab({
                 <thead className="bg-teal-50 sticky top-0 z-10">
                   <tr>
                     <th className="text-center px-2 py-2 border border-gray-200 w-8 text-gray-500">序號</th>
+                    <th className="text-center px-2 py-2 border border-gray-200 w-12 text-gray-500">資產編號</th>
                     <th className="text-left px-3 py-2 border border-gray-200">物業</th>
                     <th className="text-right px-3 py-2 border border-gray-200">租金實收</th>
                     <th className="text-right px-3 py-2 border border-gray-200">水電實收</th>
@@ -674,11 +682,12 @@ export default function AnalyticsTab({
                 </thead>
                 <tbody>
                   {operatingReportData.rows.length === 0 ? (
-                    <tr><td colSpan={9} className="px-3 py-4 text-gray-500 text-center">尚無資料</td></tr>
+                    <tr><td colSpan={10} className="px-3 py-4 text-gray-500 text-center">尚無資料</td></tr>
                   ) : (
                     operatingReportData.rows.map((r, idx) => (
                       <tr key={r.propertyId} className="hover:bg-gray-50">
                         <td className="text-center px-2 py-2 border border-gray-200 text-xs text-gray-400">{r.sortOrder ?? (idx + 1)}</td>
+                        <td className="text-center px-2 py-2 border border-gray-200 text-xs text-gray-500">{r.sortOrder ?? '—'}</td>
                         <td className="px-3 py-2 border border-gray-200">{r.propertyLabel}</td>
                         <td className="text-right px-3 py-2 border border-gray-200">{fmt(r.rentOnly ?? r.rentIncome)}</td>
                         <td className="text-right px-3 py-2 border border-gray-200">{r.utilityIncome > 0 ? fmt(r.utilityIncome) : <span className="text-gray-300">—</span>}</td>
@@ -704,6 +713,7 @@ export default function AnalyticsTab({
                   return (
                     <tfoot className="bg-teal-50 font-semibold text-sm border-t-2 border-teal-300">
                       <tr>
+                        <td className="px-2 py-2 border border-gray-200 text-center text-xs text-gray-500">—</td>
                         <td className="px-2 py-2 border border-gray-200 text-center text-xs text-gray-500">—</td>
                         <td className="px-3 py-2 border border-gray-200 text-teal-800">合計</td>
                         <td className="text-right px-3 py-2 border border-gray-200 text-teal-800">{fmt(sumRent)}</td>

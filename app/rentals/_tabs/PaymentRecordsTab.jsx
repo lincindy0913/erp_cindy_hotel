@@ -68,6 +68,7 @@ export default function PaymentRecordsTab({
           <thead className="bg-teal-50 sticky top-0 z-10">
             <tr>
               <th className="text-center px-3 py-2 text-sm font-medium text-gray-700 whitespace-nowrap">序號</th>
+              <th className="text-center px-3 py-2 text-sm font-medium text-gray-700 whitespace-nowrap">資產編號</th>
               <SortableTh label="分類" colKey="category" sortKey={paymentSortKey} sortDir={paymentSortDir} onSort={paymentToggleSort} className="px-3 py-2" />
               <SortableTh label="收款日期" colKey="paymentDate" sortKey={paymentSortKey} sortDir={paymentSortDir} onSort={paymentToggleSort} className="px-3 py-2" />
               <SortableTh label="物業" colKey="propertyName" sortKey={paymentSortKey} sortDir={paymentSortDir} onSort={paymentToggleSort} className="px-3 py-2" />
@@ -84,9 +85,9 @@ export default function PaymentRecordsTab({
           </thead>
           <tbody>
             {paymentLoading ? (
-              <tr><td colSpan={13} className="text-center py-8 text-gray-400">載入中…</td></tr>
+              <tr><td colSpan={14} className="text-center py-8 text-gray-400">載入中…</td></tr>
             ) : paymentRecords.length === 0 ? (
-              <tr><td colSpan={13} className="text-center py-8 text-gray-400">暫無付款紀錄</td></tr>
+              <tr><td colSpan={14} className="text-center py-8 text-gray-400">暫無付款紀錄</td></tr>
             ) : sortRows(paymentRecords, paymentSortKey, paymentSortDir, {
                 expectedAmount: p => Number(p.expectedAmount || 0),
                 amount: p => Number(p.amount || 0),
@@ -102,6 +103,7 @@ export default function PaymentRecordsTab({
                     )}
                   </div>
                 </td>
+                <td className="px-3 py-2 text-center text-xs text-gray-700 font-mono">{p.serialNo || '—'}</td>
                 <td className="px-3 py-2">
                   {p.category ? (
                     <span className={`px-2 py-0.5 rounded text-xs font-medium ${p.category === '公司' ? 'bg-blue-50 text-blue-700' : p.category === '湯三姐' ? 'bg-orange-50 text-orange-700' : 'bg-gray-100 text-gray-600'}`}>

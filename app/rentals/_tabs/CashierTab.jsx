@@ -296,13 +296,14 @@ export default function CashierTab({
 
       {(() => {
         const hasAnyUtility = incomes.some(i => i.collectUtilityFee);
-        const colSpan = hasAnyUtility ? 14 : 12;
+        const colSpan = hasAnyUtility ? 15 : 13;
         return (
       <div className="bg-white rounded-lg shadow tbl-wrap">
         <table className="w-full text-sm">
           <thead className="bg-teal-50 sticky top-0 z-10">
             <tr>
               <SortableTh label="序號" colKey="contractSortOrder" sortKey={rentIncKey} sortDir={rentIncDir} onSort={rentIncToggle} className="px-3 py-2 w-12" align="center" />
+              <th className="text-center px-3 py-2 text-sm font-medium text-gray-700 whitespace-nowrap w-12">資產編號</th>
               <th className="px-3 py-2 text-center w-8">
                 <input type="checkbox"
                   title="全選未鎖帳"
@@ -364,6 +365,8 @@ export default function CashierTab({
                       </span>
                     )}
                   </td>
+                  {/* 資產編號 */}
+                  <td className="px-3 py-2 text-center text-xs text-gray-700 font-mono">{income.contractSortOrder ?? '—'}</td>
                   <td className="px-3 py-2 text-center">
                     {!income.isLocked && (
                       <input type="checkbox"
