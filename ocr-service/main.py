@@ -146,10 +146,12 @@ async def extract_page_text(pdf_bytes: bytes, page_num: int) -> tuple[str, str]:
     if len(direct_text) >= _MIN_TEXT_LEN:
         return direct_text, "direct"
 
-    # Scanned page — try Google Vision first if a key is configured
+    # Scanned page — try Google Vision first if a key is configured.
+    # Render at 300 DPI (not the 200 default) so Vision reads degraded scans
+    # such as the 麗格 summary table's 使用度數 column reliably.
     if GOOGLE_VISION_API_KEY:
         try:
-            img_b64 = pdf_page_to_base64(pdf_bytes, page_num)
+            img_b64 = pdf_page_to_base64(pdf_bytes, page_num, dpi=300)
             vision_text = await google_vision_ocr(img_b64)
             if len(vision_text) >= 10:
                 return vision_text, "vision"
@@ -248,7 +250,7 @@ def parse_electricity_summary(text: str) -> list:
     for idx, m in enumerate(matches):
         acct = m.group(1)
         seg_end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
-        seg_after = text[m.end():seg_end]
+        seg_after = _DATE_TOKEN_RE.sub(' ', text[m.end():seg_end])  # 去掉「115/6/16」日期
         nums = [n.replace(',', '') for n in _NUM_RE.findall(seg_after)
                 if n.replace(',', '').isdigit()]
         # address sits before the 電號 (after the previous row's amounts)
@@ -289,21 +291,27 @@ def parse_summary_totals(text: str) -> dict | None:
 
 # Summary-table number (allows '.' or ',' as a misread thousands separator)
 _SUM_NUM_RE = re.compile(r'\d[\d.,]*\d|\d')
+# 日期 token（如「115/6/16製表」「115/5/4-115/6/1」）會夾在電號與金額之間，
+# 先抽掉，避免「115」被當成使用度數（Vision 把首列欄位標題＋製表日插在第一筆）。
+_DATE_TOKEN_RE = re.compile(r'\d{1,3}/\d{1,2}/\d{1,2}')
 
-def parse_summary_table_hi(text: str, detail_totals: dict = None) -> list:
-    """Parse a high-DPI / PSM-6 summary table → one record per meter.
+def parse_summary_table_hi(text: str, detail_totals: dict = None,
+                           detail_usage: dict = None) -> list:
+    """Parse a high-DPI / PSM-6 / Vision summary table → one record per meter.
 
-    The summary grid reads 使用度數 + 金額 columns reliably at 400 DPI/PSM 6.
     地址/電號 come from METER_REGISTRY (fixed key); the noisier 電號 OCR is
-    restored by fuzzy match, and 應繳總金額 is overridden by the detail page's
-    big-font/barcode value when available.
+    restored by fuzzy match. 應繳總金額 is overridden by the detail page's
+    big-font/barcode value, and 使用度數 falls back to the detail page's
+    三段度數相加 (detail_usage) when the summary cell is blank/zero.
     """
     detail_totals = detail_totals or {}
+    detail_usage = detail_usage or {}
     records = []
     taken = set()
     ms = list(_ACCT_RE.finditer(text))
     for i, m in enumerate(ms):
         seg = text[m.end(): ms[i + 1].start() if i + 1 < len(ms) else len(text)]
+        seg = _DATE_TOKEN_RE.sub(' ', seg)   # 去掉日期，否則「115/6/16」會被當成度數
         nums = [int(re.sub(r'[.,]', '', t)) for t in _SUM_NUM_RE.findall(seg)]
         acct = match_meter(m.group(0), taken)
         if acct in taken:
@@ -316,6 +324,8 @@ def parse_summary_table_hi(text: str, detail_totals: dict = None) -> list:
         fee = nums[1] if len(nums) > 1 else 0
         tax = nums[2] if len(nums) > 2 else 0
         total = nums[3] if len(nums) > 3 else (fee + tax)
+        if (not usage) and detail_usage.get(acct):   # 彙總表讀不到→用明細頁三段度數相加
+            usage = detail_usage[acct]
         if acct in detail_totals:          # 明細頁(大字+條碼)較準
             total = detail_totals[acct]
         records.append({
@@ -337,10 +347,12 @@ _TAXCOL_RE = re.compile(r'(\d{1,5})\.\s?0?\s*元[^\d]{0,18}應[繳繼線總]')  
 _ETOTAL_BARCODE_RE = re.compile(r'0000[0-9A-Z.]?0000(\d{4,7})')      # total embedded in bottom barcode
 _COMMA_AMT_RE = re.compile(r'(\d{1,3}(?:,\d{3})+)\s*元')             # clean comma amount before 元
 _EDATE_RE = re.compile(r'(\d{3}/\d{2}/\d{2})')
-# 計費度數 sub-fields (must end in 度數 so we don't catch 需量/契約 values)
-_PEAK_RE = re.compile(r'經常[(（]?尖峰[)）]?度數[^\d]{0,30}(\d{2,6})')          # 經常(尖峰)度數
-_SEMIPEAK_RE = re.compile(r'半[人入]?尖峰度數[^\d]{0,30}(\d{2,6})')            # (週六)半尖峰度數
-_OFFPEAK_RE = re.compile(r'離峰度數[^\d]{0,30}(\d{2,6})')                     # 離峰度數
+# 計費度數 sub-fields (must end in 度數 so we don't catch 需量/契約 values).
+# 容忍 Vision 在標籤裡插入的空白（如「經常 (尖峰) 度數」）及值落在下一行：
+# \s* 吃掉標籤內空白、\D{0,8} 吃掉到數字前的換行/雜訊（夠小，不會抓到遠處數字）。
+_PEAK_RE = re.compile(r'經常\s*[(（]?\s*尖峰\s*[)）]?\s*度數\D{0,8}(\d{1,6})')        # 經常(尖峰)度數
+_SEMIPEAK_RE = re.compile(r'(?:週六)?\s*半\s*[人入]?\s*尖峰\s*度數\D{0,8}(\d{1,6})')  # (週六)半尖峰度數
+_OFFPEAK_RE = re.compile(r'離峰\s*度數\D{0,8}(\d{1,6})')                              # 離峰度數
 
 
 def _amt(m):
@@ -424,18 +436,19 @@ def parse_electricity_detail(text: str, page_num: int, backfill: dict = None,
     else:
         fee = tax = total = 0
 
-    # 計費度數 breakdown — 半尖峰/離峰 OCR reliably; 經常(尖峰) often does not
-    # (small/faint print), so it stays 0 for manual entry on noisy pages.
+    # 計費度數 breakdown — Vision 讀三段度數很乾淨；空白容忍版 regex（見上）能
+    # 把「經常 (尖峰) 度數」與值落在下一行的情況都抓到。
     pm = _PEAK_RE.search(text)
     sm = _SEMIPEAK_RE.search(text)
     om = _OFFPEAK_RE.search(text)
     peak = int(pm.group(1)) if pm else 0
     semi = int(sm.group(1)) if sm else 0
     off = int(om.group(1)) if om else 0
-    # 使用度數: prefer summary backfill; else the sum when all three read
+    # 使用度數: prefer summary backfill; else the sum of whichever tiers read
     usage = bf.get("usage") if (bf and bf.get("usage")) else None
-    if not usage and peak and semi and off:
-        usage = peak + semi + off
+    if not usage:
+        s = peak + semi + off
+        usage = s if s > 0 else None
 
     dm = _EDATE_RE.search(text)
     due = dm.group(1) if dm else "未辨識"
@@ -932,10 +945,12 @@ async def ocr_pdf(
                     summary_idx = i
 
             # Detail pages give the reliable 電號 + 應繳總金額 (big font + barcode)
+            # and the three time-of-use 度數 → 使用度數 (經常尖峰+週六半尖峰+離峰).
             backfill = build_electricity_backfill(page_texts)
             detail_recs = [parse_electricity_detail(p["text"], p["pageNum"], backfill, billing_period)
                            for p in detail_pages]
             detail_totals = {}
+            detail_usage = {}
             _t = set()
             for r in detail_recs:
                 a = match_meter(r["電號"], _t)
@@ -944,16 +959,37 @@ async def ocr_pdf(
                     detail_totals[a] = int(r["應繳總金額"])
                 except Exception:
                     pass
+                u = (safe_int(r.get("尖峰度數")) + safe_int(r.get("半尖峰度數"))
+                     + safe_int(r.get("離峰度數")))
+                if u > 0:
+                    detail_usage[a] = u
 
-            # PRIMARY: re-OCR the summary page at 400 DPI / PSM 6 → reliable
-            # 使用度數 column; 地址/電號 from the fixed registry.
+            # PRIMARY: parse the summary grid → 使用度數/金額 per meter. Prefer the
+            # high-quality Vision text when available; else re-OCR at 400 DPI/PSM 6
+            # for the dense grid. 使用度數 falls back to detail 三段度數相加.
             if summary_idx is not None:
-                try:
-                    hi = tesseract_ocr_page(pdf_bytes, summary_idx, dpi=400, psm=6)
-                    records = parse_summary_table_hi(hi, detail_totals)
-                    expected_totals = parse_summary_totals(hi) or parse_summary_totals(page_texts[summary_idx]["text"])
-                except Exception:
-                    traceback.print_exc()
+                cand_texts = []
+                if methods_used[summary_idx] == "vision":
+                    cand_texts.append(page_texts[summary_idx]["text"])
+                else:
+                    try:
+                        cand_texts.append(tesseract_ocr_page(pdf_bytes, summary_idx, dpi=400, psm=6))
+                    except Exception:
+                        traceback.print_exc()
+                    cand_texts.append(page_texts[summary_idx]["text"])
+                best, best_score, best_text = [], -1, ""
+                for ct in cand_texts:
+                    recs = parse_summary_table_hi(ct, detail_totals, detail_usage)
+                    score = sum(1 for r in recs if safe_int(r.get("使用度數")) > 0)
+                    if score > best_score:
+                        best, best_score, best_text = recs, score, ct
+                records = best
+                # 總計列驗證（best-effort；版面零散讀不準時跳過，避免誤報紅字）
+                exp = parse_summary_totals(best_text) or parse_summary_totals(page_texts[summary_idx]["text"])
+                if exp and exp.get("應繳總金額"):
+                    max_row = max((safe_int(r.get("應繳總金額")) for r in records), default=0)
+                    if exp["應繳總金額"] >= max_row:   # 真正的總計必大於任一筆
+                        expected_totals = exp
 
             # Fallbacks: detail-page records, then per-page parse
             if len(records) < 2:
@@ -968,7 +1004,7 @@ async def ocr_pdf(
                 records = [parse_electricity_page(p["text"], p["pageNum"], billing_period)
                            for p in page_texts]
 
-            # 統一套用固定登記簿：還原正確電號、地址、館別（不論走哪條解析路徑）
+            # 統一套用固定登記簿：還原正確電號、地址、館別（不論走哪條解析路徑）。
             _seen = set()
             for r in records:
                 acct = match_meter(r.get("電號", ""), _seen)
