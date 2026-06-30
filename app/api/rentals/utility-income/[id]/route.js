@@ -46,7 +46,7 @@ export async function PATCH(request, { params }) {
     const incomeId = parseInt((await params).id);
     const record = await prisma.rentalUtilityIncome.findUnique({
       where: { id: incomeId },
-      include: { property: { select: { id: true, name: true, warehouse: true } } },
+      include: { property: { select: { id: true, name: true } } },
     });
     if (!record) return createErrorResponse('NOT_FOUND', '找不到水電收入紀錄', 404);
 
@@ -85,7 +85,7 @@ export async function PATCH(request, { params }) {
     // RT3: 月結期間鎖定（以 actualDate 優先，否則用月份第一天）
     const lockDate = (updateData.actualDate ?? record.actualDate)
       || `${record.incomeYear}-${String(record.incomeMonth).padStart(2, '0')}-01`;
-    const warehouse = record.property?.warehouse || null;
+    const warehouse = null;  // 租屋物業無館別 → 走全域月結鎖
 
     let finalRecord;
     await prisma.$transaction(async (tx) => {
@@ -94,7 +94,7 @@ export async function PATCH(request, { params }) {
       const updated = await tx.rentalUtilityIncome.update({
         where: { id: incomeId },
         data: updateData,
-        include: { property: { select: { id: true, name: true, warehouse: true } } },
+        include: { property: { select: { id: true, name: true } } },
       });
 
       // 同步 CashTransaction（RT2: 帶入 warehouse）
@@ -115,7 +115,7 @@ export async function PATCH(request, { params }) {
                 amount: Number(updated.actualAmount),
                 transactionDate: updated.actualDate || todayStr(),
                 accountId: updated.accountId,
-                warehouse: updated.property?.warehouse || null,  // RT2
+                warehouse: null,  // 租屋物業無館別
                 description,
               },
             });
@@ -132,7 +132,7 @@ export async function PATCH(request, { params }) {
               transactionNo:   txNo,
               transactionDate: updated.actualDate || todayStr(),
               type:            '收入',
-              warehouse:       updated.property?.warehouse || null,  // RT2
+              warehouse:       null,  // 租屋物業無館別
               accountId:       updated.accountId,
               categoryId,
               amount:          Number(updated.actualAmount),
@@ -170,7 +170,6 @@ export async function DELETE(request, { params }) {
     const incomeId = parseInt((await params).id);
     const record = await prisma.rentalUtilityIncome.findUnique({
       where: { id: incomeId },
-      include: { property: { select: { warehouse: true } } },
     });
     if (!record) return createErrorResponse('NOT_FOUND', '找不到水電收入紀錄', 404);
 
@@ -188,8 +187,8 @@ export async function DELETE(request, { params }) {
       || `${record.incomeYear}-${String(record.incomeMonth).padStart(2, '0')}-01`;
 
     await prisma.$transaction(async (tx) => {
-      // RT3: 月結鎖定
-      await assertPeriodOpen(tx, lockDate, record.property?.warehouse);
+      // RT3: 月結鎖定（租屋物業無館別 → 走全域月結鎖）
+      await assertPeriodOpen(tx, lockDate, null);
 
       if (record.cashTransactionId) {
         const cashTx = await tx.cashTransaction.findUnique({

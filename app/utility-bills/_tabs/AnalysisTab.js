@@ -14,6 +14,10 @@ export default function AnalysisTab({
   WAREHOUSE_OPTIONS,
 }) {
   const isElec = analysisFilter.billType === '電費';
+  // 表頭/表尾底色直接套在每個 th/td（border-collapse 下 <tr> 底色不會畫在透明儲存格後面，
+  // 月份格會露出白底，白字變看不見）。
+  const headBg = isElec ? 'bg-amber-600' : 'bg-sky-600';
+  const footBg = isElec ? 'bg-amber-50' : 'bg-sky-50';
   const pivotMap = buildPivot(analysisRecords, analysisFilter.billType, analysisMode);
   const labels = [...pivotMap.keys()];
   const months = [1,2,3,4,5,6,7,8,9,10,11,12];
@@ -103,19 +107,19 @@ export default function AnalysisTab({
         ) : (
           <table className="w-full text-sm border-collapse">
             <thead className="sticky top-0 z-10">
-              <tr className={isElec ? 'bg-amber-600 text-white' : 'bg-sky-600 text-white'}>
-                <th className="px-3 py-2 text-left font-medium whitespace-nowrap sticky left-0 z-10 bg-inherit min-w-[200px]">
+              <tr className="text-white">
+                <th className={`px-3 py-2 text-left font-medium whitespace-nowrap sticky left-0 z-20 ${headBg} min-w-[200px]`}>
                   列標籤
                   <span className="block text-[10px] font-normal opacity-75">
                     加總 — {analysisMode === 'usage' ? '使用度數' : '繳費金額'}
                   </span>
                 </th>
                 {months.map(m => (
-                  <th key={m} className="px-3 py-2 text-right font-medium whitespace-nowrap min-w-[60px]">
-                    {String(m).padStart(2, '0')}
+                  <th key={m} className={`px-3 py-2 text-right font-medium whitespace-nowrap min-w-[56px] ${headBg}`}>
+                    {m}月
                   </th>
                 ))}
-                <th className="px-3 py-2 text-right font-medium whitespace-nowrap min-w-[72px]">合計</th>
+                <th className={`px-3 py-2 text-right font-medium whitespace-nowrap min-w-[72px] ${headBg}`}>合計</th>
               </tr>
             </thead>
             <tbody>
@@ -139,14 +143,14 @@ export default function AnalysisTab({
               })}
             </tbody>
             <tfoot>
-              <tr className={`font-bold border-t-2 ${isElec ? 'border-amber-300 bg-amber-50' : 'border-sky-300 bg-sky-50'}`}>
-                <td className="px-3 py-2 sticky left-0 z-10 bg-inherit">總計</td>
+              <tr className={`font-bold border-t-2 ${isElec ? 'border-amber-300' : 'border-sky-300'}`}>
+                <td className={`px-3 py-2 sticky left-0 z-10 ${footBg}`}>總計</td>
                 {colTotals.map((t, i) => (
-                  <td key={i} className="px-3 py-2 text-right tabular-nums">
+                  <td key={i} className={`px-3 py-2 text-right tabular-nums ${footBg}`}>
                     {t > 0 ? t.toLocaleString() : ''}
                   </td>
                 ))}
-                <td className="px-3 py-2 text-right border-l border-gray-200 tabular-nums">
+                <td className={`px-3 py-2 text-right border-l border-gray-200 tabular-nums ${footBg}`}>
                   {grandTotal > 0 ? grandTotal.toLocaleString() : '—'}
                 </td>
               </tr>

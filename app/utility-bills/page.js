@@ -86,6 +86,7 @@ export default function UtilityBillsPage() {
   });
   const {
     pdfFile, setPdfFile,
+    pdfFiles, setPdfFiles,
     startPage, setStartPage,
     extractedText, setExtractedText,
     pageTexts, setPageTexts,
@@ -238,6 +239,8 @@ export default function UtilityBillsPage() {
             setStartPage={setStartPage}
             pdfFile={pdfFile}
             setPdfFile={setPdfFile}
+            pdfFiles={pdfFiles}
+            setPdfFiles={setPdfFiles}
             extractedText={extractedText}
             loading={loading}
             saving={saving}

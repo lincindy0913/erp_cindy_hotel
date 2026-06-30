@@ -8,6 +8,8 @@ export default function ParseTab({
   setStartPage,
   pdfFile,
   setPdfFile,
+  pdfFiles = [],
+  setPdfFiles,
   extractedText,
   loading,
   saving,
@@ -36,6 +38,7 @@ export default function ParseTab({
         {isWater ? (
           <>
             選擇 PDF 後直接按 <strong>「讀取 PDF」</strong> 即可自動辨識每頁水號、用水地址、繳費年月、基本費、用水費、營業稅、代徵費用、總金額，核對後按「儲存全部」完成。
+            <span className="ml-1 text-teal-600">檔案太大可分拆成多個 PDF <strong>一次選取（可多選）</strong>，系統會自動合併成一批、存成一筆。</span>
             <span className="ml-1 text-gray-400">（「OCR 掃描」僅供無文字層掃描檔使用）</span>
           </>
         ) : (
@@ -96,6 +99,7 @@ export default function ParseTab({
           ref={fileInputRef}
           type="file"
           accept=".pdf"
+          multiple
           onChange={e => handleFileChange(e, activeTab)}
           className="hidden"
         />
@@ -104,13 +108,19 @@ export default function ParseTab({
           onClick={() => fileInputRef.current?.click()}
           className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 text-sm"
         >
-          選擇 PDF
+          選擇 PDF（可多選）
         </button>
-        {pdfFile && <span className="text-sm text-gray-600">{pdfFile.name}</span>}
+        {pdfFiles.length > 0 && (
+          <span className="text-sm text-gray-600">
+            {pdfFiles.length > 1
+              ? `已選 ${pdfFiles.length} 個檔：${pdfFiles.map(f => f.name).join('、')}`
+              : pdfFiles[0].name}
+          </span>
+        )}
         <button
           type="button"
           onClick={() => handleParse(activeTab)}
-          disabled={!pdfFile || loading}
+          disabled={pdfFiles.length === 0 || loading}
           className="px-4 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 disabled:opacity-50 text-sm"
         >
           {loading ? '讀取中…' : '讀取 PDF'}
@@ -118,7 +128,7 @@ export default function ParseTab({
         <button
           type="button"
           onClick={() => handleOcrScan(activeTab)}
-          disabled={!pdfFile || loading}
+          disabled={pdfFiles.length === 0 || loading}
           className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 text-sm"
           title="適用於掃描版 PDF（無文字層）"
         >
@@ -296,7 +306,7 @@ export default function ParseTab({
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => { setFormRecords([]); setOcrRecords([]); setPdfFile(null); setSummary(null); }}
+                onClick={() => { setFormRecords([]); setOcrRecords([]); setPdfFile(null); setPdfFiles?.([]); setSummary(null); }}
                 disabled={saving}
                 className="px-4 py-1.5 rounded text-xs bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-medium"
               >
@@ -421,7 +431,7 @@ export default function ParseTab({
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => { setFormRecords([]); setOcrRecords([]); setPdfFile(null); setSummary(null); }}
+                onClick={() => { setFormRecords([]); setOcrRecords([]); setPdfFile(null); setPdfFiles?.([]); setSummary(null); }}
                 disabled={saving}
                 className="px-4 py-1.5 rounded text-xs bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-medium"
               >

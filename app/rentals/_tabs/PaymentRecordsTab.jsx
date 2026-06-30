@@ -67,8 +67,8 @@ export default function PaymentRecordsTab({
         <table className="w-full text-sm">
           <thead className="bg-teal-50 sticky top-0 z-10">
             <tr>
-              <th className="text-center px-3 py-2 text-sm font-medium text-gray-700 whitespace-nowrap">序號</th>
-              <th className="text-center px-3 py-2 text-sm font-medium text-gray-700 whitespace-nowrap">資產編號</th>
+              <SortableTh label="序號" colKey="id" sortKey={paymentSortKey} sortDir={paymentSortDir} onSort={paymentToggleSort} className="px-3 py-2" align="center" />
+              <SortableTh label="資產編號" colKey="serialNo" sortKey={paymentSortKey} sortDir={paymentSortDir} onSort={paymentToggleSort} className="px-3 py-2" align="center" />
               <SortableTh label="分類" colKey="category" sortKey={paymentSortKey} sortDir={paymentSortDir} onSort={paymentToggleSort} className="px-3 py-2" />
               <SortableTh label="收款日期" colKey="paymentDate" sortKey={paymentSortKey} sortDir={paymentSortDir} onSort={paymentToggleSort} className="px-3 py-2" />
               <SortableTh label="物業" colKey="propertyName" sortKey={paymentSortKey} sortDir={paymentSortDir} onSort={paymentToggleSort} className="px-3 py-2" />
@@ -76,10 +76,10 @@ export default function PaymentRecordsTab({
               <SortableTh label="租期" colKey="incomeYear" sortKey={paymentSortKey} sortDir={paymentSortDir} onSort={paymentToggleSort} className="px-3 py-2" align="center" />
               <SortableTh label="應收金額" colKey="expectedAmount" sortKey={paymentSortKey} sortDir={paymentSortDir} onSort={paymentToggleSort} className="px-3 py-2" align="right" />
               <SortableTh label="實收金額" colKey="amount" sortKey={paymentSortKey} sortDir={paymentSortDir} onSort={paymentToggleSort} className="px-3 py-2 text-teal-800" align="right" />
-              <th className="text-center px-3 py-2 text-sm font-medium text-gray-700 whitespace-nowrap">次序</th>
+              <SortableTh label="次序" colKey="sequenceNo" sortKey={paymentSortKey} sortDir={paymentSortDir} onSort={paymentToggleSort} className="px-3 py-2" align="center" />
               <SortableTh label="付款方式" colKey="paymentMethod" sortKey={paymentSortKey} sortDir={paymentSortDir} onSort={paymentToggleSort} className="px-3 py-2" />
-              <th className="text-left px-3 py-2 text-sm font-medium text-gray-700 whitespace-nowrap">收款帳戶</th>
-              <th className="text-left px-3 py-2 text-sm font-medium text-gray-700 whitespace-nowrap">匯款人/備註</th>
+              <SortableTh label="收款帳戶" colKey="accountName" sortKey={paymentSortKey} sortDir={paymentSortDir} onSort={paymentToggleSort} className="px-3 py-2" />
+              <SortableTh label="匯款人/備註" colKey="note" sortKey={paymentSortKey} sortDir={paymentSortDir} onSort={paymentToggleSort} className="px-3 py-2" />
               <th className="text-center px-3 py-2 text-sm font-medium text-gray-700 whitespace-nowrap">操作</th>
             </tr>
           </thead>
@@ -92,6 +92,10 @@ export default function PaymentRecordsTab({
                 expectedAmount: p => Number(p.expectedAmount || 0),
                 amount: p => Number(p.amount || 0),
                 incomeYear: p => p.incomeYear * 100 + (p.incomeMonth || 0),
+                serialNo: p => p.serialNo ?? '',
+                sequenceNo: p => Number(p.sequenceNo || 0),
+                accountName: p => p.accountName || accounts.find(a => a.id === p.accountId)?.name || '',
+                note: p => [p.matchBankAccountName, p.matchNote].filter(Boolean).join(' / '),
               }).map((p, idx) => (
               <tr key={p.id} className={`border-t ${p.incomeIsLocked ? 'bg-amber-50 border-l-4 border-l-amber-400 hover:bg-amber-100' : `hover:bg-gray-50 ${idx % 2 === 0 ? '' : 'bg-gray-50/50'}`}`}>
                 <td className="px-3 py-2 text-center text-xs text-gray-500">

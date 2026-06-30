@@ -212,7 +212,9 @@ async function exportVacancyExcel({ rows, year }) {
       vacancy:    `${r.vacancyRate}%`,
       avgRent:    r.avgRent || 0,
     };
-    months.forEach((m, mi) => { row[`m${m}`] = r.monthRented[mi] ? '●出租' : '○空置'; });
+    months.forEach((m, mi) => {
+      row[`m${m}`] = !r.monthElapsed?.[mi] ? '－未到' : (r.monthRented[mi] ? '●出租' : '○空置');
+    });
     return row;
   });
 
@@ -1056,7 +1058,7 @@ export default function AnalyticsTab({
                     <p className="text-xl font-bold text-teal-700">{vacancyData.rows.length}</p>
                   </div>
                   <div className="bg-white rounded-lg shadow p-3 border-l-4 border-green-500">
-                    <p className="text-xs text-gray-500">全年出租</p>
+                    <p className="text-xs text-gray-500">滿租物業（至今 0% 空置）</p>
                     <p className="text-xl font-bold text-green-700">{vacancyData.fullyRented} 間</p>
                   </div>
                   <div className="bg-white rounded-lg shadow p-3 border-l-4 border-red-500">
@@ -1088,12 +1090,23 @@ export default function AnalyticsTab({
                         <td className="text-center px-2 py-2 border border-gray-200 text-xs text-gray-400">{idx + 1}</td>
                         <td className="text-center px-2 py-2 border border-gray-200 text-xs text-gray-500">{r.sortOrder ?? '—'}</td>
                         <td className="px-3 py-2 border border-gray-200 font-medium">{r.propertyLabel}</td>
-                        {r.monthRented.map((rented, idx) => (
-                          <td key={idx} className={`border border-gray-200 text-center text-xs ${rented ? 'bg-green-100 text-green-800' : 'bg-red-50 text-red-400'}`}>
-                            {rented ? '●' : '○'}
-                          </td>
-                        ))}
-                        <td className="px-3 py-2 border border-gray-200 text-right font-semibold">{r.rentedCount}</td>
+                        {r.monthRented.map((rented, idx) => {
+                          const elapsed = r.monthElapsed ? r.monthElapsed[idx] : true;
+                          // 未到月份不計入出租月數/空置率：有合約=淺綠「已簽約」，無合約=留白
+                          const cls = !elapsed
+                            ? (rented ? 'bg-green-50 text-green-300' : 'bg-gray-50 text-gray-300')
+                            : (rented ? 'bg-green-100 text-green-800' : 'bg-red-50 text-red-400');
+                          return (
+                            <td key={idx}
+                              className={`border border-gray-200 text-center text-xs ${cls}`}
+                              title={!elapsed ? '未到月份（不計入）' : (rented ? '出租中' : '空置')}>
+                              {!elapsed ? (rented ? '·' : '') : (rented ? '●' : '○')}
+                            </td>
+                          );
+                        })}
+                        <td className="px-3 py-2 border border-gray-200 text-right font-semibold">
+                          {r.rentedCount}<span className="text-gray-400 font-normal"> / {r.passedCount ?? 12}</span>
+                        </td>
                         <td className={`px-3 py-2 border border-gray-200 text-right font-bold ${r.vacancyRate === 0 ? 'text-green-600' : r.vacancyRate >= 50 ? 'text-red-600' : 'text-yellow-600'}`}>
                           {r.vacancyRate}%
                         </td>
@@ -1109,6 +1122,8 @@ export default function AnalyticsTab({
                 <div className="flex gap-4 mt-2 text-xs no-print">
                   <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-green-200" />出租中</span>
                   <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-red-100" />空置</span>
+                  <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-green-50 border border-green-200" />未到月份（已簽約，不計入）</span>
+                  <span className="text-gray-400">※ 出租月數／空置率以「已過月份」計算</span>
                 </div>
               )}
             </>

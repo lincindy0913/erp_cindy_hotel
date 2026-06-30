@@ -29,7 +29,7 @@ export async function GET(request) {
     const list = await prisma.rentalUtilityIncome.findMany({
       where,
       include: {
-        property: { select: { id: true, name: true, buildingName: true, warehouse: true, sortOrder: true } },
+        property: { select: { id: true, name: true, buildingName: true, sortOrder: true } },
       },
       orderBy: [{ incomeYear: 'desc' }, { incomeMonth: 'desc' }, { propertyId: 'asc' }],
     });
@@ -57,10 +57,9 @@ export async function POST(request) {
 
     await assertRentalYearOpen(y);
 
-    // RT2: 取得物業 warehouse
     const property = await prisma.rentalProperty.findUnique({
       where: { id: parseInt(propertyId) },
-      select: { id: true, name: true, warehouse: true },
+      select: { id: true, name: true },
     });
     if (!property) return createErrorResponse('NOT_FOUND', '找不到物業', 404);
 
@@ -74,8 +73,8 @@ export async function POST(request) {
 
     // RT1: upsert + cashTransaction 包在同一 $transaction
     await prisma.$transaction(async (tx) => {
-      // RT3: 月結鎖定
-      await assertPeriodOpen(tx, lockDate, property.warehouse);
+      // RT3: 月結鎖定（租屋物業無館別 → 走全域月結鎖）
+      await assertPeriodOpen(tx, lockDate, null);
 
       const created = await tx.rentalUtilityIncome.upsert({
         where: {
@@ -122,7 +121,7 @@ export async function POST(request) {
             transactionNo:   txNo,
             transactionDate: actualDate || todayStr(),
             type:            '收入',
-            warehouse:       property.warehouse || null,  // RT2
+            warehouse:       null,  // 租屋物業無館別
             accountId:       acctId,
             categoryId,
             accountingSubject: accountingSubjectLabel,
@@ -143,7 +142,7 @@ export async function POST(request) {
 
     const result = await prisma.rentalUtilityIncome.findUnique({
       where: { id: resultId },
-      include: { property: { select: { id: true, name: true, warehouse: true } } },
+      include: { property: { select: { id: true, name: true } } },
     });
     return NextResponse.json(result, { status: 201 });
   } catch (error) {
