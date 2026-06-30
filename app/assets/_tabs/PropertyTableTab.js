@@ -196,6 +196,7 @@ export function PropertyTableTab({
                     />
                   </th>
                 )}
+                <th className="text-center px-3 py-2 whitespace-nowrap">序號</th>
                 <SortableTh label="資產編號" colKey="sortOrder" sortKey={assetSortKey} sortDir={assetSortDir} onSort={assetToggleSort} className="px-3 py-2" align="center" />
                 <SortableTh label="物業" colKey="name" sortKey={assetSortKey} sortDir={assetSortDir} onSort={assetToggleSort} className="px-3 py-2" />
                 <SortableTh label="分類" colKey="category" sortKey={assetSortKey} sortDir={assetSortDir} onSort={assetToggleSort} className="px-3 py-2" />
@@ -225,9 +226,9 @@ export function PropertyTableTab({
             </thead>
             <tbody>
               {sortedRows.length === 0 ? (
-                <tr><td colSpan={canEdit ? 15 : 13} className="text-center py-10 text-gray-400">無符合條件的物業</td></tr>
+                <tr><td colSpan={canEdit ? 16 : 14} className="text-center py-10 text-gray-400">無符合條件的物業</td></tr>
               ) : (
-                sortedRows.map(p => {
+                sortedRows.map((p, idx) => {
                   const isSelected = selected?.id === p.id;
                   const isBatchSelected = selectedPropIds.has(p.id);
                   const highlight = highlightPropertyId && p.id === parseInt(highlightPropertyId, 10);
@@ -261,6 +262,7 @@ export function PropertyTableTab({
                           />
                         </td>
                       )}
+                      <td className="px-3 py-2 text-center text-xs text-gray-500">{idx + 1}</td>
                       <td className="px-3 py-2 text-center" onClick={e => e.stopPropagation()}>
                         {canEdit && propInlineEdit?.propertyId === p.id && propInlineEdit?.field === 'sortOrder' ? (
                           <input

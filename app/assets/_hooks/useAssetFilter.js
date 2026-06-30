@@ -90,14 +90,15 @@ export function useAssetFilter({ mergedRows, year, activeRange, loadProperties, 
   function exportCSV() {
     const periodLabel = activeRange ? `${activeRange.start}~${activeRange.end}` : `${year}年`;
     const headers = [
-      '資產編號', '物業', '戶別', '大樓名稱', '地址', '分類', '狀態',
+      '序號', '資產編號', '物業', '戶別', '大樓名稱', '地址', '分類', '狀態',
       '所有權人', '房屋稅稅籍編號', '收租帳戶', '押金帳戶', '收水電費',
       '公益出租人', '公益申請人', '公益租約起', '公益租約迄', '公益月租金',
       '綁定資產名稱',
       '租客', '月租金',
       `${periodLabel}租金+水電實收`, `${year}年房屋稅`, `${year}年地價稅`, `${periodLabel}維護費`, `${periodLabel}淨利`,
     ];
-    const csvRows = sortedRows.map(p => [
+    const csvRows = sortedRows.map((p, idx) => [
+      idx + 1,
       p.sortOrder ?? '',
       p.name,
       p.unitNo || '',
