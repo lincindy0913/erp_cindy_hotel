@@ -67,6 +67,7 @@ async function exportByTenantExcel({ rows, year }) {
   const months = [1,2,3,4,5,6,7,8,9,10,11,12];
   const columns = [
     { header: '序號',  key: 'idx',    width: 6 },
+    { header: '資產編號', key: 'assetNo', width: 8 },
     { header: '房號',  key: 'label',  width: 22 },
     { header: '租客',  key: 'tenant', width: 16 },
     { header: '期間',  key: 'period', width: 10 },
@@ -78,6 +79,7 @@ async function exportByTenantExcel({ rows, year }) {
     const sameAsPrev = prev && prev.propertyId === r.propertyId;
     const row = {
       idx:    sameAsPrev ? '〃' : (r.sortOrder ?? (i + 1)),
+      assetNo: sameAsPrev ? '〃' : (r.sortOrder ?? ''),
       label:  sameAsPrev ? '〃' : r.propertyLabel,
       tenant: r.isCurrent ? r.tenantName : `${r.tenantName}（已退租）`,
       period: fmtPeriod(r.startMonth, r.endMonth),
@@ -94,7 +96,7 @@ async function exportByTenantExcel({ rows, year }) {
     });
     return row;
   });
-  const sumRow = { idx: '', label: '合計', tenant: '', period: '', _isSummary: true, total: rows.reduce((s, r) => s + (r.total || 0), 0) };
+  const sumRow = { idx: '', assetNo: '', label: '合計', tenant: '', period: '', _isSummary: true, total: rows.reduce((s, r) => s + (r.total || 0), 0) };
   months.forEach(m => { sumRow[`m${m}`] = rows.reduce((s, r) => s + (r.months?.[m] || 0), 0) || ''; });
   data.push(sumRow);
 
@@ -157,6 +159,7 @@ async function exportOverdueExcel({ items }) {
   const today = todayStr();
   const columns = [
     { header: '序號',     key: 'idx',     width: 6 },
+    { header: '資產編號', key: 'assetNo', width: 8 },
     { header: '物業',     key: 'prop',    width: 22 },
     { header: '租客',     key: 'tenant',  width: 16 },
     { header: '聯絡電話', key: 'phone',   width: 16 },
@@ -167,6 +170,7 @@ async function exportOverdueExcel({ items }) {
   ];
   const data = items.map((i, idx) => ({
     idx:    i.contractSortOrder ?? (idx + 1),
+    assetNo: i.contractSortOrder ?? '',
     prop:   i.propertyName,
     tenant: i.tenantName || i.tenant?.companyName || i.tenant?.fullName || '—',
     phone:  i.tenant?.phone || '—',
@@ -176,7 +180,7 @@ async function exportOverdueExcel({ items }) {
     days:   Math.floor((new Date(today) - new Date(i.dueDate)) / 86400000),
   }));
   const totalAmount = items.reduce((s, i) => s + Number(i.expectedAmount || 0), 0);
-  data.push({ idx: '', prop: '合計', tenant: '', phone: '', period: '', amount: totalAmount, due: '', days: '', _isSummary: true });
+  data.push({ idx: '', assetNo: '', prop: '合計', tenant: '', phone: '', period: '', amount: totalAmount, due: '', days: '', _isSummary: true });
 
   await exportToXlsx({
     filename:  `逾期催繳報表_${today}`,
@@ -192,6 +196,7 @@ async function exportVacancyExcel({ rows, year }) {
   const months = [1,2,3,4,5,6,7,8,9,10,11,12];
   const columns = [
     { header: '序號',   key: 'idx',     width: 6 },
+    { header: '資產編號', key: 'assetNo', width: 8 },
     { header: '物業',   key: 'label',   width: 22 },
     ...months.map(m => ({ header: `${m}月`, key: `m${m}`, width: 6 })),
     { header: '出租月數', key: 'rentedCount', width: 10 },
@@ -201,6 +206,7 @@ async function exportVacancyExcel({ rows, year }) {
   const data = rows.map((r, i) => {
     const row = {
       idx:        i + 1,
+      assetNo:    r.sortOrder ?? '',
       label:      r.propertyLabel,
       rentedCount: r.rentedCount,
       vacancy:    `${r.vacancyRate}%`,
@@ -229,6 +235,7 @@ async function exportDepositExcel({ contracts, depositFilter }) {
   const FILTER_LABEL = { all: '全部', pending_receive: '待收押金', received: '已收持有中', refunded: '已退' };
   const columns = [
     { header: '序號',     key: 'idx',      width: 6 },
+    { header: '資產編號', key: 'assetNo',  width: 8 },
     { header: '合約號',   key: 'contractNo', width: 16 },
     { header: '物業',     key: 'prop',     width: 22 },
     { header: '租客',     key: 'tenant',   width: 16 },
@@ -241,6 +248,7 @@ async function exportDepositExcel({ contracts, depositFilter }) {
   ];
   const data = filtered.map((c, i) => ({
     idx:        i + 1,
+    assetNo:    c.property?.sortOrder ?? '',
     contractNo: c.contractNo,
     prop:       c.propertyName,
     tenant:     c.tenantName,
@@ -252,7 +260,7 @@ async function exportDepositExcel({ contracts, depositFilter }) {
     status:     getContractDisplayStatus(c),
   }));
   const total = filtered.reduce((s, c) => s + Number(c.depositAmount || 0), 0);
-  data.push({ idx: '', contractNo: '合計', prop: '', tenant: '', period: '', rent: '', deposit: total, received: '', refunded: '', status: '', _isSummary: true });
+  data.push({ idx: '', assetNo: '', contractNo: '合計', prop: '', tenant: '', period: '', rent: '', deposit: total, received: '', refunded: '', status: '', _isSummary: true });
 
   await exportToXlsx({
     filename:  `押金追蹤_${FILTER_LABEL[depositFilter] || '全部'}`,
@@ -527,6 +535,7 @@ export default function AnalyticsTab({
                 <thead className="bg-teal-50 sticky top-0 z-10">
                   <tr>
                     <th className="text-center px-2 py-2 border border-gray-200 w-8 text-gray-500">序號</th>
+                    <th className="text-center px-2 py-2 border border-gray-200 w-12 text-gray-500">資產編號</th>
                     <th className="text-left px-3 py-2 border border-gray-200">房號</th>
                     <th className="text-left px-3 py-2 border border-gray-200">租客</th>
                     <th className="text-center px-2 py-2 border border-gray-200 whitespace-nowrap">期間</th>
@@ -538,7 +547,7 @@ export default function AnalyticsTab({
                 </thead>
                 <tbody>
                   {byTenantReportData.rows.length === 0 ? (
-                    <tr><td colSpan={17} className="px-3 py-4 text-gray-500 text-center">尚無資料</td></tr>
+                    <tr><td colSpan={18} className="px-3 py-4 text-gray-500 text-center">尚無資料</td></tr>
                   ) : (
                     byTenantReportData.rows.map((r, idx) => {
                       const prev = byTenantReportData.rows[idx - 1];
@@ -546,6 +555,7 @@ export default function AnalyticsTab({
                       return (
                         <tr key={r.key} className={`hover:bg-gray-50 ${sameAsPrev ? '' : 'border-t-2 border-teal-100'}`}>
                           <td className="text-center px-2 py-2 border border-gray-200 text-xs text-gray-500">{sameAsPrev ? <span className="text-gray-300">〃</span> : (r.sortOrder ?? (idx + 1))}</td>
+                          <td className="text-center px-2 py-2 border border-gray-200 text-xs text-gray-500">{sameAsPrev ? <span className="text-gray-300">〃</span> : (r.sortOrder ?? '—')}</td>
                           <td className="px-3 py-2 border border-gray-200">{sameAsPrev ? <span className="text-gray-300">〃</span> : r.propertyLabel}</td>
                           <td className="px-3 py-2 border border-gray-200">
                             {r.tenantName}
@@ -602,6 +612,7 @@ export default function AnalyticsTab({
                   return (
                     <tfoot className="bg-teal-50 font-semibold text-sm border-t-2 border-teal-300">
                       <tr>
+                        <td className="px-2 py-2 border border-gray-200 text-center text-xs text-gray-500">—</td>
                         <td className="px-2 py-2 border border-gray-200 text-center text-xs text-gray-500">—</td>
                         <td className="px-3 py-2 border border-gray-200 text-teal-800" colSpan={3}>合計</td>
                         {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => {
@@ -841,6 +852,7 @@ export default function AnalyticsTab({
                           onChange={e => setOverdueSelectedIds(e.target.checked ? new Set(overdueReportData.map(i => i.id)) : new Set())} />
                       </th>
                       <th className="text-center px-2 py-2 border border-gray-200 w-8 text-gray-500">序號</th>
+                      <th className="text-center px-2 py-2 border border-gray-200 w-12 text-gray-500">資產編號</th>
                       <th className="text-left px-3 py-2 border border-gray-200">物業</th>
                       <th className="text-left px-3 py-2 border border-gray-200">租客</th>
                       <th className="text-left px-3 py-2 border border-gray-200">聯絡電話</th>
@@ -864,6 +876,7 @@ export default function AnalyticsTab({
                               onChange={e => setOverdueSelectedIds(prev => { const n = new Set(prev); e.target.checked ? n.add(i.id) : n.delete(i.id); return n; })} />
                           </td>
                           <td className="text-center px-2 py-2 border border-gray-200 text-xs text-gray-400">{i.contractSortOrder ?? (idx + 1)}</td>
+                          <td className="text-center px-2 py-2 border border-gray-200 text-xs text-gray-500">{i.contractSortOrder ?? '—'}</td>
                           <td className="px-3 py-2 border border-gray-200">{i.propertyName}</td>
                           <td className="px-3 py-2 border border-gray-200 font-medium">{tenantName}</td>
                           <td className="px-3 py-2 border border-gray-200 text-gray-600">{tenantPhone}</td>
@@ -885,7 +898,7 @@ export default function AnalyticsTab({
                       );
                     })}
                     <tr className="bg-red-100 font-semibold">
-                      <td className="px-3 py-2 border border-gray-200" colSpan={5}>合計</td>
+                      <td className="px-3 py-2 border border-gray-200" colSpan={6}>合計</td>
                       <td className="px-3 py-2 border border-gray-200 text-right text-red-700">${fmt(overdueReportData.reduce((s, i) => s + Number(i.expectedAmount || 0), 0))}</td>
                       <td className="px-3 py-2 border border-gray-200" colSpan={3}></td>
                     </tr>
@@ -948,6 +961,7 @@ export default function AnalyticsTab({
                 <thead className="bg-teal-50 sticky top-0 z-10">
                   <tr>
                     <th className="text-center px-2 py-2 w-8 text-gray-500">序號</th>
+                    <th className="text-center px-2 py-2 w-12 text-gray-500">資產編號</th>
                     <th className="text-left px-3 py-2">合約號</th>
                     <th className="text-left px-3 py-2">物業</th>
                     <th className="text-left px-3 py-2">租客</th>
@@ -962,10 +976,11 @@ export default function AnalyticsTab({
                 </thead>
                 <tbody>
                   {filtered.length === 0 ? (
-                    <tr><td colSpan={11} className="text-center py-8 text-gray-400">暫無資料</td></tr>
+                    <tr><td colSpan={12} className="text-center py-8 text-gray-400">暫無資料</td></tr>
                   ) : filtered.map((c, idx) => (
                     <tr key={c.id} className={`border-t hover:bg-gray-50 ${!c.depositReceived ? 'bg-blue-50/30' : c.depositRefunded ? 'bg-gray-50' : ''}`}>
                       <td className="text-center px-2 py-2 text-xs text-gray-400">{idx + 1}</td>
+                      <td className="text-center px-2 py-2 text-xs text-gray-500">{c.property?.sortOrder ?? '—'}</td>
                       <td className="px-3 py-2 font-mono text-xs">{c.contractNo}</td>
                       <td className="px-3 py-2">{c.propertyName}</td>
                       <td className="px-3 py-2">{c.tenantName}</td>
@@ -998,7 +1013,7 @@ export default function AnalyticsTab({
                 {filtered.length > 0 && (
                   <tfoot>
                     <tr className="bg-teal-50 font-semibold">
-                      <td colSpan={6} className="px-3 py-2 text-sm">合計</td>
+                      <td colSpan={7} className="px-3 py-2 text-sm">合計</td>
                       <td className="px-3 py-2 text-right text-teal-700">${fmt(filtered.reduce((s, c) => s + Number(c.depositAmount || 0), 0))}</td>
                       <td colSpan={4} />
                     </tr>
@@ -1055,6 +1070,7 @@ export default function AnalyticsTab({
                   <thead className="bg-teal-50 sticky top-0 z-10">
                     <tr>
                       <th className="text-center px-2 py-2 border border-gray-200 w-8 text-gray-500">序號</th>
+                      <th className="text-center px-2 py-2 border border-gray-200 w-12 text-gray-500">資產編號</th>
                       <th className="text-left px-3 py-2 border border-gray-200">物業</th>
                       {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => (
                         <th key={m} className="text-center px-2 py-2 border border-gray-200 text-xs w-10">{m}月</th>
@@ -1066,10 +1082,11 @@ export default function AnalyticsTab({
                   </thead>
                   <tbody>
                     {vacancyData.rows.length === 0 ? (
-                      <tr><td colSpan={17} className="text-center py-8 text-gray-400">暫無資料，請點擊查詢</td></tr>
+                      <tr><td colSpan={18} className="text-center py-8 text-gray-400">暫無資料，請點擊查詢</td></tr>
                     ) : vacancyData.rows.map((r, idx) => (
                       <tr key={r.propertyId} className="hover:bg-gray-50">
                         <td className="text-center px-2 py-2 border border-gray-200 text-xs text-gray-400">{idx + 1}</td>
+                        <td className="text-center px-2 py-2 border border-gray-200 text-xs text-gray-500">{r.sortOrder ?? '—'}</td>
                         <td className="px-3 py-2 border border-gray-200 font-medium">{r.propertyLabel}</td>
                         {r.monthRented.map((rented, idx) => (
                           <td key={idx} className={`border border-gray-200 text-center text-xs ${rented ? 'bg-green-100 text-green-800' : 'bg-red-50 text-red-400'}`}>
