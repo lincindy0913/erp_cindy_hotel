@@ -68,7 +68,7 @@ export default function PropertyModal({
                 <span>已連結資產主檔，名稱與地址由資產端管理。</span>
                 {editingProperty?.asset?.serialNo && (
                   <span className="font-mono bg-teal-100 text-teal-800 px-1.5 py-0.5 rounded">
-                    資產序號：{editingProperty.asset.serialNo}
+                    資產編號：{editingProperty.asset.serialNo}
                   </span>
                 )}
                 {editingProperty?.asset?.ownerName && (
@@ -148,7 +148,7 @@ export default function PropertyModal({
               </div>
             </div>
 
-            {/* 分類 / 序號 */}
+            {/* 分類 / 資產編號 */}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label htmlFor="pm-category" className="text-gray-600">分類</label>
@@ -164,7 +164,7 @@ export default function PropertyModal({
                 </select>
               </div>
               <div>
-                <label htmlFor="pm-sortOrder" className="text-gray-600">序號</label>
+                <label htmlFor="pm-sortOrder" className="text-gray-600">資產編號</label>
                 <input
                   id="pm-sortOrder"
                   type="number"
