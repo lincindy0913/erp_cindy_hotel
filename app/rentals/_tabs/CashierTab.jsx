@@ -303,7 +303,7 @@ export default function CashierTab({
           <thead className="bg-teal-50 sticky top-0 z-10">
             <tr>
               <SortableTh label="序號" colKey="contractSortOrder" sortKey={rentIncKey} sortDir={rentIncDir} onSort={rentIncToggle} className="px-3 py-2 w-12" align="center" />
-              <th className="text-center px-3 py-2 text-sm font-medium text-gray-700 whitespace-nowrap w-12">資產編號</th>
+              <SortableTh label="資產編號" colKey="assetNo" sortKey={rentIncKey} sortDir={rentIncDir} onSort={rentIncToggle} className="px-3 py-2 w-12" align="center" />
               <th className="px-3 py-2 text-center w-8">
                 <input type="checkbox"
                   title="全選未鎖帳"

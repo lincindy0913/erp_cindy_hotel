@@ -28,7 +28,7 @@ export default function TenantsTab({
           <thead className="bg-teal-50 sticky top-0 z-10">
             <tr>
               <th className="text-center px-3 py-2 text-sm font-medium text-gray-700 whitespace-nowrap">序號</th>
-              <th className="text-center px-3 py-2 text-sm font-medium text-gray-700 whitespace-nowrap">資產編號</th>
+              <SortableTh label="資產編號" colKey="assetNo" sortKey={tenantSortKey} sortDir={tenantSortDir} onSort={tenantToggleSort} className="px-3 py-2" align="center" />
               <SortableTh label="代碼" colKey="tenantCode" sortKey={tenantSortKey} sortDir={tenantSortDir} onSort={tenantToggleSort} className="px-3 py-2" />
               <SortableTh label="類型" colKey="tenantType" sortKey={tenantSortKey} sortDir={tenantSortDir} onSort={tenantToggleSort} className="px-3 py-2" />
               <SortableTh label="姓名/公司" colKey="displayName" sortKey={tenantSortKey} sortDir={tenantSortDir} onSort={tenantToggleSort} className="px-3 py-2" />
@@ -48,6 +48,8 @@ export default function TenantsTab({
                 creditScore: t => { const oc = t.contracts?.filter(c => c.status === 'overdue').length || 0; return oc === 0 ? 0 : oc <= 2 ? 1 : 2; },
                 isBlacklisted: t => t.isBlacklisted ? 1 : 0,
                 propertyNames: t => (t.properties || []).map(p => p.name).join(', '),
+                // 一位租客可對多物業 → 以最小資產編號排序
+                assetNo: t => Math.min(9999, ...(t.properties || []).map(p => p.sortOrder ?? 9999)),
               };
               const _sorted = sortRows(tenants, tenantSortKey, tenantSortDir, tenantAccessors);
               const isRetired = t => (t.activeContractCount || 0) === 0 &&

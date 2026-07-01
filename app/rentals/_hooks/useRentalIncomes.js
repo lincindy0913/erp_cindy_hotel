@@ -36,6 +36,7 @@ export function useRentalIncomes({ initialIncomeFilter, accounts = [], propertie
     });
     return sortRows(filtered, rentIncKey, rentIncDir, {
       contractSortOrder: (i) => i.contractSortOrder ?? 9999,
+      assetNo:           (i) => i.contractSortOrder ?? 9999,
       contractCategory:  (i) => i.contractCategory || '',
       propertyName:      (i) => i.propertyName || '',
       tenantName:        (i) => i.tenantName || '',
