@@ -1,6 +1,9 @@
 'use client';
 
+import { useState } from 'react';
+
 const fmt = n => Number(n || 0).toLocaleString('zh-TW');
+const MONTHS = [1,2,3,4,5,6,7,8,9,10,11,12];
 
 export default function UtilityIncomeTab({
   utilityFilter, setUtilityFilter,
@@ -18,6 +21,29 @@ export default function UtilityIncomeTab({
   openBulkUtility,
   properties, accounts,
 }) {
+  // 全年檢視（月份選「全年」= 空值）：把整年資料樞紐成 12月×物業
+  const isAnnual = !utilityFilter.month;
+  const [annualMode, setAnnualMode] = useState('actual');  // actual=實收 / expected=應收
+  const defaultMonth = utilityFilter.month || (new Date().getMonth() + 1);
+
+  const pivot = (() => {
+    if (!isAnnual) return null;
+    const map = new Map();
+    for (const u of utilityList) {
+      if (!map.has(u.propertyId)) {
+        map.set(u.propertyId, { label: u.propertyName, sortOrder: u.sortOrder ?? 999999, m: {}, total: 0 });
+      }
+      const row = map.get(u.propertyId);
+      const amt = annualMode === 'actual' ? Number(u.actualAmount || 0) : Number(u.expectedAmount || 0);
+      row.m[u.incomeMonth] = (row.m[u.incomeMonth] || 0) + amt;
+      row.total += amt;
+    }
+    const rows = [...map.values()].sort((a, b) => (a.sortOrder - b.sortOrder) || String(a.label).localeCompare(String(b.label), 'zh-Hant'));
+    const colTotals = MONTHS.map(mo => rows.reduce((s, r) => s + (r.m[mo] || 0), 0));
+    const grand = colTotals.reduce((a, b) => a + b, 0);
+    return { rows, colTotals, grand };
+  })();
+
   return (
     <div>
       <div className="flex items-center gap-3 mb-4 flex-wrap">
@@ -26,20 +52,85 @@ export default function UtilityIncomeTab({
           {[new Date().getFullYear(), new Date().getFullYear() - 1].map(y => <option key={y} value={y}>{y}</option>)}
         </select>
         <span className="text-sm">年</span>
-        <select value={utilityFilter.month} onChange={e => setUtilityFilter(f => ({ ...f, month: Number(e.target.value) }))} className="border rounded px-2 py-1.5 text-sm">
+        <select value={utilityFilter.month} onChange={e => setUtilityFilter(f => ({ ...f, month: e.target.value === '' ? '' : Number(e.target.value) }))} className="border rounded px-2 py-1.5 text-sm">
+          <option value="">全年</option>
           {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => <option key={m} value={m}>{m}月</option>)}
         </select>
         <button onClick={fetchUtilityList} className="bg-teal-600 text-white px-3 py-1.5 rounded text-sm hover:bg-teal-700">查詢</button>
-        <button onClick={() => { setBulkUtilityYear(utilityFilter.year); setBulkUtilityMonth(utilityFilter.month); openBulkUtility(); }}
+        {isAnnual && (
+          <div className="flex items-center gap-1 border rounded-lg overflow-hidden text-sm">
+            {[['actual', '實收'], ['expected', '應收']].map(([v, l]) => (
+              <button key={v} type="button" onClick={() => setAnnualMode(v)}
+                className={`px-3 py-1.5 font-medium ${annualMode === v ? 'bg-teal-500 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
+                {l}
+              </button>
+            ))}
+          </div>
+        )}
+        <button onClick={() => { setBulkUtilityYear(utilityFilter.year); setBulkUtilityMonth(defaultMonth); openBulkUtility(); }}
           className="bg-teal-600 text-white px-3 py-1.5 rounded text-sm hover:bg-teal-700 ml-auto">
           批次輸入電費
         </button>
-        <button onClick={() => { setEditingUtility(null); setUtilityForm({ propertyId: '', incomeYear: utilityFilter.year, incomeMonth: utilityFilter.month, expectedAmount: '', actualAmount: '', actualDate: '', accountId: '', note: '' }); setShowUtilityModal(true); }}
+        <button onClick={() => { setEditingUtility(null); setUtilityForm({ propertyId: '', incomeYear: utilityFilter.year, incomeMonth: defaultMonth, expectedAmount: '', actualAmount: '', actualDate: '', accountId: '', note: '' }); setShowUtilityModal(true); }}
           className="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700">
           單筆登記
         </button>
       </div>
-      <p className="text-sm text-gray-600 mb-2">物業每月向租客收取之水電等費用，在此登記為收入。</p>
+      {isAnnual ? (
+        <p className="text-sm text-gray-600 mb-2">
+          💧⚡ {utilityFilter.year} 年 水電收入年度總表（{annualMode === 'actual' ? '實收' : '應收'}）
+          　共 <strong>{pivot?.rows.length || 0}</strong> 戶
+          <span className="text-gray-400 ml-1">— 每格為該月該戶金額</span>
+        </p>
+      ) : (
+        <p className="text-sm text-gray-600 mb-2">物業每月向租客收取之水電等費用，在此登記為收入。</p>
+      )}
+
+      {/* 全年樞紐表（12月 × 物業）*/}
+      {isAnnual && (
+        <div className="bg-white rounded-lg shadow overflow-auto">
+          {(!pivot || pivot.rows.length === 0) ? (
+            <div className="py-12 text-center text-gray-400">{utilityFilter.year} 年暫無水電收入資料</div>
+          ) : (
+            <table className="w-full text-sm border-collapse">
+              <thead className="sticky top-0 z-10">
+                <tr className="text-white">
+                  <th className="px-3 py-2 text-left font-medium sticky left-0 z-20 bg-teal-600 min-w-[180px]">資產編號 · 物業</th>
+                  {MONTHS.map(mo => (
+                    <th key={mo} className="px-2 py-2 text-right font-medium whitespace-nowrap bg-teal-600 min-w-[56px]">{mo}月</th>
+                  ))}
+                  <th className="px-3 py-2 text-right font-medium bg-teal-700 min-w-[80px] whitespace-nowrap">全年合計</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pivot.rows.map((r, i) => (
+                  <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                    <td className="px-3 py-1.5 text-gray-700 whitespace-nowrap sticky left-0 z-10 bg-inherit border-r border-gray-100">
+                      <span className="text-gray-400 font-mono mr-2">{r.sortOrder === 999999 ? '—' : r.sortOrder}</span>{r.label}
+                    </td>
+                    {MONTHS.map(mo => (
+                      <td key={mo} className="px-2 py-1.5 text-right tabular-nums text-gray-700">{r.m[mo] ? fmt(r.m[mo]) : ''}</td>
+                    ))}
+                    <td className="px-3 py-1.5 text-right font-semibold tabular-nums text-teal-800 border-l border-gray-100 bg-teal-50/50">{r.total ? fmt(r.total) : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="font-bold border-t-2 border-teal-300">
+                  <td className="px-3 py-2 sticky left-0 z-10 bg-teal-50">每月小計</td>
+                  {pivot.colTotals.map((t, i) => (
+                    <td key={i} className="px-2 py-2 text-right tabular-nums bg-teal-50">{t ? fmt(t) : ''}</td>
+                  ))}
+                  <td className="px-3 py-2 text-right tabular-nums bg-teal-100 text-teal-900 border-l border-teal-200">{fmt(pivot.grand)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          )}
+        </div>
+      )}
+
+      {/* 逐月明細（選特定月份時）*/}
+      {!isAnnual && (
       <div className="bg-white rounded-lg shadow tbl-wrap">
         <table className="w-full text-sm">
           <thead className="bg-teal-50 sticky top-0 z-10">
@@ -78,6 +169,7 @@ export default function UtilityIncomeTab({
           </tbody>
         </table>
       </div>
+      )}
 
       {/* 批次輸入電費 panel */}
       {showBulkUtility && (
