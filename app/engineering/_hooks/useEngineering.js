@@ -12,7 +12,7 @@ import { useEngineeringData } from '@/app/engineering/_hooks/useEngineeringData'
 const VALID_TAB_KEYS = new Set([
   'projects', 'projectMgmt', 'contracts', 'materials', 'payments',
   'progressClaims', 'income', 'inputInvoices', 'outputInvoices',
-  'companyInvoices', 'budgetReport',
+  'companyInvoices', 'budgetReport', 'analytics',
 ]);
 
 export function useEngineering() {

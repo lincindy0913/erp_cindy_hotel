@@ -20,6 +20,7 @@ import PaymentsTab from '@/components/engineering/PaymentsTab';
 import ProgressClaimsTab from '@/components/engineering/ProgressClaimsTab';
 import BudgetReportTab from '@/components/engineering/BudgetReportTab';
 import ProjectsTab from '@/components/engineering/ProjectsTab';
+import AnalyticsTab from '@/components/engineering/AnalyticsTab';
 import TermModal from '@/app/engineering/_components/TermModal';
 import { useEngineering } from '@/app/engineering/_hooks/useEngineering';
 
@@ -35,6 +36,7 @@ const TABS = [
   { key: 'outputInvoices', label: '業主銷項發票' },
   { key: 'companyInvoices', label: '分業進項' },
   { key: 'budgetReport', label: '預算報表' },
+  { key: 'analytics', label: '分析報表' },
 ];
 
 function EngineeringPageInner() {
@@ -165,6 +167,7 @@ function EngineeringPageInner() {
         {activeTab === 'companyInvoices' && (
           <CompanyInvoicesTab projects={projects} onUnassignedCountChange={setUnassignedInvCount} />
         )}
+        {activeTab === 'analytics' && <AnalyticsTab />}
       </div>
 
       <ProjectFormModal
