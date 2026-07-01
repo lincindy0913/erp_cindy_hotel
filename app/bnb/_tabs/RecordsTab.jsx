@@ -51,6 +51,7 @@ export default function RecordsTab({
   records,
   recLoading, recError, recPage, recTotal,
   filterMonth, setFilterMonth,
+  filterDateFrom, setFilterDateFrom, filterDateTo, setFilterDateTo,
   filterSource, setFilterSource,
   filterStatus, setFilterStatus,
   filterWarehouse, setFilterWarehouse,
@@ -188,8 +189,21 @@ export default function RecordsTab({
         {/* 篩選列 */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4 flex flex-wrap gap-3 items-end">
           <div>
-            <label htmlFor="f" className="block text-xs text-gray-500 mb-1">月份</label>
-            <input id="f" type="month" value={filterMonth} onChange={e => setFilterMonth(e.target.value)} className={inputCls} />
+            <label htmlFor="f" className="block text-xs text-gray-500 mb-1">月份{(filterDateFrom || filterDateTo) && <span className="text-gray-300 ml-1">(區間優先)</span>}</label>
+            <input id="f" type="month" value={filterMonth} onChange={e => setFilterMonth(e.target.value)}
+              className={`${inputCls} ${(filterDateFrom || filterDateTo) ? 'opacity-40' : ''}`} />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">日期區間（入住日）</label>
+            <div className="flex items-center gap-1">
+              <input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} className={inputCls} />
+              <span className="text-gray-400 text-xs">～</span>
+              <input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} className={inputCls} />
+              {(filterDateFrom || filterDateTo) && (
+                <button type="button" onClick={() => { setFilterDateFrom(''); setFilterDateTo(''); }}
+                  className="text-xs text-gray-400 hover:text-gray-600 underline whitespace-nowrap ml-1">清除</button>
+              )}
+            </div>
           </div>
           <div>
             <label htmlFor="f-2" className="block text-xs text-gray-500 mb-1">來源</label>

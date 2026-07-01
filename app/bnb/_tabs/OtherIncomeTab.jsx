@@ -18,6 +18,10 @@ export default function OtherIncomeTab({
   fetchOtherIncome,
   oiMonth,
   setOiMonth,
+  oiDateFrom,
+  setOiDateFrom,
+  oiDateTo,
+  setOiDateTo,
   oiWarehouse,
   setOiWarehouse,
   oiModalOpen,
@@ -162,8 +166,21 @@ export default function OtherIncomeTab({
           {/* 篩選列 */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4 flex flex-wrap gap-3 items-end">
             <div>
-              <label htmlFor="f-20" className="block text-xs text-gray-500 mb-1">月份</label>
-              <input id="f-20" type="month" value={oiMonth} onChange={e => setOiMonth(e.target.value)} className={inputCls} />
+              <label htmlFor="f-20" className="block text-xs text-gray-500 mb-1">月份{(oiDateFrom || oiDateTo) && <span className="text-gray-300 ml-1">(區間優先)</span>}</label>
+              <input id="f-20" type="month" value={oiMonth} onChange={e => setOiMonth(e.target.value)}
+                className={`${inputCls} ${(oiDateFrom || oiDateTo) ? 'opacity-40' : ''}`} />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">日期區間（收入日）</label>
+              <div className="flex items-center gap-1">
+                <input type="date" value={oiDateFrom} onChange={e => setOiDateFrom(e.target.value)} className={inputCls} />
+                <span className="text-gray-400 text-xs">～</span>
+                <input type="date" value={oiDateTo} onChange={e => setOiDateTo(e.target.value)} className={inputCls} />
+                {(oiDateFrom || oiDateTo) && (
+                  <button type="button" onClick={() => { setOiDateFrom(''); setOiDateTo(''); }}
+                    className="text-xs text-gray-400 hover:text-gray-600 underline whitespace-nowrap ml-1">清除</button>
+                )}
+              </div>
             </div>
             <div>
               <label htmlFor="f-21" className="block text-xs text-gray-500 mb-1">館別</label>

@@ -9,6 +9,8 @@ export function useOtherIncome({ showToast, defaultWarehouse = '民宿' }) {
 
   // ── 其他收入 list state ───────────────────────────────────────
   const [oiMonth,     setOiMonth]     = useState(thisMonth);
+  const [oiDateFrom,  setOiDateFrom]  = useState('');
+  const [oiDateTo,    setOiDateTo]    = useState('');
   const [oiWarehouse, setOiWarehouse] = useState('');
   const [oiRows,      setOiRows]      = useState([]);
   const [oiLoading,   setOiLoading]   = useState(false);
@@ -37,7 +39,12 @@ export function useOtherIncome({ showToast, defaultWarehouse = '民宿' }) {
     setOiError(null);
     try {
       const params = new URLSearchParams();
-      if (oiMonth) params.set('month', oiMonth);
+      if (oiDateFrom || oiDateTo) {
+        if (oiDateFrom) params.set('dateFrom', oiDateFrom);
+        if (oiDateTo)   params.set('dateTo', oiDateTo);
+      } else if (oiMonth) {
+        params.set('month', oiMonth);
+      }
       if (oiWarehouse) params.set('warehouse', oiWarehouse);
       const res = await fetch(`/api/bnb/other-income?${params}`);
       if (!res.ok) { setOiError('載入其他收入失敗，請稍後再試'); return; }
@@ -45,7 +52,7 @@ export function useOtherIncome({ showToast, defaultWarehouse = '民宿' }) {
       setOiRows(Array.isArray(json.data) ? json.data : []);
     } catch { setOiError('載入其他收入失敗，請稍後再試'); }
     finally { setOiLoading(false); }
-  }, [oiMonth, oiWarehouse]);
+  }, [oiMonth, oiDateFrom, oiDateTo, oiWarehouse]);
 
   function openOiModal(row) {
     setOiEditRow(row);
@@ -160,6 +167,7 @@ export function useOtherIncome({ showToast, defaultWarehouse = '民宿' }) {
   return {
     // list
     oiMonth, setOiMonth, oiWarehouse, setOiWarehouse,
+    oiDateFrom, setOiDateFrom, oiDateTo, setOiDateTo,
     oiRows, oiLoading, oiError, fetchOtherIncome,
     // modal
     oiModalOpen, setOiModalOpen, oiEditRow,

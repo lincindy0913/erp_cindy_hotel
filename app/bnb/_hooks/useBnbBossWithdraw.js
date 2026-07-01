@@ -8,6 +8,8 @@ export function useBnbBossWithdraw() {
   const { showToast } = useToast();
 
   const [bwMonth,       setBwMonth]       = useState(() => todayStr().slice(0, 7));
+  const [bwDateFrom,    setBwDateFrom]    = useState('');
+  const [bwDateTo,      setBwDateTo]      = useState('');
   const [bwWarehouse,   setBwWarehouse]   = useState('');
   const [bwViewMode,    setBwViewMode]    = useState('detail');
   const [bwYear,        setBwYear]        = useState(() => String(new Date().getFullYear()));
@@ -21,13 +23,19 @@ export function useBnbBossWithdraw() {
     setBwLoading(true);
     setBwError(null);
     try {
-      const q = new URLSearchParams({ month: bwMonth });
+      const q = new URLSearchParams();
+      if (bwDateFrom || bwDateTo) {
+        if (bwDateFrom) q.set('dateFrom', bwDateFrom);
+        if (bwDateTo)   q.set('dateTo', bwDateTo);
+      } else {
+        q.set('month', bwMonth);
+      }
       if (bwWarehouse) q.set('warehouse', bwWarehouse);
       const res = await fetch(`/api/bnb/boss-withdraw?${q}`);
       if (!res.ok) { setBwError('載入老闆收取失敗，請稍後再試'); return; }
       setBwData(await res.json());
     } catch { setBwError('載入老闆收取失敗'); } finally { setBwLoading(false); }
-  }, [bwMonth, bwWarehouse]);
+  }, [bwMonth, bwDateFrom, bwDateTo, bwWarehouse]);
 
   const fetchBossWithdrawSummary = useCallback(async () => {
     setBwSummaryLoad(true);
@@ -41,6 +49,8 @@ export function useBnbBossWithdraw() {
 
   return {
     bwMonth,       setBwMonth,
+    bwDateFrom,    setBwDateFrom,
+    bwDateTo,      setBwDateTo,
     bwWarehouse,   setBwWarehouse,
     bwViewMode,    setBwViewMode,
     bwYear,        setBwYear,

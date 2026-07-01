@@ -37,6 +37,8 @@ export function useBnbAnalytics({ showToast }) {
 
   // 付款稽核
   const [auditMonth,     setAuditMonth]     = useState(() => todayStr().slice(0, 7));
+  const [auditDateFrom,  setAuditDateFrom]  = useState('');
+  const [auditDateTo,    setAuditDateTo]    = useState('');
   const [auditWarehouse, setAuditWarehouse] = useState('');
   const [auditData,      setAuditData]      = useState([]);
   const [auditLoading,   setAuditLoading]   = useState(false);
@@ -123,7 +125,13 @@ export function useBnbAnalytics({ showToast }) {
     setAuditLoading(true);
     setAuditError(null);
     try {
-      const p = new URLSearchParams({ month: auditMonth, pageSize: '500' });
+      const p = new URLSearchParams({ pageSize: '500' });
+      if (auditDateFrom || auditDateTo) {
+        if (auditDateFrom) p.set('dateFrom', auditDateFrom);
+        if (auditDateTo)   p.set('dateTo', auditDateTo);
+      } else {
+        p.set('month', auditMonth);
+      }
       if (auditWarehouse) p.set('warehouse', auditWarehouse);
       const res = await fetch(`/api/bnb?${p}`);
       if (!res.ok) { const msg = '載入付款稽核失敗，請稍後再試'; setAuditError(msg); showToast(msg, 'error'); return; }
@@ -133,7 +141,7 @@ export function useBnbAnalytics({ showToast }) {
       setAuditOverflow(rows.length >= 500);
     } catch { const msg = '載入付款稽核失敗'; setAuditError(msg); showToast(msg, 'error'); }
     finally { setAuditLoading(false); }
-  }, [auditMonth, auditWarehouse, showToast]);
+  }, [auditMonth, auditDateFrom, auditDateTo, auditWarehouse, showToast]);
 
   const fetchGuestHistory = useCallback(async () => {
     if (!ghSearch.trim()) { showToast('請輸入姓名搜尋', 'error'); return; }
@@ -176,7 +184,7 @@ export function useBnbAnalytics({ showToast }) {
     // 收款分流
     psYear, setPsYear, psWarehouse, setPsWarehouse, psData, psLoading, psError, fetchPaymentSplit,
     // 付款稽核
-    auditMonth, setAuditMonth, auditWarehouse, setAuditWarehouse, auditData, auditLoading, auditOverflow, auditError, fetchAudit,
+    auditMonth, setAuditMonth, auditDateFrom, setAuditDateFrom, auditDateTo, setAuditDateTo, auditWarehouse, setAuditWarehouse, auditData, auditLoading, auditOverflow, auditError, fetchAudit,
     // 房客歷史
     ghSearch, setGhSearch, ghData, ghLoading, ghSearched, ghError, fetchGuestHistory,
     // 月彙整

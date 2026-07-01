@@ -7,6 +7,7 @@ import WhQuickBtns from '../_components/WhQuickBtns';
 export default function BossWithdrawTab({
   bwData, bwLoading,
   bwMonth, setBwMonth,
+  bwDateFrom, setBwDateFrom, bwDateTo, setBwDateTo,
   bwWarehouse, setBwWarehouse,
   bwViewMode, setBwViewMode,
   bwYear, setBwYear,
@@ -67,9 +68,23 @@ export default function BossWithdrawTab({
         <>
           <div className="bg-white rounded-xl shadow p-4 mb-4 flex flex-wrap items-end gap-3">
             <div>
-              <label htmlFor="f-3" className="block text-xs text-gray-500 mb-1">月份</label>
+              <label htmlFor="f-3" className="block text-xs text-gray-500 mb-1">月份{(bwDateFrom || bwDateTo) && <span className="text-gray-300 ml-1">(區間優先)</span>}</label>
               <input id="f-3" type="month" value={bwMonth} onChange={e => setBwMonth(e.target.value)}
-                className="border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-orange-300 outline-none" />
+                className={`border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-orange-300 outline-none ${(bwDateFrom || bwDateTo) ? 'opacity-40' : ''}`} />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">日期區間（收取日）</label>
+              <div className="flex items-center gap-1">
+                <input type="date" value={bwDateFrom} onChange={e => setBwDateFrom(e.target.value)}
+                  className="border rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-orange-300 outline-none" />
+                <span className="text-gray-400 text-xs">～</span>
+                <input type="date" value={bwDateTo} onChange={e => setBwDateTo(e.target.value)}
+                  className="border rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-orange-300 outline-none" />
+                {(bwDateFrom || bwDateTo) && (
+                  <button type="button" onClick={() => { setBwDateFrom(''); setBwDateTo(''); }}
+                    className="text-xs text-gray-400 hover:text-gray-600 underline whitespace-nowrap ml-1">清除</button>
+                )}
+              </div>
             </div>
             <div>
               <label htmlFor="f" className="block text-xs text-gray-500 mb-1">館別</label>

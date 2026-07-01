@@ -15,11 +15,19 @@ export async function GET(request) {
     const month     = searchParams.get('month');
     const monthFrom = searchParams.get('monthFrom');
     const monthTo   = searchParams.get('monthTo');
+    const dateFrom  = searchParams.get('dateFrom');
+    const dateTo    = searchParams.get('dateTo');
     const warehouse = searchParams.get('warehouse');
 
     const where = {};
-    if (month) where.importMonth = month;
-    if (monthFrom || monthTo) {
+    // 日期區間（依收入日 incomeDate）優先；否則用月份 / 月份區間
+    if (dateFrom || dateTo) {
+      where.incomeDate = {};
+      if (dateFrom) where.incomeDate.gte = dateFrom;
+      if (dateTo)   where.incomeDate.lte = dateTo;
+    } else if (month) {
+      where.importMonth = month;
+    } else if (monthFrom || monthTo) {
       where.importMonth = {};
       if (monthFrom) where.importMonth.gte = monthFrom;
       if (monthTo)   where.importMonth.lte = monthTo;

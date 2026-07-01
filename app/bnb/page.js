@@ -94,6 +94,7 @@ function BnbPage() {
     records, setRecords,
     recLoading, recError, recPage, recTotal,
     filterMonth, setFilterMonth,
+    filterDateFrom, setFilterDateFrom, filterDateTo, setFilterDateTo,
     filterSource, setFilterSource,
     filterStatus, setFilterStatus,
     filterWarehouse, setFilterWarehouse,
@@ -123,7 +124,7 @@ function BnbPage() {
     saYear, setSaYear, saWarehouse, setSaWarehouse, saData, saLoading, saError, fetchSourceAnalysis,
     oaYear, setOaYear, oaWarehouse, setOaWarehouse, oaData, oaPrevData, oaCompare, setOaCompare, oaLoading, oaError, fetchOtaAnalytics,
     psYear, setPsYear, psWarehouse, setPsWarehouse, psData, psLoading, psError, fetchPaymentSplit,
-    auditMonth, setAuditMonth, auditWarehouse, setAuditWarehouse, auditData, auditLoading, auditOverflow, auditError, fetchAudit,
+    auditMonth, setAuditMonth, auditDateFrom, setAuditDateFrom, auditDateTo, setAuditDateTo, auditWarehouse, setAuditWarehouse, auditData, auditLoading, auditOverflow, auditError, fetchAudit,
     ghSearch, setGhSearch, ghData, ghLoading, ghSearched, ghError, fetchGuestHistory,
     summaryYear, setSummaryYear, summaryWarehouse, setSummaryWarehouse, summaryMode, setSummaryMode,
     summaryRows, summaryLoading, summaryFixedHelp, summaryError, fetchSummary,
@@ -153,6 +154,7 @@ function BnbPage() {
 
   const {
     oiMonth, setOiMonth, oiWarehouse, setOiWarehouse,
+    oiDateFrom, setOiDateFrom, oiDateTo, setOiDateTo,
     oiRows, oiLoading, oiError, fetchOtherIncome,
     oiModalOpen, setOiModalOpen, oiEditRow,
     oiForm, setOiForm, oiSaving,
@@ -276,7 +278,7 @@ function BnbPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (activeTab === 'analytics' && analyticsSub === 'declList') fetchDeclList(); }, [dlYear, dlWarehouse, activeTab, analyticsSub]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { if (activeTab === 'bossWithdraw') bw.fetchBossWithdraw(); }, [bw.bwMonth, bw.bwWarehouse, activeTab]);
+  useEffect(() => { if (activeTab === 'bossWithdraw') bw.fetchBossWithdraw(); }, [bw.bwMonth, bw.bwDateFrom, bw.bwDateTo, bw.bwWarehouse, activeTab]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (activeTab === 'analytics' && analyticsSub === 'occupancy') fetchOccupancy(); }, [occYear, occWarehouse, activeTab, analyticsSub]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -288,7 +290,7 @@ function BnbPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (activeTab === 'deposit') fetchDepositMatch(); }, [dmPayType, activeTab]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { if (activeTab === 'payAudit') fetchAudit(); }, [auditMonth, auditWarehouse, activeTab]);
+  useEffect(() => { if (activeTab === 'payAudit') fetchAudit(); }, [auditMonth, auditDateFrom, auditDateTo, auditWarehouse, activeTab]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (activeTab === 'analytics' && analyticsSub === 'calendar') fetchCalendar(); }, [calYear, calMonth, calWarehouse, activeTab, analyticsSub]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -341,6 +343,8 @@ function BnbPage() {
           <RecordsTab
             records={records} recLoading={recLoading} recError={recError} recPage={recPage} recTotal={recTotal}
             filterMonth={filterMonth} setFilterMonth={setFilterMonth}
+            filterDateFrom={filterDateFrom} setFilterDateFrom={setFilterDateFrom}
+            filterDateTo={filterDateTo} setFilterDateTo={setFilterDateTo}
             filterSource={filterSource} setFilterSource={setFilterSource}
             filterStatus={filterStatus} setFilterStatus={setFilterStatus}
             filterWarehouse={filterWarehouse} setFilterWarehouse={setFilterWarehouse}
@@ -515,6 +519,8 @@ function BnbPage() {
           <BossWithdrawTab
             bwData={bw.bwData} bwLoading={bw.bwLoading} bwError={bw.bwError}
             bwMonth={bw.bwMonth} setBwMonth={bw.setBwMonth}
+            bwDateFrom={bw.bwDateFrom} setBwDateFrom={bw.setBwDateFrom}
+            bwDateTo={bw.bwDateTo} setBwDateTo={bw.setBwDateTo}
             bwWarehouse={bw.bwWarehouse} setBwWarehouse={bw.setBwWarehouse}
             bwViewMode={bw.bwViewMode} setBwViewMode={bw.setBwViewMode}
             bwYear={bw.bwYear} setBwYear={bw.setBwYear}
@@ -530,6 +536,8 @@ function BnbPage() {
           <OtherIncomeTab
             oiRows={oiRows} oiLoading={oiLoading} oiError={oiError} fetchOtherIncome={fetchOtherIncome}
             oiMonth={oiMonth} setOiMonth={setOiMonth}
+            oiDateFrom={oiDateFrom} setOiDateFrom={setOiDateFrom}
+            oiDateTo={oiDateTo} setOiDateTo={setOiDateTo}
             oiWarehouse={oiWarehouse} setOiWarehouse={setOiWarehouse}
             oiModalOpen={oiModalOpen} setOiModalOpen={setOiModalOpen}
             oiEditRow={oiEditRow} oiForm={oiForm} setOiForm={setOiForm} oiSaving={oiSaving}
@@ -580,6 +588,8 @@ function BnbPage() {
             )}
             <PayAuditTab
               auditMonth={auditMonth} setAuditMonth={setAuditMonth}
+              auditDateFrom={auditDateFrom} setAuditDateFrom={setAuditDateFrom}
+              auditDateTo={auditDateTo} setAuditDateTo={setAuditDateTo}
               auditWarehouse={auditWarehouse} setAuditWarehouse={setAuditWarehouse}
               auditData={auditData} auditLoading={auditLoading} auditError={auditError}
               fetchAudit={fetchAudit} warehouseList={warehouseList}

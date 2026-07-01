@@ -19,12 +19,19 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const month     = searchParams.get('month');
     const year      = searchParams.get('year');
+    const dateFrom  = searchParams.get('dateFrom');
+    const dateTo    = searchParams.get('dateTo');
     const warehouse = searchParams.get('warehouse');
     const summary   = searchParams.get('summary') === 'true';
 
     const where = {};
     if (warehouse) where.warehouse = warehouse;
-    if (month) {
+    // 日期區間（依收取日 withdrawDate）優先；否則用月份 / 年
+    if (dateFrom || dateTo) {
+      where.withdrawDate = {};
+      if (dateFrom) where.withdrawDate.gte = dateFrom;
+      if (dateTo)   where.withdrawDate.lte = dateTo;
+    } else if (month) {
       where.withdrawDate = { startsWith: month };
     } else if (year) {
       where.withdrawDate = { startsWith: year };

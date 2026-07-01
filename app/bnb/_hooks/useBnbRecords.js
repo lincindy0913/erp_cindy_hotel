@@ -28,6 +28,8 @@ export function useBnbRecords() {
   const [recTotal,       setRecTotal]       = useState(0);
   const getLS = (k, fb) => { try { return localStorage.getItem(k) || fb; } catch { return fb; } };
   const [filterMonth,    setFilterMonth]    = useState(() => getLS('bnb_filterMonth', todayStr().slice(0, 7)));
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo,   setFilterDateTo]   = useState('');
   const [filterSource,   setFilterSource]   = useState('');
   const [filterStatus,   setFilterStatus]   = useState('');
   const [filterWarehouse,setFilterWarehouse]= useState(() => getLS('bnb_filterWarehouse', ''));
@@ -84,7 +86,14 @@ export function useBnbRecords() {
     setRecLoading(true);
     try {
       const effectivePageSize = pageSizeOverride ?? pageSize;
-      const p = new URLSearchParams({ month: filterMonth, page: String(page), pageSize: String(effectivePageSize) });
+      const p = new URLSearchParams({ page: String(page), pageSize: String(effectivePageSize) });
+      // 有填日期區間就用區間（依入住日），否則用月份
+      if (filterDateFrom || filterDateTo) {
+        if (filterDateFrom) p.set('dateFrom', filterDateFrom);
+        if (filterDateTo)   p.set('dateTo', filterDateTo);
+      } else {
+        p.set('month', filterMonth);
+      }
       if (filterSource)    p.set('source', filterSource);
       if (filterStatus)    p.set('status', filterStatus);
       if (filterWarehouse) p.set('warehouse', filterWarehouse);
@@ -114,7 +123,7 @@ export function useBnbRecords() {
       setRecError(`載入訂房記錄失敗：${e.message}`);
     }
     finally { setRecLoading(false); }
-  }, [filterMonth, filterSource, filterStatus, filterWarehouse, filterPayment, pageSize, showToast, fetchT]);
+  }, [filterMonth, filterDateFrom, filterDateTo, filterSource, filterStatus, filterWarehouse, filterPayment, pageSize, showToast, fetchT]);
 
   // ── 批次套用 ──────────────────────────────────────────────────
   async function handleBatchApply() {
@@ -400,6 +409,7 @@ export function useBnbRecords() {
     records, setRecords,
     recLoading, recError, recPage, recTotal,
     filterMonth, setFilterMonth,
+    filterDateFrom, setFilterDateFrom, filterDateTo, setFilterDateTo,
     filterSource, setFilterSource,
     filterStatus, setFilterStatus,
     filterWarehouse, setFilterWarehouse,

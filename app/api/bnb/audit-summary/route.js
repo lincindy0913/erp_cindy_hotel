@@ -20,14 +20,23 @@ export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const month     = searchParams.get('month');
+    const dateFrom  = searchParams.get('dateFrom');
+    const dateTo    = searchParams.get('dateTo');
     const warehouse = searchParams.get('warehouse') || '';
 
-    if (!month) return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少 month 參數', 400);
+    if (!month && !dateFrom && !dateTo) return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少 month 或日期區間參數', 400);
 
     const where = {
-      importMonth: month,
       status: { notIn: ['已刪除'] },
     };
+    // 日期區間（依入住日）優先；否則用月份
+    if (dateFrom || dateTo) {
+      where.checkInDate = {};
+      if (dateFrom) where.checkInDate.gte = dateFrom;
+      if (dateTo)   where.checkInDate.lte = dateTo;
+    } else {
+      where.importMonth = month;
+    }
     if (warehouse) where.warehouse = warehouse;
 
     const today = todayStr();

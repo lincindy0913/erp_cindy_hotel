@@ -6,6 +6,7 @@ import { inputCls } from '../_constants';
 
 export default function PayAuditTab({
   auditMonth, setAuditMonth, auditWarehouse, setAuditWarehouse,
+  auditDateFrom, setAuditDateFrom, auditDateTo, setAuditDateTo,
   auditData, auditLoading, fetchAudit, warehouseList,
   auditError,
   onGoToRecords,
@@ -23,7 +24,19 @@ export default function PayAuditTab({
     <div className="space-y-4">
       {auditError && <div className="mb-4"><FetchErrorBanner message={auditError} onRetry={fetchAudit} /></div>}
       <div className="flex flex-wrap items-center gap-3">
-        <input type="month" value={auditMonth} onChange={e => setAuditMonth(e.target.value)} className={inputCls} />
+        <input type="month" value={auditMonth} onChange={e => setAuditMonth(e.target.value)}
+          className={`${inputCls} ${(auditDateFrom || auditDateTo) ? 'opacity-40' : ''}`}
+          title={(auditDateFrom || auditDateTo) ? '已使用日期區間，月份暫時忽略' : undefined} />
+        <span className="inline-flex items-center gap-1 text-xs text-gray-500">
+          <span className="whitespace-nowrap">入住日</span>
+          <input type="date" value={auditDateFrom} onChange={e => setAuditDateFrom(e.target.value)} className={inputCls} />
+          <span className="text-gray-400">～</span>
+          <input type="date" value={auditDateTo} onChange={e => setAuditDateTo(e.target.value)} className={inputCls} />
+          {(auditDateFrom || auditDateTo) && (
+            <button type="button" onClick={() => { setAuditDateFrom(''); setAuditDateTo(''); }}
+              className="text-gray-400 hover:text-gray-600 underline whitespace-nowrap">清除</button>
+          )}
+        </span>
         <select value={auditWarehouse} onChange={e => setAuditWarehouse(e.target.value)} className={inputCls}>
           <option value="">全館</option>
           {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}

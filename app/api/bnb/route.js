@@ -60,6 +60,8 @@ export async function GET(request) {
     const month      = searchParams.get('month');     // 2026-03
     const monthFrom  = searchParams.get('monthFrom'); // 2026-01（月份區間起）
     const monthTo    = searchParams.get('monthTo');   // 2026-05（月份區間迄）
+    const dateFrom   = searchParams.get('dateFrom');  // 2026-01-15（入住日區間起）
+    const dateTo     = searchParams.get('dateTo');    // 2026-03-20（入住日區間迄）
     const warehouse  = searchParams.get('warehouse');
     const source     = searchParams.get('source');
     const status     = searchParams.get('status');
@@ -68,8 +70,14 @@ export async function GET(request) {
     const pageSize   = Math.min(500,  Math.max(1, parseInt(searchParams.get('pageSize') || '200')));
 
     const where = { deletedAt: null };
-    if (month)     where.importMonth = month;
-    if (monthFrom || monthTo) {
+    // 日期區間（依入住日）優先；否則用月份 / 月份區間
+    if (dateFrom || dateTo) {
+      where.checkInDate = {};
+      if (dateFrom) where.checkInDate.gte = dateFrom;
+      if (dateTo)   where.checkInDate.lte = dateTo;
+    } else if (month) {
+      where.importMonth = month;
+    } else if (monthFrom || monthTo) {
       where.importMonth = {};
       if (monthFrom) where.importMonth.gte = monthFrom;
       if (monthTo)   where.importMonth.lte = monthTo;
