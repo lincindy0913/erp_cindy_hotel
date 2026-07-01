@@ -152,7 +152,9 @@ const ROUTE_PERMISSIONS = {
 
 // 公開路由 - 不需登入
 const PUBLIC_ROUTES = ['/', '/login', '/unauthorized'];
-const PUBLIC_API_PREFIXES = ['/api/auth'];
+// /api/cron/*：由排程（GitHub Actions）以 Bearer CRON_SECRET 呼叫，無登入 session。
+// 各 cron endpoint 自己用 checkAuth(Bearer CRON_SECRET) 把關，故此處放行 session 檢查。
+const PUBLIC_API_PREFIXES = ['/api/auth', '/api/cron'];
 const PUBLIC_API_ROUTES = ['/api/health'];
 
 function isPublicRoute(pathname) {

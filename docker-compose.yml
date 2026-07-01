@@ -19,6 +19,8 @@ services:
       NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?NEXTAUTH_SECRET is required}
       ADMIN_DEFAULT_PASSWORD: ${ADMIN_DEFAULT_PASSWORD:-admin123}
+      # 排程 cron（GitHub Actions）呼叫 /api/cron/* 用的 Bearer secret；需與 GitHub Secret CRON_SECRET 一致
+      CRON_SECRET: ${CRON_SECRET:-}
     restart: unless-stopped
 
   db:
