@@ -30,6 +30,9 @@ export function useRentalContracts({ initialFilter, onAfterSave } = {}) {
   // merge-delete dialog: { contract, paidCount }
   const [mergeDeleteModal, setMergeDeleteModal] = useState(null);
   const [mergeTargetId,    setMergeTargetId]    = useState('');
+  // 批次勾選 + 批次更新（狀態 / 自動續約）
+  const [selectedContractIds, setSelectedContractIds] = useState(() => new Set());
+  const [contractBatchSaving, setContractBatchSaving] = useState(false);
 
   const contractMap = useMemo(
     () => new Map(contracts.map(c => [c.id, c])),
@@ -308,6 +311,49 @@ export function useRentalContracts({ initialFilter, onAfterSave } = {}) {
     } catch (e) { showToast('清除失敗: ' + e.message, 'error'); }
   }
 
+  // ── 批次勾選 ──────────────────────────────────────────────
+  function toggleContractSelect(id) {
+    setSelectedContractIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+  function toggleSelectAllContracts(ids) {
+    setSelectedContractIds(prev => {
+      const allSel = ids.length > 0 && ids.every(id => prev.has(id));
+      return allSel ? new Set() : new Set(ids);
+    });
+  }
+  function clearContractSelection() { setSelectedContractIds(new Set()); }
+
+  // 批次更新已勾選合約（patch 例：{ status:'active' } 或 { autoRenew:true }）
+  async function handleBatchContractUpdate(patch, label) {
+    const ids = [...selectedContractIds];
+    if (!ids.length) { showToast('請先勾選合約', 'error'); return; }
+    const ok = await confirm(`確定要將已選 ${ids.length} 筆合約${label}？`, { title: '批次更新合約', danger: false });
+    if (!ok) return;
+    setContractBatchSaving(true);
+    try {
+      const results = await Promise.all(ids.map(id =>
+        fetch(`/api/rentals/contracts/${id}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(patch),
+        }).then(async r => ({ ok: r.ok, error: r.ok ? null : (await r.json().catch(() => ({})))?.error }))
+      ));
+      const failed = results.filter(r => !r.ok);
+      if (failed.length) {
+        showToast(`${results.length - failed.length} 筆成功，${failed.length} 筆失敗`, 'error');
+      } else {
+        showToast(`已更新 ${results.length} 筆合約`, 'success');
+      }
+      setSelectedContractIds(new Set());
+      await fetchContracts();
+      onAfterSave?.();
+    } catch (e) { showToast('批次更新失敗: ' + e.message, 'error'); }
+    finally { setContractBatchSaving(false); }
+  }
+
   return {
     contracts, setContracts, contractsError,
     contractFilter, setContractFilter,
@@ -335,5 +381,12 @@ export function useRentalContracts({ initialFilter, onAfterSave } = {}) {
     printContracts,
     markReminderSent,
     clearReminder,
+    // 批次
+    selectedContractIds,
+    toggleContractSelect,
+    toggleSelectAllContracts,
+    clearContractSelection,
+    contractBatchSaving,
+    handleBatchContractUpdate,
   };
 }

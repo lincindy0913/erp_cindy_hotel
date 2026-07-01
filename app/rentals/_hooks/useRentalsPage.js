@@ -115,6 +115,8 @@ export function useRentalsPage() {
     mergeDeleteModal, setMergeDeleteModal, mergeTargetId, setMergeTargetId,
     handleDepositAction, printContracts,
     markReminderSent, clearReminder,
+    selectedContractIds, toggleContractSelect, toggleSelectAllContracts,
+    clearContractSelection, contractBatchSaving, handleBatchContractUpdate,
   } = useRentalContracts({
     initialFilter: {
       status:     searchParams.get('contractStatus') || '',
@@ -451,6 +453,8 @@ export function useRentalsPage() {
     mergeDeleteModal, setMergeDeleteModal, mergeTargetId, setMergeTargetId,
     handleDepositAction, printContracts,
     markReminderSent, clearReminder,
+    selectedContractIds, toggleContractSelect, toggleSelectAllContracts,
+    clearContractSelection, contractBatchSaving, handleBatchContractUpdate,
     // incomes
     incomes, incomesError,
     incomesHasMore, cashierUtilityMap,

@@ -21,7 +21,12 @@ export default function ContractsTab({
   handleDepositAction, printContracts,
   markReminderSent, clearReminder,
   properties, tenants, fetchTenants,
+  selectedContractIds, toggleContractSelect, toggleSelectAllContracts,
+  clearContractSelection, contractBatchSaving, handleBatchContractUpdate,
 }) {
+  const selectedCount = selectedContractIds?.size || 0;
+  const allSelected = contracts.length > 0 && contracts.every(c => selectedContractIds?.has(c.id));
+  const someSelected = selectedCount > 0 && !allSelected;
   return (
     <div>
       <div className="flex items-center gap-3 mb-4">
@@ -130,10 +135,42 @@ export default function ContractsTab({
         })()}
       </div>
 
+      {/* 批次操作列（勾選後出現）*/}
+      {selectedCount > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          <span className="text-sm font-semibold text-blue-800">已選 {selectedCount} 筆</span>
+          <span className="text-xs text-gray-500 ml-2">狀態改為：</span>
+          {CONTRACT_STATUSES.map(s => (
+            <button key={s.value} disabled={contractBatchSaving}
+              onClick={() => handleBatchContractUpdate({ status: s.value }, `狀態改為「${s.label}」`)}
+              className="text-xs px-2.5 py-1 rounded border border-gray-300 bg-white hover:bg-gray-100 disabled:opacity-50">
+              {s.label}
+            </button>
+          ))}
+          <span className="text-xs text-gray-500 ml-3">自動續約：</span>
+          <button disabled={contractBatchSaving}
+            onClick={() => handleBatchContractUpdate({ autoRenew: true }, '設為「自動續約」')}
+            className="text-xs px-2.5 py-1 rounded border border-teal-300 bg-white text-teal-700 hover:bg-teal-50 disabled:opacity-50">開啟</button>
+          <button disabled={contractBatchSaving}
+            onClick={() => handleBatchContractUpdate({ autoRenew: false }, '取消「自動續約」')}
+            className="text-xs px-2.5 py-1 rounded border border-gray-300 bg-white text-gray-600 hover:bg-gray-100 disabled:opacity-50">關閉</button>
+          {contractBatchSaving && <span className="text-xs text-blue-600">更新中…</span>}
+          <button onClick={clearContractSelection} disabled={contractBatchSaving}
+            className="text-xs px-2 py-1 rounded text-gray-500 hover:text-gray-700 ml-auto">取消選取</button>
+        </div>
+      )}
+
       <div className="bg-white rounded-lg shadow tbl-wrap">
         <table className="w-full text-sm">
           <thead className="bg-teal-50 sticky top-0 z-10">
             <tr>
+              <th className="text-center px-2 py-2 w-10">
+                <input type="checkbox" aria-label="全選"
+                  checked={allSelected}
+                  ref={el => { if (el) el.indeterminate = someSelected; }}
+                  onChange={() => toggleSelectAllContracts(contracts.map(c => c.id))}
+                  className="cursor-pointer align-middle" />
+              </th>
               <SortableTh label="序號" colKey="sortOrder" sortKey={contractSortKey} sortDir={contractSortDir} onSort={contractToggleSort} className="px-2 py-2 w-16" align="center" />
               <th className="text-center px-2 py-2 text-sm font-medium text-gray-700 whitespace-nowrap w-16">資產編號</th>
               <SortableTh label="分類" colKey="category" sortKey={contractSortKey} sortDir={contractSortDir} onSort={contractToggleSort} className="px-2 py-2 w-20" align="center" />
@@ -146,12 +183,13 @@ export default function ContractsTab({
               <SortableTh label="押金" colKey="depositAmount" sortKey={contractSortKey} sortDir={contractSortDir} onSort={contractToggleSort} className="px-3 py-2" align="right" />
               <th className="text-center px-3 py-2 text-sm font-medium text-gray-700 whitespace-nowrap">押金狀態</th>
               <SortableTh label="狀態" colKey="status" sortKey={contractSortKey} sortDir={contractSortDir} onSort={contractToggleSort} className="px-3 py-2" align="center" />
+              <th className="text-center px-3 py-2 text-sm font-medium text-gray-700 whitespace-nowrap">自動續約</th>
               <th className="text-center px-3 py-2 text-sm font-medium text-gray-700 whitespace-nowrap">操作</th>
             </tr>
           </thead>
           <tbody>
             {contracts.length === 0 ? (
-              <tr><td colSpan={13} className="text-center py-8 text-gray-400">暫無資料</td></tr>
+              <tr><td colSpan={15} className="text-center py-8 text-gray-400">暫無資料</td></tr>
             ) : (() => {
               const contractAccessors = {
                 sortOrder: c => c.property?.sortOrder ?? 999999,
@@ -173,7 +211,13 @@ export default function ContractsTab({
               const CATEGORY_COLORS = { '公司': 'bg-blue-100 text-blue-800', '湯三姐': 'bg-purple-100 text-purple-800' };
 
               return (
-                <tr key={c.id} className={`border-t hover:bg-gray-50 ${isExpiring ? 'bg-yellow-50' : ''}`}>
+                <tr key={c.id} className={`border-t hover:bg-gray-50 ${selectedContractIds?.has(c.id) ? 'bg-blue-50' : isExpiring ? 'bg-yellow-50' : ''}`}>
+                  <td className="px-2 py-2 text-center">
+                    <input type="checkbox" aria-label={`選取 ${c.contractNo}`}
+                      checked={selectedContractIds?.has(c.id) || false}
+                      onChange={() => toggleContractSelect(c.id)}
+                      className="cursor-pointer align-middle" />
+                  </td>
                   <td className="px-2 py-2 text-center text-xs text-gray-500 font-mono">{rowIdx + 1}</td>
                   <td className="px-2 py-2 text-center text-xs text-gray-700 font-mono">{c.property?.sortOrder ?? '—'}</td>
                   <td className="px-2 py-2 text-center">
@@ -221,6 +265,11 @@ export default function ContractsTab({
                   </td>
                   <td className="px-3 py-2 text-center">
                     <StatusBadge value={getContractDisplayStatus(c)} list={CONTRACT_STATUSES} />
+                  </td>
+                  <td className="px-3 py-2 text-center whitespace-nowrap">
+                    {c.autoRenew
+                      ? <span className="text-xs px-1.5 py-0.5 rounded bg-teal-100 text-teal-700 font-medium">✓ 自動</span>
+                      : <span className="text-gray-300 text-xs">—</span>}
                   </td>
                   <td className="px-3 py-2 text-center whitespace-nowrap">
                     <button onClick={() => openContractModal(c)} className="text-blue-600 hover:text-blue-800 text-xs mr-2">編輯</button>

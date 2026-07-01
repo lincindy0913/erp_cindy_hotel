@@ -78,6 +78,9 @@ export default function RentalTabContent({ p }) {
       printContracts={p.printContracts} markReminderSent={p.markReminderSent}
       clearReminder={p.clearReminder} properties={p.properties} tenants={p.tenants}
       fetchTenants={p.fetchTenants}
+      selectedContractIds={p.selectedContractIds} toggleContractSelect={p.toggleContractSelect}
+      toggleSelectAllContracts={p.toggleSelectAllContracts} clearContractSelection={p.clearContractSelection}
+      contractBatchSaving={p.contractBatchSaving} handleBatchContractUpdate={p.handleBatchContractUpdate}
     />
   );
 
