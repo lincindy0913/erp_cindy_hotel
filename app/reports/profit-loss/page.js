@@ -44,7 +44,7 @@ export default function ProfitLossPage() {
           .filter(w => w.type === 'building' && !w.parentId)
           .map(w => w.name);
         setWarehouses(ws);
-      }).catch(() => {});
+      }).catch(e => console.error('[profit-loss] 館別清單載入失敗', e));
   }, []);
 
   const load = useCallback(async () => {
