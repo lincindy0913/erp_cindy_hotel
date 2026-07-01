@@ -117,6 +117,8 @@ function AssetsPageInner() {
       const landTax  = r.landTaxAmount  || 0;
       const maint = r.maintenanceAmount || 0;
       const rent = r.rentIncome || 0;
+      const rentOnly = r.rentOnly || 0;
+      const utilityIncome = r.utilityIncome || 0;
       const netProfit = rent - houseTax - landTax - maint;
       if (p.status === 'rented') rentedCount++;
       else if (p.status === 'available') availableCount++;
@@ -124,7 +126,7 @@ function AssetsPageInner() {
       totalHouse += houseTax;
       totalLand += landTax;
       totalMaint += maint;
-      return { ...p, rentIncome: rent, houseTax, landTax, maintenanceAmount: maint, netProfit, hasUnpaidTax: r.hasUnpaidTax || false };
+      return { ...p, rentIncome: rent, rentOnly, utilityIncome, houseTax, landTax, maintenanceAmount: maint, netProfit, hasUnpaidTax: r.hasUnpaidTax || false };
     });
 
     const totalNet = totalRent - totalHouse - totalLand - totalMaint;

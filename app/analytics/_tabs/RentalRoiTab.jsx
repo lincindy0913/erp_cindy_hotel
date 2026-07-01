@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 
 const NT = (v) => `NT$ ${Number(v || 0).toLocaleString()}`;
 const pct = (v) => `${Number(v || 0).toFixed(1)}%`;
@@ -30,6 +31,18 @@ function RentalRoiDataView({ data }) {
   const sum = data.summary || {};
   const rows = data.properties || [];
   const year = data.year;
+  const { sortKey, sortDir, toggleSort } = useColumnSort('assetNo', 'asc');
+  const accessors = {
+    assetNo:        (r) => r.sortOrder ?? 9999,
+    name:           (r) => r.name || '',
+    monthlyRent:    (r) => Number(r.monthlyRent || 0),
+    totalIncome:    (r) => Number(r.totalIncome || 0),
+    expectedIncome: (r) => Number(r.expectedIncome || 0),
+    roi:            (r) => Number(r.roi || 0),
+    collectionRate: (r) => Number(r.collectionRate || 0),
+    status:         (r) => r.status || '',
+  };
+  const sortedRows = sortRows(rows, sortKey, sortDir, accessors);
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
@@ -47,21 +60,23 @@ function RentalRoiDataView({ data }) {
           <table className="w-full text-sm min-w-[960px]">
             <thead className="bg-gray-50 sticky top-0 z-10">
               <tr>
-                <th className="px-4 py-2 text-left text-xs text-gray-500">物件</th>
+                <SortableTh label="資產編號" colKey="assetNo" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-4 py-2" align="center" />
+                <SortableTh label="物件" colKey="name" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-4 py-2" />
                 <th className="px-4 py-2 text-left text-xs text-gray-500">地址／單位</th>
-                <th className="px-4 py-2 text-right text-xs text-gray-500">月租</th>
-                <th className="px-4 py-2 text-right text-xs text-gray-500">實收</th>
-                <th className="px-4 py-2 text-right text-xs text-gray-500">應收</th>
-                <th className="px-4 py-2 text-right text-xs text-gray-500">年度回收率</th>
-                <th className="px-4 py-2 text-right text-xs text-gray-500">回收率</th>
-                <th className="px-4 py-2 text-center text-xs text-gray-500">狀態</th>
+                <SortableTh label="月租" colKey="monthlyRent" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-4 py-2" align="right" />
+                <SortableTh label="實收" colKey="totalIncome" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-4 py-2" align="right" />
+                <SortableTh label="應收" colKey="expectedIncome" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-4 py-2" align="right" />
+                <SortableTh label="年度回收率" colKey="roi" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-4 py-2" align="right" />
+                <SortableTh label="回收率" colKey="collectionRate" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-4 py-2" align="right" />
+                <SortableTh label="狀態" colKey="status" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-4 py-2" align="center" />
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {rows.length === 0 ? (
-                <tr><td colSpan={8} className="px-4 py-10 text-center text-gray-400">尚無租賃物件或收入資料</td></tr>
-              ) : rows.map((r) => (
+              {sortedRows.length === 0 ? (
+                <tr><td colSpan={9} className="px-4 py-10 text-center text-gray-400">尚無租賃物件或收入資料</td></tr>
+              ) : sortedRows.map((r) => (
                 <tr key={r.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-2 text-center text-xs text-gray-700 font-mono">{r.sortOrder ?? '—'}</td>
                   <td className="px-4 py-2 font-medium text-gray-800">{r.name || '—'}</td>
                   <td className="px-4 py-2 text-xs text-gray-600 max-w-[220px]">
                     {[r.buildingName, r.unitNo, r.address].filter(Boolean).join(' ') || '—'}

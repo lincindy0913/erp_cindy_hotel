@@ -90,10 +90,12 @@ export async function PATCH(request, { params }) {
     // M8: accept isComplimentary
     if (body.isComplimentary !== undefined) updateData.isComplimentary = body.isComplimentary === true;
 
-    // 自動標記付款已填：金額 > 0 OR 標記為招待才算 filled
+    // 自動標記付款已填：金額 > 0、標記為招待、或前端明確送出 paymentFilled
+    // （付款視窗按「儲存」即代表已確認該筆付款，收款 0 元的招待房也算「已填」）
     if (updateData.payDeposit !== undefined || updateData.payTransfer !== undefined ||
         updateData.payCard    !== undefined || updateData.payCash     !== undefined ||
-        updateData.payVoucher !== undefined || updateData.isComplimentary !== undefined) {
+        updateData.payVoucher !== undefined || updateData.isComplimentary !== undefined ||
+        body.paymentFilled    !== undefined) {
       const existing = await prisma.bnbBookingRecord.findUnique({
         where: { id },
         select: { payDeposit: true, payTransfer: true, payCard: true, payCash: true, payVoucher: true, isComplimentary: true },
@@ -104,7 +106,9 @@ export async function PATCH(request, { params }) {
       const csh  = updateData.payCash       ?? Number(existing.payCash);
       const vch  = updateData.payVoucher    ?? Number(existing.payVoucher);
       const comp = updateData.isComplimentary ?? existing.isComplimentary;
-      updateData.paymentFilled = comp || (dep + trn + crd + csh + vch) > 0;
+      if (body.paymentFilled === true)       updateData.paymentFilled = true;   // 明確確認（含 0 元招待）
+      else if (body.paymentFilled === false) updateData.paymentFilled = false;  // 明確取消已填
+      else updateData.paymentFilled = comp || (dep + trn + crd + csh + vch) > 0;
     }
 
     const updated = await prisma.bnbBookingRecord.update({

@@ -36,10 +36,13 @@ export default function ProfitLossPage() {
   const [expandedGroups, setExpandedGroups] = useState({});
 
   useEffect(() => {
-    fetch('/api/cashflow/accounts')
-      .then(r => r.json())
+    // 館別清單改用權威來源（只需登入即可，不受出納權限限制）
+    fetch('/api/warehouse-departments')
+      .then(r => r.ok ? r.json() : null)
       .then(d => {
-        const ws = [...new Set((Array.isArray(d) ? d : []).map(a => a.warehouse).filter(Boolean))];
+        const ws = (d?.list || [])
+          .filter(w => w.type === 'building' && !w.parentId)
+          .map(w => w.name);
         setWarehouses(ws);
       }).catch(() => {});
   }, []);

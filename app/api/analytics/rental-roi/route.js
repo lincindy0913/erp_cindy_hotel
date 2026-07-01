@@ -82,6 +82,7 @@ export async function GET(request) {
 
       propertyResults.push({
         id: prop.id,
+        sortOrder: prop.sortOrder,
         name: prop.name,
         address: prop.address,
         buildingName: prop.buildingName,

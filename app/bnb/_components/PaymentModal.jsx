@@ -53,6 +53,7 @@ export default function PaymentModal({ record, onClose, onSaved }) {
     bossWithdrawNote:   record.bossWithdrawNote     || '',
     payVoucher:         record.payVoucher           || 0,
     note:               record.note                || '',
+    isComplimentary:    record.isComplimentary      || false,
   });
   const [saving, setSaving] = useState(false);
   const [mismatchConfirmed, setMismatchConfirmed] = useState(false);
@@ -74,7 +75,7 @@ export default function PaymentModal({ record, onClose, onSaved }) {
   const cardFee    = Math.round(Number(form.payCard) * Number(form.cardFeeRate));
   const total      = Number(form.payDeposit) + Number(form.payTransfer) + Number(form.payCard) + Number(form.payCash) + Number(form.payVoucher);
   const expected   = Number(record.roomCharge) + Number(record.otherCharge);
-  const hasMismatch = total > 0 && Math.abs(total - expected) > 0.01;
+  const hasMismatch = !form.isComplimentary && total > 0 && Math.abs(total - expected) > 0.01;
   useEffect(() => { setMismatchConfirmed(false); }, [total]);
 
   // dot indicator: tab has data?
@@ -94,6 +95,8 @@ export default function PaymentModal({ record, onClose, onSaved }) {
           cardFeeRate: parseFloat(form.cardFeeRate),
           cashDepositDate:  form.cashDestination === '存帳'    ? form.cashDepositDate  : null,
           bossWithdrawNote: form.cashDestination === '老闆收取' ? form.bossWithdrawNote : null,
+          // 按下「儲存」＝已確認此筆付款，收款 0 元（招待/免收）也標記為已填
+          paymentFilled: true,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -282,6 +285,15 @@ export default function PaymentModal({ record, onClose, onSaved }) {
 
         {/* Always-visible summary + note */}
         <div className="px-5 pb-2 space-y-2 border-t pt-3">
+          <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700 select-none">
+            <input type="checkbox" checked={form.isComplimentary}
+              onChange={e => f('isComplimentary', e.target.checked)}
+              className="rounded accent-rose-500" />
+            招待（免收，收款 $0 也算已填）
+            {form.isComplimentary && (
+              <span className="text-xs bg-rose-100 text-rose-700 px-2 py-0.5 rounded">招待</span>
+            )}
+          </label>
           <div className="flex items-center gap-3">
             <label htmlFor="pm-note" className={label}>備註</label>
             <input id="pm-note" type="text" value={form.note}

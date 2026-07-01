@@ -45,6 +45,10 @@ export default function OutputInvoicesTab({ projects, progressClaims = [], onDas
   const [outputInvoices, setOutputInvoices] = useState([]);
   const [outputInvoicesError, setOutputInvoicesError] = useState(null);
   const [projectFilter, setProjectFilter] = useState('');
+  const [keyword, setKeyword] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
   const [showOutputModal, setShowOutputModal] = useState(false);
   const [editingOutputInv, setEditingOutputInv] = useState(null);
   const [outputInvSaving, setOutputInvSaving] = useState(false);
@@ -128,7 +132,28 @@ export default function OutputInvoicesTab({ projects, progressClaims = [], onDas
     onDashStatsChanged?.();
   }
 
-  const sorted = sortRows(outputInvoices, sortKey, sortDir, {
+  // 前端搜尋：關鍵字（工程案/業主/發票號碼/備註）＋ 發票日期區間 ＋ 狀態
+  const filtered = useMemo(() => {
+    const kw = keyword.trim().toLowerCase();
+    return outputInvoices.filter(inv => {
+      if (statusFilter && inv.status !== statusFilter) return false;
+      if (dateFrom && (inv.invoiceDate || '') < dateFrom) return false;
+      if (dateTo && (inv.invoiceDate || '') > dateTo) return false;
+      if (kw) {
+        const hay = [
+          inv.project?.code, inv.project?.name,
+          inv.clientName, inv.project?.clientName,
+          inv.invoiceNo, inv.note,
+        ].filter(Boolean).join(' ').toLowerCase();
+        if (!hay.includes(kw)) return false;
+      }
+      return true;
+    });
+  }, [outputInvoices, keyword, dateFrom, dateTo, statusFilter]);
+
+  const hasSearch = !!(keyword.trim() || dateFrom || dateTo || statusFilter);
+
+  const sorted = sortRows(filtered, sortKey, sortDir, {
     projectCode: inv => `${inv.project?.code || ''} ${inv.project?.name || ''}`,
     clientName:  inv => inv.clientName || inv.project?.clientName || '',
     amount:      inv => Number(inv.amount || 0),
@@ -140,29 +165,49 @@ export default function OutputInvoicesTab({ projects, progressClaims = [], onDas
   });
 
   const totalUnpaid = useMemo(() =>
-    outputInvoices.filter(i => i.status === '已開立').reduce((s, i) => s + Math.max(0, Number(i.totalAmount) - Number(i.receivedAmount || 0)), 0),
-    [outputInvoices]);
+    filtered.filter(i => i.status === '已開立').reduce((s, i) => s + Math.max(0, Number(i.totalAmount) - Number(i.receivedAmount || 0)), 0),
+    [filtered]);
   const overdueCount = useMemo(() =>
-    outputInvoices.filter(i => i.status === '已開立' && i.dueDate && i.dueDate < today && Number(i.totalAmount) > Number(i.receivedAmount || 0)).length,
-    [outputInvoices, today]);
+    filtered.filter(i => i.status === '已開立' && i.dueDate && i.dueDate < today && Number(i.totalAmount) > Number(i.receivedAmount || 0)).length,
+    [filtered, today]);
 
   return (
     <div>
       {outputInvoicesError && <FetchErrorBanner message={outputInvoicesError} onRetry={() => fetchOutputInvoices(projectFilter || undefined)} className="mb-4" />}
       {/* 篩選列 */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
           <select value={projectFilter} onChange={e => handleFilterChange(e.target.value)}
-            className="border rounded-lg px-3 py-2 text-sm min-w-[200px]">
+            className="border rounded-lg px-3 py-2 text-sm min-w-[180px]">
             <option value="">全部工程案</option>
             {projects.map(p => <option key={p.id} value={p.id}>{p.code} {p.name}</option>)}
           </select>
-          <span className="text-sm text-gray-500">共 {outputInvoices.length} 筆</span>
+          <input type="text" value={keyword} onChange={e => setKeyword(e.target.value)}
+            placeholder="搜尋 工程案／業主／發票號碼／備註"
+            className="border rounded-lg px-3 py-2 text-sm w-64" />
+          <div className="flex items-center gap-1 text-sm text-gray-500">
+            <span className="whitespace-nowrap">發票日期</span>
+            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+              className="border rounded-lg px-2 py-2 text-sm" />
+            <span>～</span>
+            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+              className="border rounded-lg px-2 py-2 text-sm" />
+          </div>
+          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+            className="border rounded-lg px-3 py-2 text-sm">
+            <option value="">全部狀態</option>
+            {OUTPUT_INVOICE_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          {hasSearch && (
+            <button type="button" onClick={() => { setKeyword(''); setDateFrom(''); setDateTo(''); setStatusFilter(''); }}
+              className="text-xs text-gray-500 hover:text-gray-700 underline whitespace-nowrap">清除</button>
+          )}
+          <span className="text-sm text-gray-500">共 {filtered.length} 筆{hasSearch ? `／${outputInvoices.length}` : ''}</span>
           {totalUnpaid > 0 && <span className="text-sm text-amber-600">未收 {fmtMoney(totalUnpaid)}</span>}
           {overdueCount > 0 && <span className="text-xs font-medium text-red-600 bg-red-50 px-2 py-0.5 rounded-full">⚠ 逾期 {overdueCount} 張</span>}
         </div>
         <button onClick={() => { setEditingOutputInv(null); setOutputForm({ ...emptyForm, projectId: projectFilter }); setShowOutputModal(true); }}
-          className="px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700">
+          className="px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 whitespace-nowrap">
           + 新增銷項發票
         </button>
       </div>
@@ -199,8 +244,8 @@ export default function OutputInvoicesTab({ projects, progressClaims = [], onDas
               </tr>
             </thead>
             <tbody>
-              {outputInvoices.length === 0 ? (
-                <tr><td colSpan={10} className="text-center py-10 text-gray-400">尚無銷項發票</td></tr>
+              {filtered.length === 0 ? (
+                <tr><td colSpan={10} className="text-center py-10 text-gray-400">{outputInvoices.length === 0 ? '尚無銷項發票' : '查無符合搜尋條件的發票'}</td></tr>
               ) : sorted.map(inv => {
                 const total    = Number(inv.totalAmount || 0);
                 const received = Number(inv.receivedAmount || 0);
@@ -240,12 +285,12 @@ export default function OutputInvoicesTab({ projects, progressClaims = [], onDas
                 );
               })}
             </tbody>
-            {outputInvoices.length > 0 && (
+            {filtered.length > 0 && (
               <tfoot className="bg-green-50 border-t-2 border-green-100 text-xs font-semibold">
                 <tr>
-                  <td colSpan={5} className="px-3 py-2">合計 {outputInvoices.length} 筆</td>
-                  <td className="px-3 py-2 text-right text-green-700">{fmtMoney(outputInvoices.reduce((s, i) => s + Number(i.totalAmount), 0))}</td>
-                  <td className="px-3 py-2 text-right text-blue-700">{fmtMoney(outputInvoices.reduce((s, i) => s + Number(i.receivedAmount || 0), 0))}</td>
+                  <td colSpan={5} className="px-3 py-2">合計 {filtered.length} 筆</td>
+                  <td className="px-3 py-2 text-right text-green-700">{fmtMoney(filtered.reduce((s, i) => s + Number(i.totalAmount), 0))}</td>
+                  <td className="px-3 py-2 text-right text-blue-700">{fmtMoney(filtered.reduce((s, i) => s + Number(i.receivedAmount || 0), 0))}</td>
                   <td className="px-3 py-2 text-right text-amber-700">{fmtMoney(totalUnpaid)}</td>
                   <td colSpan={2} />
                 </tr>

@@ -351,7 +351,8 @@ export function DetailPanelModal({
             <h4 className="text-sm font-semibold text-gray-700 mb-2">{year} 年損益小計</h4>
             <div className="space-y-2 mb-4">
               {[
-                { label: '租金+水電實收', value: mergedRows.find(r => r.id === selected.id)?.rentIncome || 0, cls: 'text-teal-700' },
+                { label: '租金實收', value: mergedRows.find(r => r.id === selected.id)?.rentOnly || 0, cls: 'text-teal-700' },
+                { label: '水電實收', value: mergedRows.find(r => r.id === selected.id)?.utilityIncome || 0, cls: 'text-cyan-700' },
                 { label: '房屋稅', value: -(mergedRows.find(r => r.id === selected.id)?.houseTax || 0), cls: 'text-amber-700' },
                 { label: '地價稅', value: -(mergedRows.find(r => r.id === selected.id)?.landTax || 0), cls: 'text-orange-700' },
                 { label: '維護費', value: -(mergedRows.find(r => r.id === selected.id)?.maintenanceAmount || 0), cls: 'text-blue-700' },

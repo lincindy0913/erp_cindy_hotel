@@ -17,7 +17,8 @@ export async function GET(request) {
     const warehouse = searchParams.get('warehouse');
 
     const where = {};
-    if (resolvedParam !== null) where.resolved = resolvedParam !== 'true';
+    // resolved=true → 只抓已解決；resolved=false → 只抓未解決（先前寫反，導致橫幅顯示已解決的記錄）
+    if (resolvedParam !== null) where.resolved = resolvedParam === 'true';
     if (warehouse) where.booking = { warehouse };
 
     const failures = await prisma.bnbSyncFailure.findMany({

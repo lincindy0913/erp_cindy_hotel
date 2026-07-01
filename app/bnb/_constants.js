@@ -3,6 +3,13 @@ export const btnCls   = 'px-3 py-1.5 text-sm rounded-lg border hover:bg-gray-50 
 
 export const NT = (v) => `NT$ ${Number(v || 0).toLocaleString()}`;
 export const DEFAULT_WAREHOUSE = '民宿';
+
+/**
+ * 民宿帳目前實際營運的館別白名單。
+ * 各分頁的「館別」選單／快捷鈕只顯示這些館別；若要增減館別，改這裡即可。
+ * （設為空陣列 [] 代表不過濾，顯示全部館別）
+ */
+export const BNB_WAREHOUSES = ['自在海', '花語'];
 export const parseAmount = (v) => {
   if (v == null || v === '') return 0;
   const n = parseFloat(String(v).replace(/,/g, '').trim());

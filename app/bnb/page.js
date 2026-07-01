@@ -28,7 +28,7 @@ import { useBnbDeclaration } from './_hooks/useBnbDeclaration';
 import { useBnbDeclList } from './_hooks/useBnbDeclList';
 import { useBnbDailyRevenue } from './_hooks/useBnbDailyRevenue';
 import { useBnbPageStats } from './_hooks/useBnbPageStats';
-import { DEFAULT_WAREHOUSE } from './_constants';
+import { DEFAULT_WAREHOUSE, BNB_WAREHOUSES } from './_constants';
 import RecordsTab       from './_tabs/RecordsTab';
 import CalendarTab      from './_tabs/CalendarTab';
 import OccupancyTab     from './_tabs/OccupancyTab';
@@ -222,7 +222,10 @@ function BnbPage() {
       .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       .then(data => {
         if (data?.list) {
-          const list = data.list.filter(w => w.type === 'building' && !w.parentId).map(w => w.name);
+          const all = data.list.filter(w => w.type === 'building' && !w.parentId).map(w => w.name);
+          // 只保留白名單館別（目前：自在海、花語）；若白名單為空或都無對應則退回全部
+          const allowed = BNB_WAREHOUSES.length > 0 ? all.filter(name => BNB_WAREHOUSES.includes(name)) : all;
+          const list = allowed.length > 0 ? allowed : all;
           if (list.length === 0) return;
           setWarehouseList(list);
           const first = list[0];
@@ -312,11 +315,11 @@ function BnbPage() {
           color="blue"
           storageKey="guide:bnb:monthly"
           steps={[
-            { step: '1', text: '匯入訂房資料（Excel 匯入）' },
-            { step: '2', text: '核對付款資料（訂金核對、付款稽核）' },
-            { step: '3', text: '填寫旅宿網申報' },
-            { step: '4', text: '確認月收支總表無誤' },
-            { step: '5', text: '鎖帳（防止後續意外修改）' },
+            { label: '匯入訂房資料', desc: 'Excel 匯入或雲掌櫃匯入當月訂房' },
+            { label: '核對付款資料', desc: '訂金核對、付款稽核，填妥各筆收款' },
+            { label: '填寫旅宿網申報', desc: '完成當月旅宿網申報數字' },
+            { label: '確認月收支總表', desc: '檢查月收支總表金額無誤' },
+            { label: '鎖帳', desc: '鎖定當月記錄，防止後續意外修改' },
           ]}
         />
 

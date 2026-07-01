@@ -315,19 +315,30 @@ export default function IncomeTab({ projects, progressClaims = [], outputInvoice
                         if (isEditing) {
                           return (
                             <tr key={inc.id} className="bg-emerald-50">
+                              {/* # */}
                               <td className="px-5 py-2 text-xs text-gray-400">{idx + 1}</td>
+                              {/* 期數 / 品項 */}
                               <td className="px-3 py-2"><input value={editingIncome.form.termName} onChange={e => setEditingIncome(v => ({ ...v, form: { ...v.form, termName: e.target.value } }))} className="w-full border rounded px-2 py-1 text-sm" /></td>
+                              {/* 收款日期 */}
                               <td className="px-3 py-2"><input type="date" value={editingIncome.form.receivedDate} onChange={e => setEditingIncome(v => ({ ...v, form: { ...v.form, receivedDate: e.target.value } }))} className="w-full border rounded px-2 py-1 text-sm" /></td>
+                              {/* 收款金額 */}
                               <td className="px-3 py-2"><input type="number" value={editingIncome.form.amount} onChange={e => setEditingIncome(v => ({ ...v, form: { ...v.form, amount: e.target.value } }))} className="w-full border rounded px-2 py-1 text-sm text-right" /></td>
+                              {/* 連結估驗（唯讀） */}
+                              <td className="px-3 py-2 text-xs">{inc.progressClaim ? <span className="text-indigo-500">{inc.progressClaim.termName}</span> : <span className="text-gray-300">—</span>}</td>
+                              {/* 連結發票（唯讀） */}
+                              <td className="px-3 py-2 text-xs">{inc.outputInvoice ? <span className="text-green-700 font-mono">{inc.outputInvoice.invoiceNo || `發票#${inc.outputInvoiceId}`}</span> : <span className="text-gray-300">—</span>}</td>
+                              {/* 收款帳戶 */}
                               <td className="px-3 py-2">
                                 <select value={editingIncome.form.accountId} onChange={e => setEditingIncome(v => ({ ...v, form: { ...v.form, accountId: e.target.value } }))} className="w-full border rounded px-2 py-1 text-sm">
                                   <option value="">無帳戶</option>
                                   {accounts.map(a => <option key={a.id} value={a.id}>{a.warehouse ? a.warehouse + ' - ' : ''}{a.name}</option>)}
                                 </select>
                               </td>
-                              <td className="px-3 py-2 text-xs text-gray-300">—</td>
+                              {/* 備註 */}
                               <td className="px-3 py-2"><input value={editingIncome.form.note} onChange={e => setEditingIncome(v => ({ ...v, form: { ...v.form, note: e.target.value } }))} className="w-full border rounded px-2 py-1 text-sm" placeholder="備註" /></td>
+                              {/* 現金流 */}
                               <td className="px-3 py-2 text-center text-xs text-gray-400">—</td>
+                              {/* 操作 */}
                               <td className="px-3 py-2 text-center">
                                 <form onSubmit={handleUpdateIncome} className="flex gap-1 justify-center">
                                   <button type="submit" disabled={incomeEditSaving} className="text-xs px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50">{incomeEditSaving ? '…' : '儲存'}</button>
@@ -339,25 +350,37 @@ export default function IncomeTab({ projects, progressClaims = [], outputInvoice
                         }
                         return (
                           <tr key={inc.id} className="hover:bg-green-50/40">
+                            {/* # */}
                             <td className="px-5 py-3 text-xs text-gray-400">{idx + 1}</td>
+                            {/* 期數 / 品項 */}
                             <td className="px-5 py-3"><span className="font-semibold text-gray-800">{inc.termName}</span></td>
+                            {/* 收款日期 */}
                             <td className="px-5 py-3 text-gray-600">{inc.receivedDate}</td>
+                            {/* 收款金額 */}
                             <td className="px-5 py-3 text-right font-bold text-green-700 text-base">NT$ {Number(inc.amount).toLocaleString()}</td>
+                            {/* 連結估驗 */}
+                            <td className="px-5 py-3 text-xs">
+                              {inc.progressClaim
+                                ? <span className="text-indigo-500">{inc.progressClaim.termName}</span>
+                                : <span className="text-gray-300">—</span>}
+                            </td>
+                            {/* 連結發票 */}
                             <td className="px-5 py-3 text-xs">
                               {inc.outputInvoice
                                 ? <span className="text-green-700 font-mono">{inc.outputInvoice.invoiceNo || `發票#${inc.outputInvoiceId}`}</span>
-                                : inc.progressClaim
-                                  ? <span className="text-indigo-500">{inc.progressClaim.termName}</span>
-                                  : <span className="text-gray-300">—</span>
-                              }
+                                : <span className="text-gray-300">—</span>}
                             </td>
+                            {/* 收款帳戶 */}
                             <td className="px-5 py-3 text-gray-500 text-xs">{inc.account ? `${inc.account.warehouse ? inc.account.warehouse + ' - ' : ''}${inc.account.name}` : '－'}</td>
+                            {/* 備註 */}
                             <td className="px-5 py-3 text-gray-500 text-xs max-w-[200px]">{inc.note || <span className="text-gray-300">－</span>}</td>
+                            {/* 現金流 */}
                             <td className="px-5 py-3 text-center">
                               {inc.cashTransactionId
                                 ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">已連動</span>
                                 : <span className="text-xs bg-gray-100 text-gray-400 px-2 py-0.5 rounded-full">無帳戶</span>}
                             </td>
+                            {/* 操作 */}
                             <td className="px-4 py-3 text-center">
                               <button onClick={() => openEditIncome(inc)} className="text-blue-500 hover:text-blue-700 text-xs hover:underline mr-2">編輯</button>
                               <button onClick={() => handleDeleteIncome(inc.id)} className="text-red-500 hover:text-red-700 text-xs hover:underline">刪除</button>

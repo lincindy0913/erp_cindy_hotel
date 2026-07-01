@@ -38,6 +38,10 @@ function ProjectDetailInner() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('contracts');
+  const [search, setSearch] = useState('');
+
+  // 切換子分頁時清空搜尋
+  const switchTab = useCallback((key) => { setActiveTab(key); setSearch(''); }, []);
 
   const loadData = useCallback(() => {
     if (!id) return;
@@ -199,6 +203,48 @@ function ProjectDetailInner() {
     return steps;
   }, [project, contracts, paymentOrders, incomes, unassignedInvCount]);
 
+  // ── 各子分頁搜尋 ────────────────────────────────────────────────
+  const q = search.trim().toLowerCase();
+  const matchStr = (...vals) => !q || vals.filter(v => v !== null && v !== undefined && v !== '').join(' ').toLowerCase().includes(q);
+
+  const filteredContracts = q
+    ? contracts
+        .map(c => {
+          const cHit = matchStr(c.supplier?.name, c.contractNo, c.content, c.signDate);
+          const terms = (c.terms || []).filter(t =>
+            matchStr(t.termName, t.termNo != null ? `第${t.termNo}期` : '', t.dueDate, t.note, String(t.amount ?? '')));
+          return { ...c, terms: cHit ? (c.terms || []) : terms, _hit: cHit || terms.length > 0 };
+        })
+        .filter(c => c._hit)
+    : contracts;
+  const filteredMaterials = materials.filter(m =>
+    matchStr(m.product?.code, m.product?.name, m.description, m.unit, m.usedAt, m.requisitionNo, m.note));
+  const filteredPaymentOrders = paymentOrders.filter(o =>
+    matchStr(o.orderNo, o.supplierName, o.summary, o.paymentMethod, o.dueDate, o.status));
+  const filteredIncomes = incomes.filter(i =>
+    matchStr(i.termName, i.receivedDate, i.account?.name, i.accountingSubject, i.note));
+  const filteredInputInvoices = inputInvoices.filter(inv =>
+    matchStr(inv.supplierName, inv.contract?.supplier?.name, inv.contract?.contractNo, inv.invoiceNo, inv.invoiceDate, inv.invoiceType, inv.status, inv.note));
+  const filteredOutputInvoices = outputInvoices.filter(inv =>
+    matchStr(inv.clientName, project?.clientName, inv.invoiceNo, inv.invoiceDate, inv.invoiceType, inv.status, inv.note));
+
+  const SEARCH_HINTS = {
+    contracts:      '搜尋 廠商／合約編號／期別／應付日／備註',
+    materials:      '搜尋 品項／單位／使用日／領料單／備註',
+    payments:       '搜尋 付款單號／廠商／摘要／付款方式／狀態',
+    income:         '搜尋 期數名稱／收款日期／帳戶／會計科目／備註',
+    inputInvoices:  '搜尋 廠商／發票號碼／日期／類型／狀態／備註',
+    outputInvoices: '搜尋 業主／發票號碼／日期／類型／狀態／備註',
+  };
+  const resultCount = {
+    contracts:      filteredContracts.length,
+    materials:      filteredMaterials.length,
+    payments:       filteredPaymentOrders.length,
+    income:         filteredIncomes.length,
+    inputInvoices:  filteredInputInvoices.length,
+    outputInvoices: filteredOutputInvoices.length,
+  }[activeTab];
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -301,22 +347,22 @@ function ProjectDetailInner() {
                 {project.clientContractAmount ? `NT$ ${formatNum(project.clientContractAmount)}` : <span className="text-gray-400 font-normal text-xs">未設定</span>}
               </p>
             </div>
-            <button type="button" onClick={() => setActiveTab('income')} className="text-left hover:bg-teal-50 rounded-lg px-2 -mx-2 transition-colors">
+            <button type="button" onClick={() => switchTab('income')} className="text-left hover:bg-teal-50 rounded-lg px-2 -mx-2 transition-colors">
               <p className="text-xs text-teal-600 mb-0.5">收款累計</p>
               <p className="font-bold text-teal-700">NT$ {formatNum(totalIncome)}</p>
               {incomes.length > 0 && <p className="text-xs text-teal-400 mt-0.5">{incomes.length} 筆</p>}
             </button>
-            <button type="button" onClick={() => setActiveTab('contracts')} className="text-left hover:bg-red-50 rounded-lg px-2 -mx-2 transition-colors">
+            <button type="button" onClick={() => switchTab('contracts')} className="text-left hover:bg-red-50 rounded-lg px-2 -mx-2 transition-colors">
               <p className="text-xs text-red-500 mb-0.5">未付期數</p>
               <p className={`font-bold text-sm ${unpaidTerms.length > 0 ? 'text-red-600' : 'text-gray-400'}`}>{unpaidTerms.length} 期</p>
               {unpaidTerms.length > 0 && <p className="text-xs text-red-400 mt-0.5">NT$ {formatNum(unpaidTermsAmount)}</p>}
             </button>
             <div className="flex gap-2">
-              <button type="button" onClick={() => setActiveTab('inputInvoices')} className="flex-1 text-left hover:bg-blue-50 rounded-lg px-2 -mx-1 transition-colors">
+              <button type="button" onClick={() => switchTab('inputInvoices')} className="flex-1 text-left hover:bg-blue-50 rounded-lg px-2 -mx-1 transition-colors">
                 <p className="text-xs text-blue-600 mb-0.5">進項發票</p>
                 <p className="font-bold text-blue-700 text-sm">NT$ {formatNum(sumInputInv)}</p>
               </button>
-              <button type="button" onClick={() => setActiveTab('outputInvoices')} className="flex-1 text-left hover:bg-green-50 rounded-lg px-2 -mx-1 transition-colors">
+              <button type="button" onClick={() => switchTab('outputInvoices')} className="flex-1 text-left hover:bg-green-50 rounded-lg px-2 -mx-1 transition-colors">
                 <p className="text-xs text-green-600 mb-0.5">銷項發票</p>
                 <p className="font-bold text-green-700 text-sm">NT$ {formatNum(sumOutputInv)}</p>
               </button>
@@ -462,7 +508,7 @@ function ProjectDetailInner() {
                   <span className="text-sm flex-1">{s.msg}</span>
                   <button
                     type="button"
-                    onClick={() => setActiveTab(s.action.tab)}
+                    onClick={() => switchTab(s.action.tab)}
                     className={`shrink-0 text-xs px-3 py-1.5 rounded-lg font-medium ${btnColors[s.level]}`}
                   >
                     {s.action.label}
@@ -482,13 +528,30 @@ function ProjectDetailInner() {
         )}
 
         {/* 子分頁 Tab 列 */}
-        <div className="flex flex-wrap gap-1 mb-5 bg-white rounded-lg shadow p-1">
+        <div className="flex flex-wrap gap-1 mb-3 bg-white rounded-lg shadow p-1">
           {SUB_TABS.map(tab => (
-            <button key={tab.key} type="button" onClick={() => setActiveTab(tab.key)}
+            <button key={tab.key} type="button" onClick={() => switchTab(tab.key)}
               className={`flex-1 py-2.5 rounded-md text-sm font-medium transition-colors ${activeTab === tab.key ? 'bg-amber-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
               {tab.label}
             </button>
           ))}
+        </div>
+
+        {/* 搜尋列（各子分頁通用） */}
+        <div className="mb-4 flex items-center gap-2 flex-wrap">
+          <div className="relative flex-1 min-w-[240px] max-w-md">
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder={SEARCH_HINTS[activeTab] || '搜尋'}
+              className="w-full border rounded-lg pl-9 pr-8 py-2 text-sm focus:ring-2 focus:ring-amber-300 outline-none" />
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
+            {search && (
+              <button type="button" onClick={() => setSearch('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-sm">✕</button>
+            )}
+          </div>
+          {search && <span className="text-xs text-gray-500">找到 {resultCount} 筆</span>}
         </div>
 
         {/* ===== 合約與期數 ===== */}
@@ -500,7 +563,9 @@ function ProjectDetailInner() {
                 <Link href="/engineering?tab=contracts" className="text-amber-600 hover:underline mx-1">合約與期數</Link>
                 分頁新增。
               </div>
-            ) : contracts.map(c => {
+            ) : filteredContracts.length === 0 ? (
+              <div className="bg-white rounded-xl border border-gray-200 p-10 text-center text-gray-400">查無符合「{search}」的合約或期數</div>
+            ) : filteredContracts.map(c => {
               const terms = c.terms || [];
               const cPaid = terms.reduce((ts, t) =>
                 ts + paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '已執行')
@@ -627,6 +692,8 @@ function ProjectDetailInner() {
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             {materials.length === 0 ? (
               <div className="p-10 text-center text-gray-400">此工程案尚無材料使用記錄</div>
+            ) : filteredMaterials.length === 0 ? (
+              <div className="p-10 text-center text-gray-400">查無符合「{search}」的材料</div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -643,7 +710,7 @@ function ProjectDetailInner() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {materials.map(m => {
+                    {filteredMaterials.map(m => {
                       const sub = Number(m.quantity) * Number(m.unitPrice);
                       return (
                         <tr key={m.id} className="hover:bg-gray-50">
@@ -669,7 +736,7 @@ function ProjectDetailInner() {
                     <tr>
                       <td colSpan={4} className="px-4 py-2.5 text-sm font-semibold text-gray-600">合計</td>
                       <td className="px-4 py-2.5 text-right font-bold text-gray-800">
-                        NT$ {formatNum(materials.reduce((s, m) => s + Number(m.quantity) * Number(m.unitPrice), 0))}
+                        NT$ {formatNum(filteredMaterials.reduce((s, m) => s + Number(m.quantity) * Number(m.unitPrice), 0))}
                       </td>
                       <td colSpan={3} />
                     </tr>
@@ -708,6 +775,8 @@ function ProjectDetailInner() {
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
               {paymentOrders.length === 0 ? (
                 <div className="p-10 text-center text-gray-400">此工程案尚無付款單</div>
+              ) : filteredPaymentOrders.length === 0 ? (
+                <div className="p-10 text-center text-gray-400">查無符合「{search}」的付款單</div>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
@@ -724,7 +793,7 @@ function ProjectDetailInner() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {paymentOrders.map(o => {
+                      {filteredPaymentOrders.map(o => {
                         const statusColor =
                           o.status === '已執行' ? 'bg-green-100 text-green-700' :
                           o.status === '待出納' ? 'bg-yellow-100 text-yellow-800' :
@@ -752,7 +821,7 @@ function ProjectDetailInner() {
                       <tr>
                         <td colSpan={3} className="px-4 py-2.5 text-sm font-semibold text-gray-600">合計（已執行）</td>
                         <td className="px-4 py-2.5 text-right font-bold text-green-700">
-                          NT$ {formatNum(paymentOrders.filter(o => o.status === '已執行').reduce((s, o) => s + getActualPaid(o), 0))}
+                          NT$ {formatNum(filteredPaymentOrders.filter(o => o.status === '已執行').reduce((s, o) => s + getActualPaid(o), 0))}
                         </td>
                         <td colSpan={4} />
                       </tr>
@@ -798,6 +867,8 @@ function ProjectDetailInner() {
             )}
             {incomes.length === 0 ? (
               <div className="p-10 text-center text-gray-400">此工程案尚無收款記錄</div>
+            ) : filteredIncomes.length === 0 ? (
+              <div className="p-10 text-center text-gray-400">查無符合「{search}」的收款記錄</div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -812,7 +883,7 @@ function ProjectDetailInner() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {incomes.map(i => (
+                    {filteredIncomes.map(i => (
                       <tr key={i.id} className="hover:bg-gray-50">
                         <td className="px-4 py-2.5 font-medium">{i.termName}</td>
                         <td className="px-4 py-2.5 text-right font-medium text-teal-700">NT$ {formatNum(i.amount)}</td>
@@ -825,8 +896,8 @@ function ProjectDetailInner() {
                   </tbody>
                   <tfoot className="bg-gray-50 border-t border-gray-200">
                     <tr>
-                      <td className="px-4 py-2.5 text-sm font-semibold text-gray-600">合計 ({incomes.length} 筆)</td>
-                      <td className="px-4 py-2.5 text-right font-bold text-teal-700">NT$ {formatNum(totalIncome)}</td>
+                      <td className="px-4 py-2.5 text-sm font-semibold text-gray-600">合計 ({filteredIncomes.length} 筆)</td>
+                      <td className="px-4 py-2.5 text-right font-bold text-teal-700">NT$ {formatNum(filteredIncomes.reduce((s, i) => s + Number(i.amount || 0), 0))}</td>
                       <td colSpan={4} />
                     </tr>
                   </tfoot>
@@ -841,6 +912,8 @@ function ProjectDetailInner() {
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             {inputInvoices.length === 0 ? (
               <div className="p-10 text-center text-gray-400">此工程案尚無廠商進項發票記錄</div>
+            ) : filteredInputInvoices.length === 0 ? (
+              <div className="p-10 text-center text-gray-400">查無符合「{search}」的進項發票</div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -859,7 +932,7 @@ function ProjectDetailInner() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {inputInvoices.map(inv => (
+                    {filteredInputInvoices.map(inv => (
                       <tr key={inv.id} className="hover:bg-gray-50">
                         <td className="px-4 py-2.5">{inv.supplierName || inv.contract?.supplier?.name || '－'}</td>
                         <td className="px-4 py-2.5 font-mono text-xs text-gray-500">{inv.contract?.contractNo || '－'}</td>
@@ -880,10 +953,10 @@ function ProjectDetailInner() {
                   </tbody>
                   <tfoot className="bg-gray-50 border-t border-gray-200">
                     <tr>
-                      <td colSpan={4} className="px-4 py-2.5 text-sm font-semibold text-gray-600">合計 ({inputInvoices.length} 張)</td>
-                      <td className="px-4 py-2.5 text-right font-medium">{formatNum(inputInvoices.reduce((s, i) => s + Number(i.amount || 0), 0))}</td>
-                      <td className="px-4 py-2.5 text-right font-medium">{formatNum(inputInvoices.reduce((s, i) => s + Number(i.taxAmount || 0), 0))}</td>
-                      <td className="px-4 py-2.5 text-right font-bold text-blue-700">NT$ {formatNum(sumInputInv)}</td>
+                      <td colSpan={4} className="px-4 py-2.5 text-sm font-semibold text-gray-600">合計 ({filteredInputInvoices.length} 張)</td>
+                      <td className="px-4 py-2.5 text-right font-medium">{formatNum(filteredInputInvoices.reduce((s, i) => s + Number(i.amount || 0), 0))}</td>
+                      <td className="px-4 py-2.5 text-right font-medium">{formatNum(filteredInputInvoices.reduce((s, i) => s + Number(i.taxAmount || 0), 0))}</td>
+                      <td className="px-4 py-2.5 text-right font-bold text-blue-700">NT$ {formatNum(filteredInputInvoices.reduce((s, i) => s + Number(i.totalAmount || 0), 0))}</td>
                       <td colSpan={3} />
                     </tr>
                   </tfoot>
@@ -898,6 +971,8 @@ function ProjectDetailInner() {
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             {outputInvoices.length === 0 ? (
               <div className="p-10 text-center text-gray-400">此工程案尚無業主銷項發票記錄</div>
+            ) : filteredOutputInvoices.length === 0 ? (
+              <div className="p-10 text-center text-gray-400">查無符合「{search}」的銷項發票</div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -915,7 +990,7 @@ function ProjectDetailInner() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {outputInvoices.map(inv => (
+                    {filteredOutputInvoices.map(inv => (
                       <tr key={inv.id} className="hover:bg-gray-50">
                         <td className="px-4 py-2.5">{inv.clientName || project.clientName || '－'}</td>
                         <td className="px-4 py-2.5 font-mono">{inv.invoiceNo || '－'}</td>
@@ -935,10 +1010,10 @@ function ProjectDetailInner() {
                   </tbody>
                   <tfoot className="bg-gray-50 border-t border-gray-200">
                     <tr>
-                      <td colSpan={3} className="px-4 py-2.5 text-sm font-semibold text-gray-600">合計 ({outputInvoices.length} 張)</td>
-                      <td className="px-4 py-2.5 text-right font-medium">{formatNum(outputInvoices.reduce((s, i) => s + Number(i.amount || 0), 0))}</td>
-                      <td className="px-4 py-2.5 text-right font-medium">{formatNum(outputInvoices.reduce((s, i) => s + Number(i.taxAmount || 0), 0))}</td>
-                      <td className="px-4 py-2.5 text-right font-bold text-green-700">NT$ {formatNum(sumOutputInv)}</td>
+                      <td colSpan={3} className="px-4 py-2.5 text-sm font-semibold text-gray-600">合計 ({filteredOutputInvoices.length} 張)</td>
+                      <td className="px-4 py-2.5 text-right font-medium">{formatNum(filteredOutputInvoices.reduce((s, i) => s + Number(i.amount || 0), 0))}</td>
+                      <td className="px-4 py-2.5 text-right font-medium">{formatNum(filteredOutputInvoices.reduce((s, i) => s + Number(i.taxAmount || 0), 0))}</td>
+                      <td className="px-4 py-2.5 text-right font-bold text-green-700">NT$ {formatNum(filteredOutputInvoices.reduce((s, i) => s + Number(i.totalAmount || 0), 0))}</td>
                       <td colSpan={3} />
                     </tr>
                   </tfoot>

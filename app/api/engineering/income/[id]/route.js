@@ -45,8 +45,14 @@ export async function PUT(request, { params }) {
           where: { progressClaimId: newProgressClaimId, id: { not: incomeId } },
           _sum: { amount: true },
         });
-        const claimAfter = (Number(claimTotal._sum.amount) || 0) + amount;
-        if (claimAfter > Number(claim.certifiedAmount)) {
+        const othersInClaim = Number(claimTotal._sum.amount) || 0;
+        const claimAfter    = othersInClaim + amount;
+        // 沿用同一估驗單時，該單目前累計已含本筆；換綁新估驗單則不含本筆
+        const claimCurrent  = newProgressClaimId === existing.progressClaimId
+          ? othersInClaim + Number(existing.amount)
+          : othersInClaim;
+        // 僅在「本次編輯讓累計增加、且超出核定」時才擋（避免既有超額資料無法修改其他欄位）
+        if (claimAfter > Number(claim.certifiedAmount) && claimAfter > claimCurrent + 0.01) {
           return createErrorResponse('VALIDATION_FAILED',
             `此期別（${claim.termName}）核定金額 ${Number(claim.certifiedAmount).toLocaleString()}，收款累計 ${claimAfter.toLocaleString()} 將超出`, 400);
         }
@@ -57,8 +63,11 @@ export async function PUT(request, { params }) {
         where: { projectId: existing.projectId, id: { not: incomeId } },
         _sum: { amount: true },
       });
-      const projAfter = (Number(projTotal._sum.amount) || 0) + amount;
-      if (projAfter > Number(existing.project.clientContractAmount)) {
+      const othersSum    = Number(projTotal._sum.amount) || 0;
+      const projAfter    = othersSum + amount;
+      const currentTotal = othersSum + Number(existing.amount);
+      // 僅在「本次編輯讓累計增加、且超出合約」時才擋；不增加總額的修改（改日期/帳戶/備註）一律放行
+      if (projAfter > Number(existing.project.clientContractAmount) && projAfter > currentTotal + 0.01) {
         return createErrorResponse('VALIDATION_FAILED',
           `收款累計（${projAfter.toLocaleString()}）將超過合約金額（${Number(existing.project.clientContractAmount).toLocaleString()}）`, 400);
       }

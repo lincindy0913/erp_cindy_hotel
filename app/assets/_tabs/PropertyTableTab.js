@@ -207,7 +207,8 @@ export function PropertyTableTab({
                   title={year !== currentYear ? `本欄固定顯示當前月份（${currentYear}/${String(new Date().getMonth()+1).padStart(2,'0')}），切換年度不影響` : undefined}>
                   本月<br/>收款{year !== currentYear && <span className="block text-[10px] font-normal text-gray-400">({currentYear}年)</span>}
                 </th>
-                <SortableTh label="租金+水電實收" colKey="rentIncome" sortKey={assetSortKey} sortDir={assetSortDir} onSort={assetToggleSort} className="px-3 py-2" align="right" />
+                <SortableTh label="租金實收" colKey="rentOnly" sortKey={assetSortKey} sortDir={assetSortDir} onSort={assetToggleSort} className="px-3 py-2" align="right" />
+                <SortableTh label="水電實收" colKey="utilityIncome" sortKey={assetSortKey} sortDir={assetSortDir} onSort={assetToggleSort} className="px-3 py-2" align="right" />
                 <SortableTh
                   label={activeRange ? `房屋稅 ⓘ` : '房屋稅'}
                   colKey="houseTax" sortKey={assetSortKey} sortDir={assetSortDir} onSort={assetToggleSort}
@@ -226,13 +227,15 @@ export function PropertyTableTab({
             </thead>
             <tbody>
               {sortedRows.length === 0 ? (
-                <tr><td colSpan={canEdit ? 16 : 14} className="text-center py-10 text-gray-400">無符合條件的物業</td></tr>
+                <tr><td colSpan={canEdit ? 17 : 15} className="text-center py-10 text-gray-400">無符合條件的物業</td></tr>
               ) : (
                 sortedRows.map((p, idx) => {
                   const isSelected = selected?.id === p.id;
                   const isBatchSelected = selectedPropIds.has(p.id);
                   const highlight = highlightPropertyId && p.id === parseInt(highlightPropertyId, 10);
                   const hasIncome = p.rentIncome > 0;
+                  const hasRent = p.rentOnly > 0;
+                  const hasUtility = p.utilityIncome > 0;
                   const hasTax = p.houseTax > 0 || p.landTax > 0;
                   const hasMaint = p.maintenanceAmount > 0;
                   const expiryDays = p.currentContractEnd
@@ -366,8 +369,11 @@ export function PropertyTableTab({
                           return <span className="text-xs px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700 font-medium">待收</span>;
                         })()}
                       </td>
-                      <td className={`px-3 py-2 text-right font-medium ${hasIncome ? 'text-teal-700' : 'text-gray-300'}`}>
-                        {hasIncome ? fmtMoney(p.rentIncome) : '—'}
+                      <td className={`px-3 py-2 text-right font-medium ${hasRent ? 'text-teal-700' : 'text-gray-300'}`}>
+                        {hasRent ? fmtMoney(p.rentOnly) : '—'}
+                      </td>
+                      <td className={`px-3 py-2 text-right font-medium ${hasUtility ? 'text-cyan-700' : 'text-gray-300'}`}>
+                        {hasUtility ? fmtMoney(p.utilityIncome) : '—'}
                       </td>
                       <td className={`px-3 py-2 text-right ${hasTax && p.houseTax > 0 ? 'text-amber-700' : 'text-gray-300'}`}>
                         {p.houseTax > 0 ? fmtMoney(p.houseTax) : '—'}

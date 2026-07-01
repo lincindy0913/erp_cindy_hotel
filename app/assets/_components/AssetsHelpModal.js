@@ -48,8 +48,9 @@ export function AssetsHelpModal({ onClose }) {
                   {[
                     ['月租金', '當前有效合約的合約金額（唯讀，在租屋→合約管理修改）'],
                     ['本月收款', '當月實際收款狀態（待收 / 已收 / 逾期）'],
-                    ['租金+水電實收', '本年度累計實際入帳（含水電費），不含未收款'],
-                    ['淨利', '租金+水電實收 − 房屋稅 − 地價稅 − 維護費'],
+                    ['租金實收', '本年度累計實際入帳的租金，不含未收款'],
+                    ['水電實收', '本年度累計實際入帳的水電費，不含未收款'],
+                    ['淨利', '租金實收 ＋ 水電實收 − 房屋稅 − 地價稅 − 維護費'],
                   ].map(([col, desc]) => (
                     <tr key={col} className="border-t first:border-t-0">
                       <td className="px-3 py-2 font-medium text-gray-800 bg-gray-50 whitespace-nowrap w-32">{col}</td>
