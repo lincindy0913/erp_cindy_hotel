@@ -30,32 +30,48 @@ jobs:
       - name: Trigger check due status update
         id: update
         run: |
-          RESPONSE=$(curl -s -w "\n%{http_code}" \
-            -X POST "$APP_URL/api/cron/check-due-status" \
-            -H "Authorization: Bearer $CRON_SECRET" \
-            -H "Content-Type: application/json" \
-            --max-time 30)
-
-          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-          BODY=$(echo "$RESPONSE" | head -n -1)
-
-          echo "HTTP status: $HTTP_CODE"
-          echo "Response: $BODY"
+          HTTP_CODE=""
+          BODY=""
+          # 重試 3 次：Railway 冷啟動時第一次常回 5xx
+          for i in 1 2 3; do
+            RESPONSE=$(curl -s -w "\n%{http_code}" \
+              -X POST "$APP_URL/api/cron/check-due-status" \
+              -H "Authorization: Bearer $CRON_SECRET" \
+              -H "Content-Type: application/json" \
+              --max-time 30) || true
+            HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+            BODY=$(echo "$RESPONSE" | head -n -1)
+            echo "Attempt $i → HTTP $HTTP_CODE"
+            echo "Response: $BODY"
+            if [ "$HTTP_CODE" = "200" ]; then break; fi
+            if [ "$HTTP_CODE" = "401" ]; then
+              echo "❌ 401 未授權：GitHub Secret CRON_SECRET 需與 Railway 環境變數 CRON_SECRET 完全一致"
+              exit 1
+            fi
+            if [ "$i" -lt 3 ]; then
+              echo "⚠️ HTTP $HTTP_CODE，10 秒後重試…（可能是 Railway 冷啟動）"
+              sleep 10
+            fi
+          done
 
           if [ "$HTTP_CODE" != "200" ]; then
-            echo "❌ Cron job failed with HTTP $HTTP_CODE"
+            echo "❌ Cron 失敗，HTTP $HTTP_CODE（請確認 APP_URL 為 Railway 網址、服務正常）"
             exit 1
           fi
 
-          COUNT=$(echo "$BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['updatedCount'])" 2>/dev/null || echo "?")
-          echo "✅ 支票到期狀態更新完成，共更新 $COUNT 筆"
-          echo "updated_count=$COUNT" >> $GITHUB_OUTPUT
+          # endpoint 回 { checksUpdated, contractsExpired }
+          CHECKS=$(echo "$BODY" | python3 -c "import sys,json;print(json.load(sys.stdin).get('checksUpdated','?'))" 2>/dev/null || echo "?")
+          CONTRACTS=$(echo "$BODY" | python3 -c "import sys,json;print(json.load(sys.stdin).get('contractsExpired','?'))" 2>/dev/null || echo "?")
+          echo "✅ 支票到期 $CHECKS 筆、合約到期 $CONTRACTS 筆"
+          echo "checks_updated=$CHECKS" >> "$GITHUB_OUTPUT"
+          echo "contracts_expired=$CONTRACTS" >> "$GITHUB_OUTPUT"
         env:
           APP_URL:     ${{ secrets.APP_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
 
       - name: Summary
         run: |
-          echo "## 支票到期狀態更新" >> $GITHUB_STEP_SUMMARY
+          echo "## 支票／合約到期狀態更新" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "更新筆數：${{ steps.update.outputs.updated_count }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 支票到期：${{ steps.update.outputs.checks_updated }} 筆" >> $GITHUB_STEP_SUMMARY
+          echo "- 合約到期：${{ steps.update.outputs.contracts_expired }} 筆" >> $GITHUB_STEP_SUMMARY
