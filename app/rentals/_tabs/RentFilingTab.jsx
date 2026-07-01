@@ -1,6 +1,7 @@
 'use client';
 
 import { getTenantDisplayName } from '../_lib/rentalHelpers';
+import { sortRows, SortableTh, useColumnSort } from '@/components/SortableTh';
 
 const fmt = n => Number(n || 0).toLocaleString('zh-TW');
 
@@ -10,6 +11,23 @@ export default function RentFilingTab({
   fetchRentFiling, seedRentFilingYear,
   openRentFilingModalForNew, openRentFilingModalForEdit, deleteRentFilingRow,
 }) {
+  const { sortKey, sortDir, toggleSort } = useColumnSort(null, 'asc');
+  const accessors = {
+    slotIndex:            r => r.slotIndex ?? 0,
+    sortOrder:            r => r.sortOrder ?? 999999,
+    propertyName:         r => r.propertyName || '',
+    address:              r => r.address || '',
+    ownerName:            r => r.ownerName || '',
+    isPublicInterest:     r => (r.isPublicInterest ? 1 : 0),
+    lessee:               r => r.lesseeDisplayName || r.contractLesseeName || '',
+    declaredMonthlyRent:  r => Number(r.declaredMonthlyRent || 0),
+    monthsInScope:        r => Number(r.monthsInScope || 0),
+    declaredAnnualIncome: r => Number(r.declaredAnnualIncome || 0),
+    estimatedHouseTax:    r => Number(r.estimatedHouseTax || 0),
+    actualAnnualIncome:   r => Number(r.actualAnnualIncome || 0),
+    note:                 r => r.note || '',
+  };
+  const sortedRows = sortRows(rentFilingData.rows, sortKey, sortDir, accessors);
   return (
     <div>
       <div className="bg-teal-50 border border-teal-100 rounded-lg px-4 py-3 mb-4 text-sm text-teal-900">
@@ -44,20 +62,20 @@ export default function RentFilingTab({
         <table className="w-full text-sm">
           <thead className="bg-teal-50 text-teal-900 text-xs sticky top-0 z-10">
             <tr>
-              <th className="px-3 py-2 text-left">列</th>
-              <th className="px-3 py-2 text-left">資產編號</th>
-              <th className="px-3 py-2 text-left">物業</th>
-              <th className="px-3 py-2 text-left">地址</th>
-              <th className="px-3 py-2 text-left">所有權人／稅籍</th>
-              <th className="px-3 py-2 text-center">公益</th>
-              <th className="px-3 py-2 text-left">承租人／抬頭</th>
-              <th className="px-3 py-2 text-right">申報月租</th>
-              <th className="px-3 py-2 text-center">月數</th>
-              <th className="px-3 py-2 text-right">全年申報</th>
-              <th className="px-3 py-2 text-right">預估房屋稅</th>
-              <th className="px-3 py-2 text-right">當年實收</th>
-              <th className="px-3 py-2 text-left">備註</th>
-              <th className="px-3 py-2 text-center">操作</th>
+              <SortableTh label="列" colKey="slotIndex" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-3 py-2" />
+              <SortableTh label="資產編號" colKey="sortOrder" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-3 py-2" />
+              <SortableTh label="物業" colKey="propertyName" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-3 py-2" />
+              <SortableTh label="地址" colKey="address" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-3 py-2" />
+              <SortableTh label="所有權人／稅籍" colKey="ownerName" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-3 py-2" />
+              <SortableTh label="公益" colKey="isPublicInterest" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-3 py-2" align="center" />
+              <SortableTh label="承租人／抬頭" colKey="lessee" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-3 py-2" />
+              <SortableTh label="申報月租" colKey="declaredMonthlyRent" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-3 py-2" align="right" />
+              <SortableTh label="月數" colKey="monthsInScope" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-3 py-2" align="center" />
+              <SortableTh label="全年申報" colKey="declaredAnnualIncome" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-3 py-2" align="right" />
+              <SortableTh label="預估房屋稅" colKey="estimatedHouseTax" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-3 py-2" align="right" />
+              <SortableTh label="當年實收" colKey="actualAnnualIncome" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-3 py-2" align="right" />
+              <SortableTh label="備註" colKey="note" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-3 py-2" />
+              <th className="px-3 py-2 text-center text-sm font-medium text-gray-700">操作</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -65,7 +83,7 @@ export default function RentFilingTab({
               <tr><td colSpan={14} className="text-center py-12 text-gray-400">載入中…</td></tr>
             ) : rentFilingData.rows.length === 0 ? (
               <tr><td colSpan={14} className="text-center py-12 text-gray-400">尚無資料，可使用「為全部物業建立草稿」或「新增申報列」</td></tr>
-            ) : rentFilingData.rows.map((r) => (
+            ) : sortedRows.map((r) => (
               <tr key={r.id} className="hover:bg-gray-50">
                 <td className="px-3 py-2 text-xs text-gray-500">{r.slotIndex + 1}</td>
                 <td className="px-3 py-2 text-xs text-gray-700 font-mono">{r.sortOrder ?? '—'}</td>

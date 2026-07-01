@@ -172,7 +172,7 @@ export default function ContractsTab({
                   className="cursor-pointer align-middle" />
               </th>
               <SortableTh label="序號" colKey="sortOrder" sortKey={contractSortKey} sortDir={contractSortDir} onSort={contractToggleSort} className="px-2 py-2 w-16" align="center" />
-              <th className="text-center px-2 py-2 text-sm font-medium text-gray-700 whitespace-nowrap w-16">資產編號</th>
+              <SortableTh label="資產編號" colKey="assetNo" sortKey={contractSortKey} sortDir={contractSortDir} onSort={contractToggleSort} className="px-2 py-2 w-16" align="center" />
               <SortableTh label="分類" colKey="category" sortKey={contractSortKey} sortDir={contractSortDir} onSort={contractToggleSort} className="px-2 py-2 w-20" align="center" />
               <SortableTh label="合約編號" colKey="contractNo" sortKey={contractSortKey} sortDir={contractSortDir} onSort={contractToggleSort} className="px-3 py-2" />
               <SortableTh label="物業" colKey="propertyName" sortKey={contractSortKey} sortDir={contractSortDir} onSort={contractToggleSort} className="px-3 py-2" />
@@ -193,6 +193,7 @@ export default function ContractsTab({
             ) : (() => {
               const contractAccessors = {
                 sortOrder: c => c.property?.sortOrder ?? 999999,
+                assetNo: c => c.property?.sortOrder ?? 999999,
                 category: c => c.property?.category || '',
                 monthlyRent: c => Number(c.monthlyRent || 0),
                 depositAmount: c => Number(c.depositAmount || 0),
