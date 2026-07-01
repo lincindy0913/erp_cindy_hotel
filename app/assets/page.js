@@ -109,6 +109,7 @@ function AssetsPageInner() {
     for (const r of reportData) reportByPid.set(r.propertyId, r);
 
     let totalRent = 0, totalHouse = 0, totalLand = 0, totalMaint = 0;
+    let totalMonthlyRent = 0, totalRentOnly = 0, totalUtility = 0;
     let rentedCount = 0, availableCount = 0;
 
     const rows = properties.map(p => {
@@ -126,13 +127,16 @@ function AssetsPageInner() {
       totalHouse += houseTax;
       totalLand += landTax;
       totalMaint += maint;
+      totalMonthlyRent += Number(p.currentMonthlyRent || 0);
+      totalRentOnly += rentOnly;
+      totalUtility += utilityIncome;
       return { ...p, rentIncome: rent, rentOnly, utilityIncome, houseTax, landTax, maintenanceAmount: maint, netProfit, hasUnpaidTax: r.hasUnpaidTax || false };
     });
 
     const totalNet = totalRent - totalHouse - totalLand - totalMaint;
     return {
       mergedRows: rows,
-      summary: { rentedCount, availableCount, totalRent, totalHouse, totalLand, totalMaint, totalNet },
+      summary: { rentedCount, availableCount, totalRent, totalHouse, totalLand, totalMaint, totalNet, totalMonthlyRent, totalRentOnly, totalUtility },
     };
   }, [properties, reportData]);
 

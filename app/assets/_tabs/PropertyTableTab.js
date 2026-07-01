@@ -429,16 +429,30 @@ export function PropertyTableTab({
             {mergedRows.length > 0 && (
               <tfoot className="bg-teal-50 border-t-2 border-teal-200 text-xs font-semibold">
                 <tr>
-                  <td colSpan={6} className="px-3 py-2 text-gray-700">合計</td>
+                  {/* 合計標籤：涵蓋 (勾選)＋序號＋資產編號＋物業＋分類＋狀態＋租客 */}
+                  <td colSpan={canEdit ? 7 : 6} className="px-3 py-2 text-gray-700">合計</td>
+                  {/* 月租金 */}
+                  <td className="px-3 py-2 text-right text-gray-700">{fmtMoney(summary.totalMonthlyRent)}</td>
+                  {/* 本月收款（狀態欄，不計金額） */}
                   <td className="px-3 py-2" />
-                  <td className="px-3 py-2 text-right text-teal-700">{fmtMoney(summary.totalRent)}</td>
+                  {/* 租金實收 */}
+                  <td className="px-3 py-2 text-right text-teal-700">{fmtMoney(summary.totalRentOnly)}</td>
+                  {/* 水電實收 */}
+                  <td className="px-3 py-2 text-right text-cyan-700">{fmtMoney(summary.totalUtility)}</td>
+                  {/* 房屋稅 */}
                   <td className="px-3 py-2 text-right text-amber-700">{fmtMoney(summary.totalHouse)}</td>
+                  {/* 地價稅 */}
                   <td className="px-3 py-2 text-right text-orange-700">{fmtMoney(summary.totalLand)}</td>
+                  {/* 維護費 */}
                   <td className="px-3 py-2 text-right text-blue-700">{fmtMoney(summary.totalMaint)}</td>
+                  {/* 淨利 */}
                   <td className={`px-3 py-2 text-right ${summary.totalNet >= 0 ? 'text-green-700' : 'text-red-600'}`}>
                     {fmtMoney(summary.totalNet)}
                   </td>
-                  <td colSpan={canEdit ? 3 : 1} />
+                  {/* 標記 */}
+                  <td className="px-3 py-2" />
+                  {/* 操作 */}
+                  {canEdit && <td className="px-3 py-2" />}
                 </tr>
               </tfoot>
             )}

@@ -824,7 +824,18 @@ export default function RecordsTab({
                       </td>
                       <td className="px-3 py-2 whitespace-nowrap max-w-[140px]">
                         <span className="truncate">{r.guestName}</span>
-                        {r.isComplimentary && <span className="ml-1 text-[10px] bg-rose-100 text-rose-600 px-1 py-0.5 rounded">招待</span>}
+                        {inExcelMode ? (
+                          <label className="ml-1 inline-flex items-center gap-0.5 text-[10px] text-rose-600 cursor-pointer align-middle whitespace-nowrap"
+                            title="招待（免費，收款 $0 也算已填）" onClick={e => e.stopPropagation()}>
+                            <input type="checkbox"
+                              checked={!!(editMap[r.id]?.isComplimentary ?? r.isComplimentary)}
+                              onChange={e => updateCell(r.id, 'isComplimentary', e.target.checked)}
+                              className="rounded accent-rose-500" />
+                            招待
+                          </label>
+                        ) : (
+                          r.isComplimentary && <span className="ml-1 text-[10px] bg-rose-100 text-rose-600 px-1 py-0.5 rounded">招待</span>
+                        )}
                       </td>
                       <td className="px-3 py-2 text-gray-500 text-xs hidden sm:table-cell">{r.roomNo || '—'}</td>
                       <td className="px-3 py-2 text-gray-600 text-xs whitespace-nowrap">
