@@ -180,7 +180,7 @@ export async function GET(request) {
       return {
         propertyId: pid,
         propertyLabel: label,
-        sortOrder: prop?.asset?.sortOrder ?? prop?.sortOrder ?? null,
+        sortOrder: prop?.sortOrder ?? prop?.asset?.sortOrder ?? null,
         category: prop?.category ?? null,
         rentOnly,
         utilityIncome: utility,

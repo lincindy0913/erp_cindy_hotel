@@ -64,9 +64,9 @@ export async function GET(request) {
       collectUtilityFee: i.property.collectUtilityFee,
       rentCollectAccountId: i.property.rentCollectAccountId,
       propertyCategory: i.property?.category ?? null,
-      propertySortOrder: i.property.asset?.sortOrder ?? i.property.sortOrder ?? null,
+      propertySortOrder: i.property.sortOrder ?? i.property.asset?.sortOrder ?? null,
       contractCategory: i.property?.category ?? null,
-      contractSortOrder: i.property.asset?.sortOrder ?? i.property.sortOrder ?? null,
+      contractSortOrder: i.property.sortOrder ?? i.property.asset?.sortOrder ?? null,
       tenantName: i.tenant.tenantType === 'company' ? i.tenant.companyName : i.tenant.fullName,
       // 優先順序：合約帳戶 > 物業預設帳戶，前端統一讀此欄位
       resolvedAccountId: i.contract?.rentAccountId ?? i.property.rentCollectAccountId ?? null
