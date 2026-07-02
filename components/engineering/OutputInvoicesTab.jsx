@@ -39,7 +39,7 @@ function paymentStatus(inv, today) {
   return { label: '未到期', color: 'bg-gray-100 text-gray-500' };
 }
 
-export default function OutputInvoicesTab({ projects, progressClaims = [], onDashStatsChanged }) {
+export default function OutputInvoicesTab({ projects, progressClaims = [], onDashStatsChanged, onCreateIncome }) {
   const today = new Date().toISOString().slice(0, 10);
   const [subTab, setSubTab] = useState('invoices');
   const [outputInvoices, setOutputInvoices] = useState([]);
@@ -274,6 +274,9 @@ export default function OutputInvoicesTab({ projects, progressClaims = [], onDas
                       {inv.progressClaim && <div className="text-[10px] text-indigo-500 mt-0.5">{inv.progressClaim.termName}</div>}
                     </td>
                     <td className="px-3 py-2 text-center whitespace-nowrap">
+                      {onCreateIncome && inv.status === '已開立' && unpaid > 0.01 && (
+                        <button onClick={() => onCreateIncome(inv)} className="text-teal-600 hover:underline text-xs mr-2" title="以此發票未收金額新增一筆收款並自動連結">+收款</button>
+                      )}
                       <button onClick={() => {
                         setEditingOutputInv(inv);
                         setOutputForm({ projectId: String(inv.projectId), progressClaimId: inv.progressClaimId ? String(inv.progressClaimId) : '', clientName: inv.clientName || '', invoiceNo: inv.invoiceNo || '', invoiceDate: inv.invoiceDate, dueDate: inv.dueDate || '', amount: String(inv.amount), taxAmount: String(inv.taxAmount), totalAmount: String(inv.totalAmount), invoiceType: inv.invoiceType || '電子發票', status: inv.status, note: inv.note || '' });

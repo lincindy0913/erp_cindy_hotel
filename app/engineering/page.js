@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense } from 'react';
+import { Suspense, useState } from 'react';
 import Navigation from '@/components/Navigation';
 import NotificationBanner from '@/components/NotificationBanner';
 import EngineeringHeaderInsights from '@/components/engineering/EngineeringHeaderInsights';
@@ -62,6 +62,19 @@ function EngineeringPageInner() {
     session, isAdminOrManager,
     confirmDlg, closeConfirm,
   } = useEngineering();
+
+  // 從「業主銷項發票」一鍵開收款：帶到收款分頁預填該發票
+  const [incomePrefill, setIncomePrefill] = useState(null);
+  const openIncomeForInvoice = (inv) => {
+    const unpaid = Math.max(0, Number(inv.totalAmount || 0) - Number(inv.receivedAmount || 0));
+    setIncomePrefill({
+      projectId: String(inv.projectId),
+      outputInvoiceId: String(inv.id),
+      amount: unpaid > 0 ? String(unpaid) : '',
+      termName: inv.invoiceNo ? `發票 ${inv.invoiceNo}` : '',
+    });
+    switchEngineeringTab('income');
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -150,13 +163,15 @@ function EngineeringPageInner() {
         {activeTab === 'progressClaims' && <ProgressClaimsTab projects={projects} />}
         {activeTab === 'income' && (
           <IncomeTab projects={projects} progressClaims={progressClaims}
-            outputInvoices={outputInvoicesList} onDashStatsChanged={refreshDashStats} />
+            outputInvoices={outputInvoicesList} onDashStatsChanged={refreshDashStats}
+            prefill={incomePrefill} onPrefillDone={() => setIncomePrefill(null)} />
         )}
         {activeTab === 'inputInvoices' && (
           <InputInvoicesTab projects={projects} contracts={contracts} onDashStatsChanged={refreshDashStats} />
         )}
         {activeTab === 'outputInvoices' && (
-          <OutputInvoicesTab projects={projects} progressClaims={progressClaims} onDashStatsChanged={refreshDashStats} />
+          <OutputInvoicesTab projects={projects} progressClaims={progressClaims} onDashStatsChanged={refreshDashStats}
+            onCreateIncome={openIncomeForInvoice} />
         )}
         {activeTab === 'budgetReport' && (
           <BudgetReportTab

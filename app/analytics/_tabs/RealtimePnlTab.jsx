@@ -44,19 +44,23 @@ export default function RealtimePnlTab({ warehouses = [] }) {
   const [warehouse, setWh]    = useState('');
   const [cur, setCur]         = useState(null);
   const [prev, setPrev]       = useState(null);
+  const [bnbRev, setBnbRev]   = useState(null);   // 月報房收(入住月)對照
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     setLoading(true);
-    setCur(null); setPrev(null);
+    setCur(null); setPrev(null); setBnbRev(null);
     const { start: cs, end: ce } = monthRange(year, month);
     const prevMonth = month === 1 ? 12 : month - 1;
     const prevYear  = month === 1 ? year - 1 : year;
     const { start: ps, end: pe } = monthRange(prevYear, prevMonth);
+    const bnbP = new URLSearchParams({ year: String(year), month: String(month) });
+    if (warehouse) bnbP.set('warehouse', warehouse);
     Promise.all([
       fetchPnl(cs, ce, warehouse),
       fetchPnl(ps, pe, warehouse),
-    ]).then(([c, p]) => { setCur(c?.summary ?? null); setPrev(p?.summary ?? null); setLoading(false); });
+      fetch(`/api/analytics/bnb-booking-revenue?${bnbP}`).then(r => r.ok ? r.json() : null).catch(() => null),
+    ]).then(([c, p, b]) => { setCur(c?.summary ?? null); setPrev(p?.summary ?? null); setBnbRev(b ?? null); setLoading(false); });
   }, [year, month, warehouse]);
 
   const yearOpts  = [now.getFullYear(), now.getFullYear() - 1, now.getFullYear() - 2];
@@ -137,6 +141,23 @@ export default function RealtimePnlTab({ warehouses = [] }) {
               />
             </div>
           </div>
+
+          {/* 月報房收(入住月)對照 —— 民宿應收口徑，與上方現金基準不同，不影響損益 */}
+          {bnbRev && bnbRev.rooms > 0 && (
+            <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 flex flex-wrap items-center gap-x-6 gap-y-2">
+              <div>
+                <p className="text-xs text-indigo-500 font-medium">🏨 月報房收（入住月）</p>
+                <p className="text-2xl font-bold mt-1 text-indigo-700">{NT(bnbRev.netRevenue)}</p>
+              </div>
+              <div className="text-xs text-indigo-600/80 leading-5">
+                <div>房費+消費 {NT(bnbRev.roomCharge + bnbRev.otherCharge)}　手續費 −{NT(bnbRev.cardFee)}　（{bnbRev.rooms} 間）</div>
+                <div className="text-indigo-400">
+                  ※ 此為<strong>民宿帳月報「入住月·應收」</strong>口徑（與月收入總表一致），<strong>與上方現金基準不同、不計入損益</strong>；
+                  現金差異來自收款入帳月份不同與老闆收取現金。
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Secondary KPIs */}
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">

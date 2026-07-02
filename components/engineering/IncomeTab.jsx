@@ -5,7 +5,7 @@ import ConfirmModal, { useConfirmDialog } from '@/components/ConfirmModal';
 import { todayStr } from '@/lib/localDate';
 import FetchErrorBanner from '@/components/FetchErrorBanner';
 
-export default function IncomeTab({ projects, progressClaims = [], outputInvoices = [], onDashStatsChanged }) {
+export default function IncomeTab({ projects, progressClaims = [], outputInvoices = [], onDashStatsChanged, prefill, onPrefillDone }) {
   const [incomes, setIncomes] = useState([]);
   const [incomeSaving, setIncomeSaving] = useState(false);
   const [showIncomeForm, setShowIncomeForm] = useState(false);
@@ -25,6 +25,17 @@ export default function IncomeTab({ projects, progressClaims = [], outputInvoice
     fetchAccounts();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 從「業主銷項發票」一鍵開收款：預填工程案＋連結發票＋未收金額，直接展開新增表單
+  useEffect(() => {
+    if (!prefill) return;
+    setIncomeFilterProjectId(prefill.projectId || '');
+    fetchIncomes(prefill.projectId || '');
+    setIncomeForm({ ...emptyForm, projectId: prefill.projectId || '', outputInvoiceId: prefill.outputInvoiceId || '', amount: prefill.amount || '', termName: prefill.termName || '' });
+    setShowIncomeForm(true);
+    onPrefillDone?.();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefill]);
 
   async function fetchIncomes(projectId) {
     try {
