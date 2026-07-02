@@ -113,6 +113,7 @@ function BnbPage() {
     handleInlineSave,
     enterEditMode, cancelEditMode, updateCell, focusPayCell, handlePayKeyDown, saveAllEdits,
     handleLockToggle, lockAllFilled, handleUnlockRow, handleDelete, handleRestore,
+    handleBatchDelete, batchDeleting,
   } = useBnbRecords();
 
   const [editRecord,    setEditRecord]    = useState(null);
@@ -364,6 +365,7 @@ function BnbPage() {
             handlePayKeyDown={handlePayKeyDown} saveAllEdits={saveAllEdits}
             handleLockToggle={handleLockToggle} lockAllFilled={lockAllFilled}
             handleUnlockRow={handleUnlockRow} handleDelete={handleDelete} handleRestore={handleRestore}
+            handleBatchDelete={handleBatchDelete} batchDeleting={batchDeleting}
             editRecord={editRecord} setEditRecord={setEditRecord}
             editBooking={editBooking} setEditBooking={setEditBooking}
             addBookingOpen={addBookingOpen} setAddBookingOpen={setAddBookingOpen}

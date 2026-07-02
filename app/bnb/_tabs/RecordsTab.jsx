@@ -64,7 +64,7 @@ export default function RecordsTab({
   inlineEdit, setInlineEdit,
   editMode, editMap, dirtyIds, batchSaving, locking, rowErrors, roomNoList,
   fetchRecords,
-  handleBatchApply, handleInlineSave,
+  handleBatchApply, handleInlineSave, handleBatchDelete, batchDeleting,
   enterEditMode, cancelEditMode, updateCell, focusPayCell, handlePayKeyDown, saveAllEdits,
   handleLockToggle, lockAllFilled, handleUnlockRow, handleDelete, handleRestore,
 
@@ -627,6 +627,12 @@ export default function RecordsTab({
                   <span>🔓</span> 解鎖
                 </button>
               </>
+            )}
+            {!editMode && (
+              <button onClick={handleBatchDelete} disabled={batchDeleting}
+                className="px-3 py-1.5 text-sm rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 flex items-center gap-1">
+                <span>🗑</span> {batchDeleting ? '刪除中…' : `批量刪除 (${selectedIds.size})`}
+              </button>
             )}
             <button onClick={() => setSelectedIds(new Set())}
               className="text-xs text-gray-500 hover:underline ml-auto">清除選取</button>

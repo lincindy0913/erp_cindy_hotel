@@ -63,6 +63,7 @@ export function useBnbRecords() {
   const [batchField,    setBatchField]    = useState('status');
   const [batchValue,    setBatchValue]    = useState('');
   const [batchApplying, setBatchApplying] = useState(false);
+  const [batchDeleting, setBatchDeleting] = useState(false);
 
   // ── Inline edit state ─────────────────────────────────────────
   const [inlineEdit, setInlineEdit] = useState(null); // { id, field }
@@ -387,6 +388,31 @@ export function useBnbRecords() {
     fetchRecords();
   }
 
+  // ── 批次刪除（軟刪，逐筆呼叫 DELETE；已鎖帳/月鎖會被略過）──────
+  async function handleBatchDelete() {
+    if (!selectedIds.size) return;
+    const ids = [...selectedIds];
+    if (!(await confirm(
+      `確定刪除選取的 ${ids.length} 筆訂房記錄？刪除後可個別「還原」恢復；已鎖帳或整月鎖帳的記錄會被略過。`,
+      { title: '批次刪除訂房記錄', danger: true }
+    ))) return;
+    setBatchDeleting(true);
+    let ok = 0; const failMsgs = [];
+    for (const id of ids) {
+      try {
+        const res = await fetch(`/api/bnb/${id}`, { method: 'DELETE' });
+        if (res.ok) ok++;
+        else { const e = await res.json().catch(() => ({})); if (failMsgs.length < 3) failMsgs.push(e.error || e.message || `#${id}`); }
+      } catch { if (failMsgs.length < 3) failMsgs.push(`#${id} 連線失敗`); }
+    }
+    const fail = ids.length - ok;
+    setBatchDeleting(false);
+    setSelectedIds(new Set());
+    if (fail === 0) showToast(`已刪除 ${ok} 筆（可個別還原）`, 'success');
+    else showToast(`已刪除 ${ok} 筆，${fail} 筆略過/失敗（${failMsgs.join('；')}${fail > 3 ? '…' : ''}）`, ok === 0 ? 'error' : 'warning');
+    fetchRecords();
+  }
+
   // ── 還原已刪除記錄 ──────────────────────────────────────────
   async function handleRestore(id, name) {
     if (!(await confirm(`確定還原「${name}」的訂房記錄？`, { title: '還原訂房記錄', danger: false }))) return;
@@ -429,5 +455,6 @@ export function useBnbRecords() {
     handleInlineSave,
     enterEditMode, cancelEditMode, updateCell, focusPayCell, handlePayKeyDown, saveAllEdits,
     handleLockToggle, lockAllFilled, handleUnlockRow, handleDelete, handleRestore,
+    handleBatchDelete, batchDeleting,
   };
 }
