@@ -108,7 +108,7 @@ export async function PUT(request, { params }) {
         accountId: acctId,
         categoryId,
         accountingSubject: accountingSubjectLabel,
-        warehouse: '租金', // 所有租金收入歸「租金」館別（帳戶仍依各筆匯款帳戶）
+        warehouse: '租屋', // 所有租金收入歸「租屋」館別（帳戶仍依各筆匯款帳戶）
         amount: parsedActual,
         description: `租金收入 - ${income.property.name} - ${tenantName} - ${income.incomeYear}/${income.incomeMonth}${nextSeq > 1 ? ` (第${nextSeq}次)` : ''}`,
         sourceType: 'rental_income',
