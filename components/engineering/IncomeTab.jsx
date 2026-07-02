@@ -87,12 +87,15 @@ export default function IncomeTab({ projects, progressClaims = [], outputInvoice
   function openEditIncome(inc) {
     setEditingIncome({
       id: inc.id,
+      projectId: inc.projectId,
       form: {
         termName: inc.termName || '',
         amount: String(inc.amount),
         receivedDate: inc.receivedDate || '',
         accountId: inc.accountId ? String(inc.accountId) : '',
         accountingSubject: inc.accountingSubject || '41000 工程收入',
+        progressClaimId: inc.progressClaimId ? String(inc.progressClaimId) : '',
+        outputInvoiceId: inc.outputInvoiceId ? String(inc.outputInvoiceId) : '',
         note: inc.note || '',
       },
     });
@@ -323,10 +326,28 @@ export default function IncomeTab({ projects, progressClaims = [], outputInvoice
                               <td className="px-3 py-2"><input type="date" value={editingIncome.form.receivedDate} onChange={e => setEditingIncome(v => ({ ...v, form: { ...v.form, receivedDate: e.target.value } }))} className="w-full border rounded px-2 py-1 text-sm" /></td>
                               {/* 收款金額 */}
                               <td className="px-3 py-2"><input type="number" value={editingIncome.form.amount} onChange={e => setEditingIncome(v => ({ ...v, form: { ...v.form, amount: e.target.value } }))} className="w-full border rounded px-2 py-1 text-sm text-right" /></td>
-                              {/* 連結估驗（唯讀） */}
-                              <td className="px-3 py-2 text-xs">{inc.progressClaim ? <span className="text-indigo-500">{inc.progressClaim.termName}</span> : <span className="text-gray-300">—</span>}</td>
-                              {/* 連結發票（唯讀） */}
-                              <td className="px-3 py-2 text-xs">{inc.outputInvoice ? <span className="text-green-700 font-mono">{inc.outputInvoice.invoiceNo || `發票#${inc.outputInvoiceId}`}</span> : <span className="text-gray-300">—</span>}</td>
+                              {/* 連結估驗（可編輯） */}
+                              <td className="px-3 py-2">
+                                <select value={editingIncome.form.progressClaimId}
+                                  onChange={e => setEditingIncome(v => ({ ...v, form: { ...v.form, progressClaimId: e.target.value } }))}
+                                  className="w-full border rounded px-1 py-1 text-xs">
+                                  <option value="">不連結</option>
+                                  {progressClaims.filter(c => c.projectId === inc.projectId).map(c => (
+                                    <option key={c.id} value={c.id}>{c.termName}{c.claimNo ? ` (${c.claimNo})` : ''}</option>
+                                  ))}
+                                </select>
+                              </td>
+                              {/* 連結發票（可編輯） */}
+                              <td className="px-3 py-2">
+                                <select value={editingIncome.form.outputInvoiceId}
+                                  onChange={e => setEditingIncome(v => ({ ...v, form: { ...v.form, outputInvoiceId: e.target.value } }))}
+                                  className="w-full border rounded px-1 py-1 text-xs">
+                                  <option value="">不連結</option>
+                                  {outputInvoices.filter(i => i.projectId === inc.projectId && i.status !== '已作廢').map(i => (
+                                    <option key={i.id} value={i.id}>{i.invoiceNo || `發票#${i.id}`}{i.invoiceDate ? ` ${i.invoiceDate}` : ''}</option>
+                                  ))}
+                                </select>
+                              </td>
                               {/* 收款帳戶 */}
                               <td className="px-3 py-2">
                                 <select value={editingIncome.form.accountId} onChange={e => setEditingIncome(v => ({ ...v, form: { ...v.form, accountId: e.target.value } }))} className="w-full border rounded px-2 py-1 text-sm">
